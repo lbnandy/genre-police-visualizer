@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  normalizeAlwaysOnTop,
   normalizeClickThrough,
   normalizeIdleBehavior,
   normalizeIgnoredMediaSources,
@@ -15,6 +16,12 @@ test('mouse passthrough defaults off while preserving an explicit opt-in', () =>
   assert.equal(normalizeClickThrough(undefined), false);
   assert.equal(normalizeClickThrough(false), false);
   assert.equal(normalizeClickThrough(true), true);
+});
+
+test('always on top defaults off while preserving an explicit opt-in', () => {
+  assert.equal(normalizeAlwaysOnTop(undefined), false);
+  assert.equal(normalizeAlwaysOnTop(false), false);
+  assert.equal(normalizeAlwaysOnTop(true), true);
 });
 
 test('experience settings keep conservative defaults and sanitize media sources', () => {

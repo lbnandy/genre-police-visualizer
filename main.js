@@ -12,6 +12,7 @@ const { THEMES, DEMO_THEME_IDS, themeFor } = require('./src/themes');
 const { analyzeBackdropBitmap, deriveBackdropProfile, smoothBackdropSample } = require('./src/backdrop-analyzer');
 const { analyzeArtworkBitmap, chooseArtworkFacePalette } = require('./src/artwork-face-palette');
 const {
+  normalizeAlwaysOnTop,
   normalizeClickThrough,
   normalizeIdleBehavior,
   normalizeIgnoredMediaSources,
@@ -46,6 +47,7 @@ let rhythmModel = null;
 let rhythmModelStartTask = null;
 let rhythmModelState = { type: 'unavailable', reason: 'not started' };
 let clickThrough = false;
+let alwaysOnTop = false;
 let demoTheme = '';
 let lastRawMetadata = null;
 let lastResolvedMetadata = null;
@@ -61,7 +63,7 @@ let backdropSampleState = null;
 const artworkSampleCache = new Map();
 const LYRIC_DELAY_MIN_MS = -2000;
 const LYRIC_DELAY_MAX_MS = 2000;
-const DEFAULT_LYRIC_DELAY_MS = -150;
+const DEFAULT_LYRIC_DELAY_MS = 0;
 const NETWORK_REGION_TIMEOUT_MS = 1200;
 let networkCountry = '';
 let networkCountryTask = null;
@@ -202,6 +204,7 @@ function loadConfig() {
   const storedLayoutMode = config.layoutMode;
   const storedUiScale = config.uiScale;
   clickThrough = normalizeClickThrough(config.clickThrough);
+  alwaysOnTop = normalizeAlwaysOnTop(config.alwaysOnTop);
   config.uiScale = normalizeUiScale(process.env.GP_UI_SCALE || config.uiScale);
   config.layoutMode = normalizeLayoutMode(process.env.GP_LAYOUT_MODE || config.layoutMode);
   config.language = normalizeLocale(process.env.GP_CAPTURE_LANGUAGE || config.language);
@@ -386,6 +389,15 @@ function setClickThrough(value) {
   rebuildTrayMenu();
 }
 
+function setAlwaysOnTop(value, { persist = true } = {}) {
+  alwaysOnTop = normalizeAlwaysOnTop(value);
+  if (persist) saveConfig({ alwaysOnTop });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setAlwaysOnTop(alwaysOnTop, 'floating');
+  }
+  return alwaysOnTop;
+}
+
 function setUiScale(value) {
   const uiScale = normalizeUiScale(value);
   saveConfig({ uiScale });
@@ -397,7 +409,7 @@ function setUiScale(value) {
   return { scale: uiScale };
 }
 
-function resizeMainWindow({ width, height }) {
+function resizeMainWindow({ width, height }, { animate = true } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const bounds = mainWindow.getBounds();
   const display = screen.getDisplayMatching(bounds);
@@ -406,14 +418,17 @@ function resizeMainWindow({ width, height }) {
   const centeredY = bounds.y + Math.round((bounds.height - height) / 2);
   const x = Math.max(area.x, Math.min(area.x + area.width - width, centeredX));
   const y = Math.max(area.y, Math.min(area.y + area.height - height, centeredY));
-  mainWindow.setBounds({ x, y, width, height }, true);
+  mainWindow.setBounds({ x, y, width, height }, animate);
 }
 
 function setLayoutMode(value) {
   const layoutMode = normalizeLayoutMode(value);
   saveConfig({ layoutMode });
   if (mainWindow && !mainWindow.isDestroyed()) {
-    resizeMainWindow(layoutWindowSize(layoutMode, normalizeUiScale(config.uiScale)));
+    resizeMainWindow(
+      layoutWindowSize(layoutMode, normalizeUiScale(config.uiScale)),
+      { animate: false }
+    );
     mainWindow.webContents.send('layout-mode', { mode: layoutMode });
   }
   if (usesAdaptiveBackdrop(layoutMode)) startBackdropSampler();
@@ -566,7 +581,7 @@ function createWindow() {
     frame: false,
     hasShadow: false,
     resizable: false,
-    alwaysOnTop: true,
+    alwaysOnTop,
     skipTaskbar: true,
     show: false,
     webPreferences: {
@@ -578,7 +593,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.setAlwaysOnTop(true, 'floating');
+  mainWindow.setAlwaysOnTop(alwaysOnTop, 'floating');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
   mainWindow.on('move', scheduleWindowPositionSave);
@@ -1042,6 +1057,7 @@ ipcMain.handle('config:get', () => ({
   uiScale: normalizeUiScale(config.uiScale),
   layoutMode: normalizeLayoutMode(config.layoutMode),
   clickThrough,
+  alwaysOnTop,
   genreOptions: Object.entries(THEMES)
     .filter(([id]) => id !== 'unknown')
     .map(([id, theme]) => ({ id, label: theme.label, parent: theme.parent }))
@@ -1060,6 +1076,7 @@ ipcMain.handle('config:set', (_event, patch) => {
   if (typeof patch?.lyricSweepEnabled === 'boolean') safe.lyricSweepEnabled = patch.lyricSweepEnabled;
   if (typeof patch?.onlineGenreLookupEnabled === 'boolean') safe.onlineGenreLookupEnabled = patch.onlineGenreLookupEnabled;
   if (typeof patch?.launchAtLogin === 'boolean') safe.launchAtLogin = patch.launchAtLogin;
+  if (typeof patch?.alwaysOnTop === 'boolean') safe.alwaysOnTop = normalizeAlwaysOnTop(patch.alwaysOnTop);
   if (typeof patch?.motionMode === 'string') safe.motionMode = normalizeMotionMode(patch.motionMode);
   if (typeof patch?.idleBehavior === 'string') safe.idleBehavior = normalizeIdleBehavior(patch.idleBehavior);
   if (typeof patch?.preferredMediaSource === 'string') safe.preferredMediaSource = normalizeMediaSource(patch.preferredMediaSource);
@@ -1079,6 +1096,7 @@ ipcMain.handle('config:set', (_event, patch) => {
   const mediaPreferenceChanged = Object.hasOwn(safe, 'preferredMediaSource')
     || Object.hasOwn(safe, 'ignoredMediaSources');
   saveConfig(safe);
+  if (Object.hasOwn(safe, 'alwaysOnTop')) setAlwaysOnTop(safe.alwaysOnTop, { persist: false });
   if (Object.hasOwn(safe, 'launchAtLogin')) {
     safe.launchAtLogin = applyLaunchAtLogin(safe.launchAtLogin);
     saveConfig({ launchAtLogin: safe.launchAtLogin });
@@ -1116,7 +1134,8 @@ ipcMain.handle('config:set', (_event, patch) => {
   return {
     ok: true,
     launchAtLogin: config.launchAtLogin === true,
-    launchAtLoginSupported: launchAtLoginSupported()
+    launchAtLoginSupported: launchAtLoginSupported(),
+    alwaysOnTop
   };
 });
 ipcMain.handle('genre-correction:set', (_event, genreId) => rememberCurrentGenre(genreId));

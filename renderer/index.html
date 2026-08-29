@@ -9,8 +9,14 @@
   </head>
   <body data-family="unknown" data-playback="idle" data-layout="side" data-poster-english="condensed">
     <main id="app" aria-live="polite">
-      <div id="themed-backdrop-previous" class="themed-backdrop" aria-hidden="true"></div>
-      <div id="poster-backdrop" class="themed-backdrop" aria-hidden="true"></div>
+      <div id="themed-backdrop-previous" class="themed-backdrop" aria-hidden="true">
+        <i class="synth-starfield synth-starfield--far"></i>
+        <i class="synth-starfield synth-starfield--near"></i>
+      </div>
+      <div id="poster-backdrop" class="themed-backdrop" aria-hidden="true">
+        <i class="synth-starfield synth-starfield--far"></i>
+        <i class="synth-starfield synth-starfield--near"></i>
+      </div>
       <canvas id="visualizer"></canvas>
 
       <div id="core-art" aria-hidden="true">
@@ -91,11 +97,6 @@
           <span class="unit-mark"></span>
           <span>GENRE POLICE</span>
           <span id="case-id">LIVE SIGNAL</span>
-        </div>
-        <div id="special-alert" hidden aria-hidden="true">
-          <span class="special-beacon special-beacon-red"></span>
-          <span data-i18n-main="hud.specialAlert">GENRE VIOLATION // UNIT DEPLOYED</span>
-          <span class="special-beacon special-beacon-blue"></span>
         </div>
         <div id="parent-genre">ANALYZING</div>
         <h1 id="genre" data-text="UNKNOWN"><span id="genre-face">UNKNOWN</span></h1>
@@ -388,6 +389,15 @@
           <span id="credentials-state" role="status"></span>
         </div>
         <div class="settings-group-title" data-i18n="settings.groupApp">应用</div>
+        <div class="settings-toggle-row">
+          <div class="settings-toggle-copy">
+            <span id="always-on-top-label" class="settings-label" data-i18n="settings.alwaysOnTop">始终置顶</span>
+            <small data-i18n="settings.alwaysOnTopHelp">让可视化保持在其他窗口上方。</small>
+          </div>
+          <button id="always-on-top-toggle" class="settings-switch" type="button" role="switch" aria-checked="false" aria-labelledby="always-on-top-label">
+            <span class="settings-switch-knob" aria-hidden="true"></span>
+          </button>
+        </div>
         <div class="settings-toggle-row">
           <div class="settings-toggle-copy">
             <span id="launch-at-login-label" class="settings-label" data-i18n="settings.launchAtLogin">开机自启</span>

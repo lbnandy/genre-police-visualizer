@@ -79,7 +79,16 @@ export class VisualEngine {
     this.tranceFixedParticleCache = document.createElement('canvas');
     this.tranceBackdropCanvas = document.createElement('canvas');
     this.tranceBackdropCtx = this.tranceBackdropCanvas.getContext('2d', { alpha: true, desynchronized: true });
+    this.synthForegroundCanvas = document.createElement('canvas');
+    this.synthForegroundCtx = this.synthForegroundCanvas.getContext('2d', { alpha: true, desynchronized: true });
+    this.synthArtworkCanvas = document.createElement('canvas');
+    this.synthArtworkCtx = this.synthArtworkCanvas.getContext('2d', { alpha: true, desynchronized: true });
     this.tranceArmCacheKey = '';
+    this.synthGridPhase = 0;
+    this.synthSunScanPhase = 0;
+    this.synthSceneLastAt = 0;
+    this.synthCapsuleHorizonY = 0;
+    this.synthCapsuleHorizonMeasuredAt = 0;
     this.asmrReference = 0.035;
     this.resize();
     new ResizeObserver(() => this.resize()).observe(canvas);
@@ -102,6 +111,12 @@ export class VisualEngine {
     this.tintCanvas.height = this.canvas.height;
     this.tranceBackdropCanvas.width = this.canvas.width;
     this.tranceBackdropCanvas.height = this.canvas.height;
+    this.synthForegroundCanvas.width = this.canvas.width;
+    this.synthForegroundCanvas.height = this.canvas.height;
+    this.synthArtworkCanvas.width = this.canvas.width;
+    this.synthArtworkCanvas.height = this.canvas.height;
+    this.synthCapsuleHorizonY = 0;
+    this.synthCapsuleHorizonMeasuredAt = 0;
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
   }
 
@@ -140,6 +155,9 @@ export class VisualEngine {
       this.tranceOuterParticleBudget = 0;
       this.tranceOuterParticleLastAt = 0;
       this.tranceArmCacheKey = '';
+      this.synthGridPhase = 0;
+      this.synthSunScanPhase = 0;
+      this.synthSceneLastAt = 0;
     }
     this.theme = theme;
   }
@@ -911,6 +929,378 @@ export class VisualEngine {
     ctx.restore();
   }
 
+  resolveSynthwaveHorizonY(bounds, posterLayout, time) {
+    const fallbackY = bounds.top
+      + (bounds.bottom - bounds.top) * (posterLayout ? 0.35 : 0.53);
+    if (posterLayout) {
+      this.synthCapsuleHorizonMeasuredAt = 0;
+      return fallbackY;
+    }
+    const measurementStale = !this.synthCapsuleHorizonY
+      || time - this.synthCapsuleHorizonMeasuredAt >= 250;
+    if (measurementStale) {
+      const progressRule = document.querySelector('.track-rule');
+      const canvasBounds = this.canvas.getBoundingClientRect();
+      const progressBounds = progressRule?.getBoundingClientRect();
+      if (progressBounds?.height > 0 && canvasBounds.height > 0) {
+        const canvasScaleY = this.height / canvasBounds.height;
+        const progressCenterY = (
+          progressBounds.top + progressBounds.height * 0.5 - canvasBounds.top
+        ) * canvasScaleY;
+        if (Number.isFinite(progressCenterY)) {
+          this.synthCapsuleHorizonY = clamp(progressCenterY, bounds.top, bounds.bottom);
+          const horizonPercent = this.synthCapsuleHorizonY / Math.max(1, this.height) * 100;
+          document.body.style.setProperty(
+            '--synth-capsule-horizon-y',
+            `${horizonPercent.toFixed(3)}%`
+          );
+        }
+      }
+      this.synthCapsuleHorizonMeasuredAt = time;
+    }
+    return this.synthCapsuleHorizonY || fallbackY;
+  }
+
+  drawSynthwaveHorizonScene(x, y, theme, metrics, time) {
+    const ctx = this.ctx;
+    const posterLayout = document.body.dataset.layout === 'poster';
+    const themedBackground = document.body.dataset.backgroundStyle === 'themed';
+    if (!themedBackground) return;
+    const bounds = posterLayout
+      ? { left: 16, top: 16, right: this.width - 16, bottom: this.height - 16, radius: 24 }
+      : { left: 54, top: 48, right: this.width - 108, bottom: this.height - 48, radius: 152 };
+    const horizonY = this.resolveSynthwaveHorizonY(bounds, posterLayout, time);
+    const floorDepth = Math.max(1, bounds.bottom - horizonY);
+    const synthwaveResponse = metrics.synthwaveResponse || null;
+    const impact = clamp(synthwaveResponse?.impact
+      ?? Math.max(metrics.rhythmPulse || 0, metrics.impact || 0));
+    const localEnergy = clamp(
+      metrics.volume * 0.24 + metrics.bass * 0.34
+        + metrics.lowMid * 0.22 + metrics.mid * 0.12
+    );
+    const fallbackSectionEnergy = clamp(Math.max(
+      localEnergy,
+      clamp(((metrics.relativeEnergy || 1) - 0.72) / 1.06) * 0.68
+        + clamp(metrics.drive || 0) * 0.32
+    ));
+    const sectionEnergy = clamp(synthwaveResponse?.sectionEnergy ?? fallbackSectionEnergy);
+    const lineEnergy = clamp(synthwaveResponse?.lineEnergy ?? sectionEnergy);
+    const gridMotion = clamp(synthwaveResponse?.gridMotion ?? sectionEnergy);
+    const sunMotion = clamp(synthwaveResponse?.sunMotion ?? sectionEnergy);
+    const elapsedMs = this.synthSceneLastAt
+      ? clamp(time - this.synthSceneLastAt, 0, 50)
+      : 16.667;
+    this.synthSceneLastAt = time;
+    // Both clocks respond continuously to section intensity, while a transient
+    // provides a brief acceleration instead of resizing any scene element.
+    this.synthGridPhase = (
+      this.synthGridPhase
+        + elapsedMs * (0.00015 + gridMotion * 0.00074 + impact * 0.00035)
+    ) % 1;
+    this.synthSunScanPhase = (
+      this.synthSunScanPhase
+        + elapsedMs * (0.000052 + sunMotion * 0.00012 + impact * 0.00006)
+    ) % 1;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(
+      bounds.left,
+      bounds.top,
+      bounds.right - bounds.left,
+      bounds.bottom - bounds.top,
+      bounds.radius
+    );
+    ctx.clip();
+    ctx.globalCompositeOperation = 'source-over';
+
+    // The sun and album cover live on a dedicated transparent canvas. Scan
+    // seams are erased only from this foreground buffer, so they can never cut
+    // the road. The finished plane is then clipped above the true horizon.
+    const sunRadius = posterLayout ? 110 : 108;
+    const foreground = this.synthForegroundCtx;
+    foreground.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    foreground.clearRect(0, 0, this.width, this.height);
+    foreground.save();
+    const sunFill = foreground.createLinearGradient(0, y - sunRadius, 0, y + sunRadius);
+    sunFill.addColorStop(0, '#fff0b2');
+    sunFill.addColorStop(0.3, '#ffad76');
+    sunFill.addColorStop(0.56, '#ff667f');
+    sunFill.addColorStop(0.8, '#ff2ba6');
+    sunFill.addColorStop(1, '#d80caa');
+    foreground.globalAlpha = 0.9 + sectionEnergy * 0.08 + impact * 0.02;
+    foreground.fillStyle = sunFill;
+    foreground.beginPath();
+    foreground.arc(x, y, sunRadius, 0, TAU);
+    foreground.fill();
+
+    const artwork = document.querySelector('#artwork');
+    const artworkLayer = this.synthArtworkCtx;
+    artworkLayer.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    artworkLayer.clearRect(0, 0, this.width, this.height);
+    if (artwork?.complete && artwork.naturalWidth > 0) {
+      const artworkRadius = sunRadius;
+      artworkLayer.save();
+      artworkLayer.beginPath();
+      artworkLayer.arc(x, y, artworkRadius, 0, TAU);
+      artworkLayer.clip();
+      artworkLayer.globalAlpha = 0.15;
+      artworkLayer.imageSmoothingEnabled = true;
+      artworkLayer.imageSmoothingQuality = 'high';
+      artworkLayer.drawImage(
+        artwork,
+        x - artworkRadius,
+        y - artworkRadius,
+        artworkRadius * 2,
+        artworkRadius * 2
+      );
+      artworkLayer.restore();
+      foreground.save();
+      foreground.globalAlpha = 1;
+      foreground.drawImage(this.synthArtworkCanvas, 0, 0, this.width, this.height);
+      foreground.restore();
+    }
+
+    foreground.globalCompositeOperation = 'destination-out';
+    foreground.globalAlpha = 1;
+    foreground.fillStyle = '#000';
+    const scanLineCount = 5;
+    for (let index = 0; index < scanLineCount; index += 1) {
+      const progress = (this.synthSunScanPhase + index / scanLineCount) % 1;
+      const travel = progress;
+      const entryFade = smoothstep(0, 0.07, progress);
+      const exitFade = 1 - smoothstep(0.68, 1, progress);
+      const gapCenterY = y + sunRadius * 0.34 - travel * sunRadius * 1.15;
+      const gapHeight = (1.2 + (1 - travel) * 5.4) * entryFade * exitFade;
+      if (gapHeight <= 0.03) continue;
+      foreground.fillRect(
+        x - sunRadius - 1,
+        gapCenterY - gapHeight * 0.5,
+        sunRadius * 2 + 2,
+        gapHeight
+      );
+    }
+    foreground.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(bounds.left, bounds.top, bounds.right - bounds.left, horizonY - bounds.top);
+    ctx.clip();
+    ctx.drawImage(this.synthForegroundCanvas, 0, 0, this.width, this.height);
+    ctx.restore();
+
+    // The road keeps its fixed geometry. Only forward travel and light output
+    // react to section energy and impacts, so it never pumps or changes scale.
+    const phase = this.synthGridPhase;
+    const rowCount = posterLayout ? 14 : 11;
+    const horizonLaneSpacing = posterLayout ? 32 : 38;
+    const horizonSpread = 0.29;
+    // The base grid stays inside a neon magenta-violet-electric-blue axis.
+    // Warm sunset colour is reserved for the separate sunlight reflections.
+    const roadGlow = ctx.createLinearGradient(0, horizonY, 0, bounds.bottom);
+    roadGlow.addColorStop(0, rgba(theme.accent, 0.26 + lineEnergy * 0.12 + impact * 0.07));
+    roadGlow.addColorStop(0.52, rgba('#b22bd8', 0.16 + lineEnergy * 0.08 + impact * 0.05));
+    roadGlow.addColorStop(0.68, rgba('#5c49e4', 0.15 + lineEnergy * 0.07 + impact * 0.04));
+    roadGlow.addColorStop(1, rgba('#4f7cff', 0.22 + lineEnergy * 0.08 + impact * 0.04));
+    const roadCore = ctx.createLinearGradient(0, horizonY, 0, bounds.bottom);
+    roadCore.addColorStop(0, rgba(theme.accent, 0.7 + lineEnergy * 0.12 + impact * 0.07));
+    roadCore.addColorStop(0.52, rgba('#b22bd8', 0.46 + lineEnergy * 0.11 + impact * 0.06));
+    roadCore.addColorStop(0.68, rgba('#5c49e4', 0.42 + lineEnergy * 0.11 + impact * 0.06));
+    roadCore.addColorStop(1, rgba('#4f7cff', 0.52 + lineEnergy * 0.13 + impact * 0.06));
+
+    const firstLane = Math.floor((bounds.left - x) / horizonLaneSpacing) - 1;
+    const lastLane = Math.ceil((bounds.right - x) / horizonLaneSpacing) + 1;
+    const lanes = [];
+    for (let lane = firstLane; lane <= lastLane; lane += 1) {
+      const laneHorizonX = x + lane * horizonLaneSpacing;
+      lanes.push({
+        horizonX: laneHorizonX,
+        endX: x + (laneHorizonX - x) / horizonSpread
+      });
+    }
+    const rows = [];
+    for (let row = 0; row < rowCount; row += 1) {
+      const depth = (row + phase) / rowCount;
+      const perspective = depth ** 2.28;
+      rows.push({ perspective, y: horizonY + perspective * floorDepth });
+    }
+
+    const traceRoad = () => {
+      ctx.beginPath();
+      lanes.forEach((lane) => {
+        ctx.moveTo(lane.horizonX, horizonY);
+        ctx.lineTo(lane.endX, bounds.bottom);
+      });
+      rows.forEach((row) => {
+        ctx.moveTo(bounds.left, row.y);
+        ctx.lineTo(bounds.right, row.y);
+      });
+    };
+
+    ctx.strokeStyle = roadGlow;
+    ctx.lineWidth = 2.4;
+    ctx.globalAlpha = 0.56;
+    traceRoad();
+    ctx.stroke();
+    ctx.strokeStyle = roadCore;
+    ctx.lineWidth = 0.82;
+    ctx.globalAlpha = 1;
+    traceRoad();
+    ctx.stroke();
+
+    // Sunlight is carried by the grid itself rather than a translucent sheet
+    // over the floor. Central longitudinal rails receive the strongest warm
+    // reflection; short widening highlights bind the horizontal rows to it.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const roadWidth = bounds.right - bounds.left;
+    const reflectionFloorHalfWidth = roadWidth * 0.4;
+    const reflectionDepthRatio = 0.72;
+    const reflectionDepth = floorDepth * reflectionDepthRatio;
+    const reflectionEndY = horizonY + reflectionDepth;
+    const reflectionNeckProgress = 0.84;
+    const reflectionTailHalfWidth = roadWidth * 0.045;
+    const reflectionHalfWidthAt = (progress) => {
+      const normalized = clamp(progress);
+      if (normalized <= reflectionNeckProgress) {
+        const bodyProgress = normalized / reflectionNeckProgress;
+        const bodyTaper = Math.pow(smoothstep(0, 1, bodyProgress), 1.35);
+        return reflectionTailHalfWidth
+          + (reflectionFloorHalfWidth - reflectionTailHalfWidth) * (1 - bodyTaper);
+      }
+      const capProgress = (normalized - reflectionNeckProgress)
+        / (1 - reflectionNeckProgress);
+      return reflectionTailHalfWidth
+        * Math.sqrt(Math.max(0, 1 - capProgress * capProgress));
+    };
+    const reflectionEnvelopeSteps = 32;
+    const traceReflectionEnvelope = () => {
+      ctx.beginPath();
+      for (let step = 0; step <= reflectionEnvelopeSteps; step += 1) {
+        const perspective = step / reflectionEnvelopeSteps;
+        const edgeX = x - reflectionHalfWidthAt(perspective);
+        const edgeY = horizonY + perspective * reflectionDepth;
+        if (step === 0) ctx.moveTo(edgeX, edgeY);
+        else ctx.lineTo(edgeX, edgeY);
+      }
+      for (let step = reflectionEnvelopeSteps; step >= 0; step -= 1) {
+        const perspective = step / reflectionEnvelopeSteps;
+        ctx.lineTo(
+          x + reflectionHalfWidthAt(perspective),
+          horizonY + perspective * reflectionDepth
+        );
+      }
+      ctx.closePath();
+    };
+    // The ground tint and illuminated grid share one sun-path envelope: a
+    // broad, hazy shoulder at the horizon that gathers into a short round tail.
+    // That slow-then-steep taper reads more like low-angle light on a surface
+    // than a geometric trapezoid or a pointed half-ellipse.
+    const groundReflection = ctx.createLinearGradient(0, horizonY, 0, reflectionEndY);
+    groundReflection.addColorStop(0, rgba('#ffd5a6', 0.16 + lineEnergy * 0.055 + impact * 0.035));
+    groundReflection.addColorStop(0.2, rgba(theme.hot, 0.14 + lineEnergy * 0.055 + impact * 0.035));
+    groundReflection.addColorStop(0.55, rgba('#ff4f9f', 0.075 + lineEnergy * 0.04 + impact * 0.025));
+    groundReflection.addColorStop(0.82, rgba('#b83ad5', 0.02 + lineEnergy * 0.018));
+    groundReflection.addColorStop(1, rgba(theme.accent, 0));
+    ctx.globalAlpha = 1;
+    ctx.filter = `blur(${(16 + lineEnergy * 6 + impact * 3).toFixed(2)}px)`;
+    ctx.fillStyle = groundReflection;
+    traceReflectionEnvelope();
+    ctx.fill();
+    ctx.filter = 'none';
+
+    const longitudinalReflection = ctx.createLinearGradient(0, horizonY, 0, reflectionEndY);
+    longitudinalReflection.addColorStop(0, rgba('#ffe0a8', 0.86 + lineEnergy * 0.08 + impact * 0.04));
+    longitudinalReflection.addColorStop(0.2, rgba(theme.hot, 0.78 + lineEnergy * 0.12 + impact * 0.05));
+    longitudinalReflection.addColorStop(0.58, rgba('#ff7895', 0.5 + lineEnergy * 0.16 + impact * 0.05));
+    longitudinalReflection.addColorStop(0.84, rgba('#ff4fa4', 0.14 + lineEnergy * 0.09));
+    longitudinalReflection.addColorStop(1, rgba(theme.accent, 0));
+    const longitudinalSegments = 16;
+    // Each rail is sampled in short pieces so its opacity can follow the
+    // curved envelope. Flat caps keep adjacent samples from piling up into
+    // bright beads under additive blending.
+    ctx.lineCap = 'butt';
+    lanes.forEach((lane) => {
+      ctx.strokeStyle = longitudinalReflection;
+      for (let segment = 0; segment < longitudinalSegments; segment += 1) {
+        const startProgress = segment / longitudinalSegments;
+        const endProgress = (segment + 1) / longitudinalSegments;
+        const middleProgress = (startProgress + endProgress) * 0.5;
+        const start = startProgress * reflectionDepthRatio;
+        const end = endProgress * reflectionDepthRatio;
+        const middle = middleProgress * reflectionDepthRatio;
+        const middleX = lane.horizonX + (lane.endX - lane.horizonX) * middle;
+        const distance = Math.abs(middleX - x) / Math.max(1, reflectionHalfWidthAt(middleProgress));
+        const edgeFade = 1 - smoothstep(0.68, 1.08, distance);
+        const reflection = Math.exp(-distance * distance * 1.35);
+        if (edgeFade <= 0.01 || reflection < 0.025) continue;
+        ctx.globalAlpha = edgeFade * reflection
+          * (0.58 + lineEnergy * 0.28 + impact * 0.12);
+        ctx.lineWidth = 0.92 + reflection * 1.12;
+        ctx.beginPath();
+        ctx.moveTo(
+          lane.horizonX + (lane.endX - lane.horizonX) * start,
+          horizonY + floorDepth * start
+        );
+        ctx.lineTo(
+          lane.horizonX + (lane.endX - lane.horizonX) * end,
+          horizonY + floorDepth * end
+        );
+        ctx.stroke();
+      }
+    });
+    rows.forEach((row) => {
+      const reflectionProgress = row.perspective / reflectionDepthRatio;
+      if (reflectionProgress >= 1) return;
+      const halfWidth = reflectionHalfWidthAt(reflectionProgress);
+      const crossReflection = ctx.createLinearGradient(x - halfWidth, 0, x + halfWidth, 0);
+      crossReflection.addColorStop(0, rgba(theme.accent, 0));
+      crossReflection.addColorStop(0.2, rgba('#ff5ba8', 0.28));
+      crossReflection.addColorStop(0.5, rgba('#ffd7a0', 0.84 + lineEnergy * 0.1));
+      crossReflection.addColorStop(0.8, rgba('#ff5ba8', 0.28));
+      crossReflection.addColorStop(1, rgba(theme.accent, 0));
+      ctx.strokeStyle = crossReflection;
+      ctx.lineWidth = 1.16;
+      ctx.globalAlpha = (0.58 + lineEnergy * 0.28 + impact * 0.12)
+        * (1 - smoothstep(0.78, 1, reflectionProgress));
+      ctx.beginPath();
+      ctx.moveTo(x - halfWidth, row.y);
+      ctx.lineTo(x + halfWidth, row.y);
+      ctx.stroke();
+    });
+    ctx.restore();
+
+    // A dedicated luminous seam separates sky from floor. It is intentionally
+    // drawn after the road and outside the cutout buffer, so scanning gaps can
+    // neither interrupt the horizon nor erase any part of the ground.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const horizonGlow = ctx.createLinearGradient(0, horizonY - 42, 0, horizonY + 44);
+    horizonGlow.addColorStop(0, rgba(theme.accent, 0));
+    horizonGlow.addColorStop(0.22, rgba(theme.accent, 0.065 + lineEnergy * 0.05));
+    horizonGlow.addColorStop(0.42, rgba(theme.hot, 0.19 + lineEnergy * 0.12 + impact * 0.07));
+    horizonGlow.addColorStop(0.5, rgba('#ffc6df', 0.38 + lineEnergy * 0.16 + impact * 0.1));
+    horizonGlow.addColorStop(0.58, rgba(theme.accent2, 0.18 + lineEnergy * 0.11 + impact * 0.07));
+    horizonGlow.addColorStop(0.78, rgba(theme.accent2, 0.065 + lineEnergy * 0.05));
+    horizonGlow.addColorStop(1, rgba(theme.accent2, 0));
+    ctx.fillStyle = horizonGlow;
+    ctx.fillRect(bounds.left, horizonY - 42, bounds.right - bounds.left, 86);
+    ctx.shadowColor = rgba(theme.hot, 0.82);
+    ctx.shadowBlur = 36 + lineEnergy * 18 + impact * 12;
+    ctx.strokeStyle = rgba(theme.hot, 0.44 + lineEnergy * 0.15 + impact * 0.1);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(bounds.left, horizonY);
+    ctx.lineTo(bounds.right, horizonY);
+    ctx.stroke();
+    ctx.shadowBlur = 9 + lineEnergy * 5 + impact * 4;
+    ctx.strokeStyle = rgba('#ffd2e5', 0.5 + lineEnergy * 0.16);
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+    ctx.restore();
+    ctx.restore();
+  }
+
   drawSpectrumVolume(x, y, theme, metrics, time, options = {}) {
     const ctx = this.ctx;
     const pulse = metrics.rhythmPulse || 0;
@@ -982,9 +1372,10 @@ export class VisualEngine {
     }[material] || { fill: 0.82, edge: 1, blur: 16, ridges: [0.2, 0.48, 0.74] };
 
     if (!options.hideBandFill) {
+      const shadowAlphaScale = options.shadowAlphaScale ?? 1;
       const shadowFill = ctx.createRadialGradient(x, y, baseRadius - (options.thickness || 20) - 6, x, y, baseRadius + (options.amplitude || 42) + 20);
-      shadowFill.addColorStop(0, 'rgba(2, 4, 10, 0.2)');
-      shadowFill.addColorStop(0.66, 'rgba(2, 4, 10, 0.09)');
+      shadowFill.addColorStop(0, `rgba(2, 4, 10, ${Math.min(0.42, 0.2 * shadowAlphaScale)})`);
+      shadowFill.addColorStop(0.66, `rgba(2, 4, 10, ${Math.min(0.24, 0.09 * shadowAlphaScale)})`);
       shadowFill.addColorStop(1, 'rgba(2, 4, 10, 0)');
       this.traceBand(outer, inner, options.smoothPath);
       ctx.fillStyle = shadowFill;
@@ -1134,6 +1525,10 @@ export class VisualEngine {
   }
 
   drawGenreVolume(x, y, theme, metrics, time) {
+    if (theme.id === 'synthwave') {
+      this.lastSpectrum = null;
+      return;
+    }
     const mode = theme.mode || 'electronic';
     const base = {
       points: 128, spectrumBins: 48, radius: 68, amplitude: 49, thickness: 23, waveAmplitude: 12,
@@ -1621,19 +2016,19 @@ export class VisualEngine {
             : theme.id === 'uplifting-trance' ? 38
               : theme.id === 'progressive-trance' ? 34 : 38;
       options = {
-      ...base, points: orchestral ? 152 : synthwave ? 148 : 172, spectrumBins,
-      radius: orchestral ? 70 : synthwave ? 66 : 68, amplitude: orchestral ? 43 : synthwave ? 42 : drivingTrance ? 48 : 45,
-      thickness: orchestral ? 38 : synthwave ? 27 : 29, waveAmplitude: orchestral ? 23 : synthwave ? 12 : 15,
-      smoothBins: orchestral ? 5 : synthwave ? 4 : drivingTrance ? 3 : 5,
-      waveSmooth: orchestral ? 20 : synthwave ? 14 : drivingTrance ? 13 : 18, smoothPath: true,
-      radialSmooth: { window: orchestral ? 5 : synthwave ? 4 : drivingTrance ? 4 : 5, passes: 2, blend: orchestral ? 0.84 : synthwave ? 0.78 : drivingTrance ? 0.76 : 0.84 },
+      ...base, points: orchestral ? 152 : synthwave ? 160 : 172, spectrumBins,
+      radius: orchestral ? 70 : synthwave ? 68 : 68, amplitude: orchestral ? 43 : synthwave ? 37 : drivingTrance ? 48 : 45,
+      thickness: orchestral ? 38 : synthwave ? 33 : 29, waveAmplitude: orchestral ? 23 : synthwave ? 10 : 15,
+      smoothBins: orchestral ? 5 : synthwave ? 5 : drivingTrance ? 3 : 5,
+      waveSmooth: orchestral ? 20 : synthwave ? 18 : drivingTrance ? 13 : 18, smoothPath: true,
+      radialSmooth: { window: orchestral ? 5 : synthwave ? 5 : drivingTrance ? 4 : 5, passes: 2, blend: orchestral ? 0.84 : synthwave ? 0.84 : drivingTrance ? 0.76 : 0.84 },
       broadWave: theme.id === 'uplifting-trance'
         ? { amount: 2.5, lobes: 5, speed: 0.00042 }
         : theme.id === 'synthwave'
-          ? { amount: 3, lobes: 5, speed: 0.00034 }
+          ? { amount: 2.2, lobes: 4, speed: 0.00022 }
           : { amount: drivingTrance ? 2.55 : 1.65, lobes: drivingTrance ? 5 : 4, speed: 0.00038 },
-      lobes: theme.id === 'uplifting-trance' ? 6 : theme.id === 'synthwave' ? 5 : 0,
-      lobeAmount: theme.id === 'uplifting-trance' ? 2.8 : theme.id === 'synthwave' ? 3.2 : 0,
+      lobes: theme.id === 'uplifting-trance' ? 6 : 0,
+      lobeAmount: theme.id === 'uplifting-trance' ? 2.8 : 0,
       rotation: orchestral || synthwave ? 0 : vortexDirection * this.tranceFlowPhase * 0.035,
       wavePhase: orchestral || synthwave ? 0 : vortexDirection * this.tranceFlowPhase * 0.18,
       spiralTwist: 0,
@@ -1648,19 +2043,20 @@ export class VisualEngine {
             : drivingTrance ? 1.46 : theme.id === 'progressive-trance' ? 1.4 : 1.34,
       echoes: orchestral ? 2 : synthwave ? 1 : 0, echoSpacing: 5, nodes: false, peakBoost: orchestral ? 0.48 : synthwave ? 0.52 : 0.34,
       ridgeDepths: orchestral ? [0.24, 0.58] : [0.3, 0.66],
-      ridgeAlphaScale: orchestral ? 1 : synthwave ? 0.72 : 0.34,
-      ridgeBlurAdd: orchestral ? 0 : synthwave ? 2 : 9,
+      ridgeAlphaScale: orchestral ? 1 : synthwave ? 0.88 : 0.34,
+      ridgeBlurAdd: orchestral ? 0 : synthwave ? 1 : 9,
       hideInnerEdge: !orchestral && !synthwave,
-      fillAlphaScale: orchestral ? 1 : synthwave ? 0.92 : 1.12,
-      edgeAlphaScale: orchestral ? 1 : synthwave ? 0.82 : 0.38,
-      edgeWidthScale: orchestral ? 1 : synthwave ? 0.9 : 0.74,
-      edgeBlurAdd: orchestral ? 0 : synthwave ? 3 : 12,
+      fillAlphaScale: orchestral ? 1 : synthwave ? 1.4 : 1.12,
+      shadowAlphaScale: synthwave ? 1.55 : 1,
+      edgeAlphaScale: orchestral ? 1 : synthwave ? 0.96 : 0.38,
+      edgeWidthScale: orchestral ? 1 : synthwave ? 1 : 0.74,
+      edgeBlurAdd: orchestral ? 0 : synthwave ? 2 : 12,
       outerEdgeColor: orchestral ? theme.hot : synthwave ? theme.accent2 : theme.accent,
       hidden: !orchestral && !synthwave,
       gravityField: !orchestral && !synthwave,
       contactCompression: orchestral ? 3.2 : synthwave ? 1.1 : 2.4,
       pulseRadius: orchestral ? 4.5 : synthwave ? 2 : 2.8,
-      catEarDip: 0.1, innerFollow: synthwave ? 0.58 : 0.72, material: synthwave ? 'wire' : 'glass'
+      catEarDip: 0.1, innerFollow: synthwave ? 0.5 : 0.72, material: 'glass'
       };
     }
     else if (mode === 'pop' || mode === 'j-pop') {
@@ -1941,29 +2337,6 @@ export class VisualEngine {
       ctx.arc(0, 0, radius, start + 0.025, start + TAU / 28 * 0.62);
       ctx.stroke();
     }
-    ctx.restore();
-
-    // Radar sector and sweep line run against the beacon rotation, producing
-    // an unmistakable scanning-system layer instead of another spectrum ring.
-    ctx.save();
-    ctx.rotate(-time * 0.00058 - 0.5);
-    const radar = ctx.createRadialGradient(0, 0, 34, 0, 0, radius - 7);
-    radar.addColorStop(0, rgba(blue, 0));
-    radar.addColorStop(0.56, rgba(blue, 0.025));
-    radar.addColorStop(1, rgba(blue, 0.14 + pulse * 0.04));
-    ctx.fillStyle = radar;
-    ctx.beginPath();
-    ctx.moveTo(35, 0);
-    ctx.lineTo(radius - 7, 0);
-    ctx.arc(0, 0, radius - 7, 0, 0.31);
-    ctx.lineTo(Math.cos(0.31) * 35, Math.sin(0.31) * 35);
-    ctx.closePath();
-    ctx.fill();
-    this.strokeGlow(blue, 0.78, 12, 0.32 + pulse * 0.22);
-    ctx.beginPath();
-    ctx.moveTo(42, 0);
-    ctx.lineTo(radius + 3, 0);
-    ctx.stroke();
     ctx.restore();
 
     // A restrained eight-point badge sits around the artwork bezel. The DOM
@@ -5766,51 +6139,9 @@ export class VisualEngine {
       const breath = 0.5 + 0.5 * Math.sin(time * (progressive ? 0.0002 : 0.00027));
 
       if (synthwave) {
-        // Synthwave keeps the shared neon material but uses a retro scanning
-        // horizon instead of inheriting Trance's black-hole vortex language.
-        const scanPhase = (time * 0.00013) % 1;
-        const gridDrive = clamp(metrics.mid * 0.48 + metrics.bass * 0.3 + pulse * 0.22);
-        ctx.save();
-        ctx.rotate(-0.08 + Math.sin(time * 0.00017) * 0.025);
-        for (let ring = 0; ring < 4; ring += 1) {
-          const ringRadius = 55 + ring * 10 + gridDrive * ring * 1.2;
-          signatureStroke(
-            ring % 2 ? theme.accent2 : theme.accent,
-            0.68 + ring * 0.08,
-            8 + ring * 1.5,
-            0.08 + ring * 0.025 + gridDrive * 0.1
-          );
-          ctx.beginPath();
-          ctx.ellipse(0, 4 + ring * 1.4, ringRadius, ringRadius * (0.63 + ring * 0.025), 0, Math.PI, TAU);
-          ctx.stroke();
-        }
-        for (let lane = 0; lane < 7; lane += 1) {
-          const angle = -Math.PI * 0.82 + lane / 6 * Math.PI * 0.64;
-          const inner = 50;
-          const outer = radius + 8 + gridDrive * 4;
-          signatureStroke(lane % 2 ? theme.accent2 : theme.accent, 0.62, 7, 0.075 + gridDrive * 0.085);
-          ctx.beginPath();
-          ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner * 0.68 + 4);
-          ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer * 0.68 + 4);
-          ctx.stroke();
-        }
-        const sweepAngle = scanPhase * TAU - Math.PI / 2;
-        signatureStroke(theme.hot, 1.25 + pulse * 0.45, 16 + gridDrive * 8, 0.18 + gridDrive * 0.22);
-        ctx.beginPath();
-        ctx.arc(0, 0, radius + 5 + gridDrive * 2, sweepAngle - 0.32, sweepAngle + 0.32);
-        ctx.stroke();
-        const shell = spectrumShell({ scale: 0.92, detail: 0.22, offset: 5, smoothing: 6 });
-        if (shell.length) {
-          signatureStroke(theme.accent2, 0.8, 10, 0.11 + gridDrive * 0.12);
-          ctx.beginPath();
-          shell.forEach((point, index) => {
-            if (index === 0) ctx.moveTo(point.x, point.y);
-            else ctx.lineTo(point.x, point.y);
-          });
-          ctx.closePath();
-          ctx.stroke();
-        }
-        ctx.restore();
+        // Synthwave owns a full-width horizon background drawn before this
+        // local signature pass. The foreground visualizer remains empty so the
+        // sunset, masked artwork and road are the complete visual language.
       } else if (orchestral) {
         // Classical and soundtrack share the glass material but keep their
         // slower, neutral orbital treatment rather than inheriting EDM gates.
@@ -6710,7 +7041,7 @@ export class VisualEngine {
     const ctx = this.ctx;
     const pulse = metrics.rhythmPulse || 0;
     const mode = theme.mode || 'electronic';
-    if (mode === 'asmr') return;
+    if (mode === 'asmr' || theme.id === 'synthwave') return;
     const vortexTrance = mode === 'trance'
       && !['classical', 'soundtrack', 'synthwave'].includes(theme.id);
     const edmTrapImpact = mode === 'trap'
@@ -7970,6 +8301,11 @@ export class VisualEngine {
       this.futureHouseStabOffset *= 0.72 ** frameScale;
     }
 
+    const synthwaveMode = renderTheme.id === 'synthwave';
+    if (synthwaveMode) {
+      this.drawSynthwaveHorizonScene(x, y, renderTheme, energyMetrics, time);
+    }
+
     const integratedTranceFx = mode === 'trance'
       && !['classical', 'soundtrack', 'synthwave'].includes(renderTheme.id);
     const gentleHardcore = mode === 'hardcore' && ['happy-hardcore', 'uk-hardcore'].includes(renderTheme.id);
@@ -7980,7 +8316,7 @@ export class VisualEngine {
       this.motionDirection *= -1;
     }
     const motionElapsed = time - this.motionStartedAt;
-    if (!integratedTranceFx && motionElapsed >= 0 && motionElapsed < 280) {
+    if (!integratedTranceFx && !synthwaveMode && motionElapsed >= 0 && motionElapsed < 280) {
       const response = Math.exp(-motionElapsed / 82) * Math.sin(motionElapsed / 24);
       const motionScale = this.motionStrength * (violentMode ? 5.2 : 2.8);
       ctx.translate(this.motionDirection * response * motionScale, -Math.abs(response) * motionScale * 0.32);
@@ -7995,7 +8331,7 @@ export class VisualEngine {
       ctx.translate(-x, -y);
     }
     if (this.trackContext.genrePolice) this.drawGenrePoliceBeacon(x, y, energyMetrics, time);
-    this.drawAtmosphere(x, y, renderTheme, energyMetrics, time);
+    if (!synthwaveMode) this.drawAtmosphere(x, y, renderTheme, energyMetrics, time);
     this.drawGenreVolume(x, y, renderTheme, energyMetrics, time);
     this.drawGenreSignature(x, y, renderTheme, energyMetrics, time);
     this.drawImpactLayer(x, y, renderTheme, energyMetrics, violentMode);
@@ -8003,12 +8339,12 @@ export class VisualEngine {
       this.emitTranceOuterParticles(x, y, renderTheme, energyMetrics, time);
     }
     if (this.trackContext.genrePolice) this.drawGenrePoliceOverlay(x, y, renderTheme, energyMetrics, time);
-    this.updateParticles(renderTheme, metrics);
+    if (!synthwaveMode) this.updateParticles(renderTheme, metrics);
     ctx.restore();
     // The vortex already feeds pulse into every light stream, particle and
     // photon band. Re-copying and blurring the entire canvas added a second,
     // visually redundant full-frame pass and was the largest seek-time hitch.
-    if (!integratedTranceFx) this.applyImpactPostFx(x, y, renderTheme, energyMetrics);
-    this.featherCanvasEdges(x, y);
+    if (!integratedTranceFx && !synthwaveMode) this.applyImpactPostFx(x, y, renderTheme, energyMetrics);
+    if (!synthwaveMode) this.featherCanvasEdges(x, y);
   }
 }

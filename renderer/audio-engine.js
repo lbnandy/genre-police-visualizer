@@ -196,6 +196,13 @@ export class AudioEngine extends EventTarget {
       this.beatAnalyser.smoothingTimeConstant = 0.08;
       this.beatAnalyser.minDecibels = -92;
       this.beatAnalyser.maxDecibels = -18;
+      // Allocate analysis buffers before the optional worklet setup awaits.
+      // Otherwise the animation loop can observe a live analyser with null or
+      // stale buffers during an audio-device restart and stop on a TypeError.
+      this.frequency = new Uint8Array(this.analyser.frequencyBinCount);
+      this.beatFrequency = new Uint8Array(this.beatAnalyser.frequencyBinCount);
+      this.waveform = new Uint8Array(this.analyser.fftSize);
+      this.beatPrevious = new Uint8Array(this.beatAnalyser.frequencyBinCount);
       const source = this.context.createMediaStreamSource(stream);
       source.connect(this.analyser);
       source.connect(this.beatAnalyser);
@@ -243,10 +250,6 @@ export class AudioEngine extends EventTarget {
         this.rhythmWorklet = null;
         this.rhythmMute = null;
       }
-      this.frequency = new Uint8Array(this.analyser.frequencyBinCount);
-      this.beatFrequency = new Uint8Array(this.beatAnalyser.frequencyBinCount);
-      this.waveform = new Uint8Array(this.analyser.fftSize);
-      this.beatPrevious = new Uint8Array(this.beatAnalyser.frequencyBinCount);
       this.status = 'live';
       this.captureStartedAt = performance.now();
       this.refreshOutputDeviceSignature(false);
@@ -281,7 +284,9 @@ export class AudioEngine extends EventTarget {
     this.beatAnalyser = null;
     this.rhythmWorklet = null;
     this.rhythmMute = null;
+    this.frequency = null;
     this.beatFrequency = null;
+    this.waveform = null;
     this.beatPrevious = null;
   }
 
@@ -298,7 +303,14 @@ export class AudioEngine extends EventTarget {
   update(now = performance.now()) {
     const deltaMs = this.lastAnalysisAt ? clamp(now - this.lastAnalysisAt, 4, 80) : 16.667;
     this.lastAnalysisAt = now;
-    if (!this.analyser) {
+    if (
+      !this.analyser
+      || !this.beatAnalyser
+      || !(this.frequency instanceof Uint8Array)
+      || !(this.waveform instanceof Uint8Array)
+      || !(this.beatFrequency instanceof Uint8Array)
+      || !(this.beatPrevious instanceof Uint8Array)
+    ) {
       const t = now / 1000;
       const idle = 0.045 + Math.sin(t * 1.4) * 0.012;
       this.metrics = { ...this.emptyMetrics(), volume: idle, mid: idle, beat: Math.max(0, this.metrics.beat - 0.035) };

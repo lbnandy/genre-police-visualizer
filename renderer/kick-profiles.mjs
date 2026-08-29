@@ -18,6 +18,35 @@ export const KICK_PROFILES = Object.freeze({
     impactGain: 1,
     releaseMs: 120
   }),
+  synthwave: profile({
+    id: 'synthwave',
+    // Synthwave usually combines a steady kick/bass foundation with a snare
+    // body and bright sequenced ornaments. Let kick and snare/body establish
+    // the visual pulse while preventing rapid air-band hats from firing it.
+    novelty: {
+      lowFlux: 2.15, midFlux: 0.94, highFlux: 0.055,
+      bodyFlux: 0.86, presenceFlux: 0.46, airFlux: 0.018,
+      bassRise: 0.84, attack: 0.42
+    },
+    evidence: {
+      lowFlux: 12.2, bassRise: 5.4, bassPulse: 0.5, midFlux: 1.5,
+      bodyFlux: 2.65, presenceFlux: 0.58, airFlux: 0.02, airPenalty: 1.6,
+      attack: 2.25
+    },
+    rhythm: {
+      lowFlux: 8.8, midFlux: 7.15, highFlux: 0.38,
+      bodyFlux: 3.85, presenceFlux: 1.4, airFlux: 0.025, airPenalty: 1.15,
+      bassRise: 4.2, attack: 3.55
+    },
+    rhythmFloor: 0.33,
+    rhythmGate: 0.47,
+    kickinessFloor: 0.38,
+    strengthFloor: 0.46,
+    bodyFloor: 0.068,
+    impactGate: 0.49,
+    impactGain: 1.01,
+    releaseMs: 148
+  }),
   'hip-hop': profile({
     id: 'hip-hop',
     // Hip-Hop rhythm is the pocket shared by kick, snare/body and Rap
@@ -356,6 +385,7 @@ export function resolveKickProfile(theme = {}) {
   const id = String(theme.id || '').toLowerCase();
   const mode = String(theme.mode || '').toLowerCase();
   const family = String(theme.family || '').toLowerCase();
+  if (id === 'synthwave') return KICK_PROFILES.synthwave;
   if (id === 'hard-dance') return KICK_PROFILES['hard-dance'];
   if (mode === 'hardstyle' || family === 'hardstyle') return KICK_PROFILES.hardstyle;
   if (mode === 'hardcore' || family === 'hardcore') return KICK_PROFILES.hardcore;

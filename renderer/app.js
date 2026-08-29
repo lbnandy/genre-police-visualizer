@@ -7,6 +7,7 @@ import { isGenrePoliceTrack } from './easter-eggs.mjs';
 import { KawaiiExpressionTracker } from './kawaii-expression.mjs';
 import { smoothMotionEnvelope } from './motion-envelope.mjs';
 import { softenMotionMetrics } from './motion-preference.mjs';
+import { synthwaveAudioResponse } from './synthwave-response.mjs';
 import {
   applyLyricDelay,
   LYRIC_DELAY_MAX_MS,
@@ -104,6 +105,7 @@ const lyricSweepSetting = document.querySelector('#lyric-sweep-setting');
 const lyricTranslationSetting = document.querySelector('#lyric-translation-setting');
 const lyricDelaySetting = document.querySelector('#lyric-delay-setting');
 const onlineLookupToggle = document.querySelector('#online-lookup-toggle');
+const alwaysOnTopToggle = document.querySelector('#always-on-top-toggle');
 const launchAtLoginToggle = document.querySelector('#launch-at-login-toggle');
 const credentialsSave = document.querySelector('#credentials-save');
 const credentialsState = document.querySelector('#credentials-state');
@@ -116,12 +118,43 @@ const diagnosticsLyrics = document.querySelector('#diagnostics-lyrics');
 const diagnosticsRecapture = document.querySelector('#diagnostics-recapture');
 const diagnosticsExport = document.querySelector('#diagnostics-export');
 const diagnosticsState = document.querySelector('#diagnostics-state');
-const specialAlert = document.querySelector('#special-alert');
 const coreArt = document.querySelector('#core-art');
 const riffStrings = document.querySelector('#riff-strings');
 const riffStringsContext = riffStrings.getContext('2d');
 const kawaiiFace = document.querySelector('#kawaii-face');
 const tanocFace = document.querySelector('#tanoc-face');
+
+function createSynthStars() {
+  document.querySelectorAll('.synth-starfield').forEach((field) => {
+    const near = field.classList.contains('synth-starfield--near');
+    const count = near ? 18 : 56;
+    let seed = near ? 0x51f15e : 0x83ac7d;
+    const random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const stars = document.createDocumentFragment();
+    for (let index = 0; index < count; index += 1) {
+      const star = document.createElement('b');
+      const toneRoll = random();
+      star.className = `synth-star synth-star--${toneRoll > 0.78 ? 'pink' : toneRoll > 0.52 ? 'cyan' : 'white'}`;
+      const size = near ? 1.3 + random() * 1.5 : 0.65 + random() * 0.9;
+      const duration = 1.7 + random() * 4.5;
+      star.style.setProperty('--star-x', `${(2 + random() * 96).toFixed(3)}%`);
+      // Bias the field upward: only a few dim stars reach the last fifth of
+      // the sky, so the sunset horizon remains open instead of forming a row.
+      star.style.setProperty('--star-y', `${(3 + Math.pow(random(), 1.8) * 84).toFixed(3)}%`);
+      star.style.setProperty('--star-size', `${size.toFixed(3)}px`);
+      star.style.setProperty('--star-alpha', (0.5 + random() * 0.5).toFixed(3));
+      star.style.setProperty('--star-duration', `${duration.toFixed(3)}s`);
+      star.style.setProperty('--star-delay', `${(-random() * duration).toFixed(3)}s`);
+      stars.append(star);
+    }
+    field.replaceChildren(stars);
+  });
+}
+
+createSynthStars();
 
 const i18n = window.GenrePoliceI18n;
 const LANGUAGE_NAMES = Object.freeze({ 'zh-CN': '简体中文', en: 'English', ja: '日本語', ko: '한국어' });
@@ -191,7 +224,6 @@ let lyricAnimatedUnits = [];
 let lyricReflowAnimation = null;
 let lyricRevealAnimation = null;
 let activeLyricMotionUnit = null;
-let activePoliceMotionUnit = null;
 let lyricTextWidth = 1;
 let lyricTranslationWidth = 1;
 let lyricFadeWidth = 14;
@@ -200,6 +232,7 @@ let lyricsEnabled = true;
 let lyricTranslationEnabled = true;
 let lyricSweepEnabled = true;
 let onlineGenreLookupEnabled = true;
+let alwaysOnTopEnabled = false;
 let launchAtLoginEnabled = false;
 let lyricDelayMs = 0;
 let playbackClock = {
@@ -608,6 +641,19 @@ function setOnlineGenreLookupEnabled(enabled, { persist = false } = {}) {
   if (persist) window.genrePolice.setConfig({ onlineGenreLookupEnabled }).catch(() => {});
 }
 
+function setAlwaysOnTopEnabled(enabled, { persist = false } = {}) {
+  alwaysOnTopEnabled = enabled === true;
+  alwaysOnTopToggle.setAttribute('aria-checked', String(alwaysOnTopEnabled));
+  alwaysOnTopToggle.title = alwaysOnTopEnabled
+    ? tr('settings.alwaysOnTopOn')
+    : tr('settings.alwaysOnTopOff');
+  if (persist) {
+    window.genrePolice.setConfig({ alwaysOnTop: alwaysOnTopEnabled }).then((result) => {
+      if (typeof result?.alwaysOnTop === 'boolean') setAlwaysOnTopEnabled(result.alwaysOnTop);
+    }).catch(() => setAlwaysOnTopEnabled(!alwaysOnTopEnabled));
+  }
+}
+
 function setLaunchAtLoginEnabled(enabled, { persist = false, supported = true } = {}) {
   launchAtLoginEnabled = enabled === true;
   launchAtLoginToggle.setAttribute('aria-checked', String(launchAtLoginEnabled));
@@ -834,7 +880,6 @@ function setLyricText(text, {
   lyricTranslationFillContent.replaceChildren();
   lyricAnimatedUnits = [];
   activeLyricMotionUnit = null;
-  activePoliceMotionUnit = null;
   const baseFragment = document.createDocumentFragment();
   const fillFragment = document.createDocumentFragment();
   for (const unit of buildLyricUnitTimeline(text)) {
@@ -848,14 +893,7 @@ function setLyricText(text, {
     } else {
       span.className = 'lyric-unit';
       baseSpan.className = 'lyric-base-unit';
-      const normalizedUnit = unit.text.normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
-      const isPoliceWord = document.body.dataset.easterEgg === 'genre-police'
-        && (normalizedUnit === 'genre' || normalizedUnit === 'police');
-      if (isPoliceWord) {
-        span.classList.add('is-police-word');
-        baseSpan.classList.add('is-police-word');
-      }
-      lyricAnimatedUnits.push({ element: span, baseElement: baseSpan, isPoliceWord, ...unit });
+      lyricAnimatedUnits.push({ element: span, baseElement: baseSpan, ...unit });
     }
     baseFragment.append(baseSpan);
     fillFragment.append(span);
@@ -976,7 +1014,7 @@ function setTrackTitle(value) {
   return text;
 }
 
-function updateLyricUnitMotion(progress, policeProgress = progress) {
+function updateLyricUnitMotion(progress) {
   const mode = currentTheme.mode || 'electronic';
   const lead = 2.5 / lyricTextWidth;
   const current = lyricAnimatedUnits.find((unit) => progress >= unit.start - lead && progress <= unit.end) || null;
@@ -988,29 +1026,6 @@ function updateLyricUnitMotion(progress, policeProgress = progress) {
     activeLyricMotionUnit = current;
   }
 
-  // The lyric fill has a small transition lead, but the police-word pop
-  // follows the unshifted playback clock. Keeping separate cursors prevents
-  // the short first word, "Genre", from being skipped by the look-ahead.
-  const policeCurrent = policeProgress < 0
-    ? null
-    : lyricAnimatedUnits.find((unit) => unit.isPoliceWord && policeProgress >= unit.start - lead && policeProgress <= unit.end) || null;
-  if (activePoliceMotionUnit !== policeCurrent) {
-    if (activePoliceMotionUnit) {
-      activePoliceMotionUnit.baseElement.classList.remove('is-police-hit');
-      activePoliceMotionUnit.baseElement.classList.add('is-police-passed');
-    }
-    activePoliceMotionUnit = policeCurrent;
-    if (policeCurrent) {
-      policeCurrent.baseElement.classList.remove('is-police-passed', 'is-police-hit');
-      void policeCurrent.baseElement.offsetWidth;
-      policeCurrent.baseElement.classList.add('is-police-hit');
-    }
-  }
-  for (const unit of lyricAnimatedUnits) {
-    if (!unit.isPoliceWord || policeProgress <= unit.end || unit === policeCurrent) continue;
-    unit.baseElement.classList.remove('is-police-hit');
-    unit.baseElement.classList.add('is-police-passed');
-  }
   const applyUnitMotion = (unit) => {
     if (!unit) return;
     const motion = lyricUnitMotion(progress, { start: unit.start - lead, end: unit.end }, mode);
@@ -1054,8 +1069,6 @@ function renderSyncedLyrics(time) {
 
   if (active < 0) {
     setLyricSweepProgress(lyricSweepEnabled ? 0 : 1);
-    // The first line is preloaded before its timestamp. Keep every special
-    // word dormant until playback actually enters that line.
     updateLyricUnitMotion(-1);
     return;
   }
@@ -1065,13 +1078,7 @@ function renderSyncedLyrics(time) {
   const visualLead = Number(lyricLines[active].visualLeadMs) || LYRIC_LOOKAHEAD_MS;
   const lineProgress = Math.max(0, Math.min(1, (playbackPosition + visualLead - start) / Math.max(800, sweepDuration)));
   setLyricSweepProgress(lyricSweepEnabled ? lineProgress : 1);
-  // The line itself may preload for a smooth entrance, but word effects must
-  // stay dormant until the line's real timestamp. This is especially visible
-  // when the first words are the Genre Police easter egg.
-  const policeProgress = playbackPosition < start
-    ? -1
-    : Math.max(0, Math.min(1, (playbackPosition - start) / Math.max(800, sweepDuration)));
-  updateLyricUnitMotion(lyricSweepEnabled ? lineProgress : -1, policeProgress);
+  updateLyricUnitMotion(lyricSweepEnabled ? lineProgress : -1);
 }
 
 function applyTheme(theme) {
@@ -1311,6 +1318,9 @@ function applyLanguage(value, { persist = false } = {}) {
     : tr('settings.capsuleCondensedEnglishOff');
   updateBackgroundStyle();
   onlineLookupToggle.title = onlineGenreLookupEnabled ? tr('settings.onlineLookupOn') : tr('settings.onlineLookupOff');
+  alwaysOnTopToggle.title = alwaysOnTopEnabled
+    ? tr('settings.alwaysOnTopOn')
+    : tr('settings.alwaysOnTopOff');
   launchAtLoginToggle.title = launchAtLoginToggle.disabled
     ? tr('settings.launchAtLoginUnsupported')
     : launchAtLoginEnabled ? tr('settings.launchAtLoginOn') : tr('settings.launchAtLoginOff');
@@ -1337,9 +1347,13 @@ function applyUiScale(value) {
 }
 
 function applyLayoutMode(value) {
+  document.body.classList.add('layout-switching');
   layoutMode = value === 'poster' || value === 'stage' ? 'poster' : 'side';
   document.body.dataset.layout = layoutMode;
   updateBackgroundStyle();
+  // CSS swaps the fixed design canvas immediately. Resize in the same task so
+  // no animation frame can draw the new layout with the previous dimensions.
+  visual.resize();
   const posterLayout = layoutMode === 'poster';
   capsuleBackgroundSetting.hidden = posterLayout;
   capsuleEnglishFontSetting.hidden = posterLayout;
@@ -1350,6 +1364,7 @@ function applyLayoutMode(value) {
     option.setAttribute('aria-checked', String(option.dataset.layoutMode === layoutMode));
   });
   requestAnimationFrame(() => {
+    // Recheck after the native window has adopted its new bounds.
     visual.resize();
     scheduleGenreFit();
     updateTitleOverflow();
@@ -1361,6 +1376,7 @@ function applyLayoutMode(value) {
       });
     }
     updateSettingsScrollbar();
+    requestAnimationFrame(() => document.body.classList.remove('layout-switching'));
   });
 }
 
@@ -1373,7 +1389,6 @@ function updateLayoutToggleButton() {
 
 async function chooseLayoutMode(value) {
   const requested = value === 'poster' ? 'poster' : 'side';
-  applyLayoutMode(requested);
   const result = await window.genrePolice.setLayoutMode(requested);
   applyLayoutMode(result?.mode);
 }
@@ -1675,7 +1690,6 @@ async function transitionTo(metadata, immediate = false) {
   }
   visual.setTrackContext({ genrePolice: content.genrePoliceEasterEgg });
   document.body.dataset.easterEgg = content.genrePoliceEasterEgg ? 'genre-police' : '';
-  specialAlert.hidden = !content.genrePoliceEasterEgg;
   renderLocalizedHud(content);
   const genreNoteText = content.resolving ? '' : String(content.theme.note || '');
   genreNote.textContent = genreNoteText;
@@ -1775,14 +1789,16 @@ function animate(time) {
   let metrics = audio.update(time);
   metrics = syntheticDemoMetrics(metrics, time);
   metrics = softenMotionMetrics(metrics, motionMode);
-  visual.render(metrics, time);
+  const synthwaveMode = currentTheme.id === 'synthwave';
+  const synthwaveResponse = synthwaveMode ? synthwaveAudioResponse(metrics) : null;
+  visual.render(synthwaveResponse ? { ...metrics, synthwaveResponse } : metrics, time);
   const playbackActive = Boolean(demoTheme || currentMetadata?.playing);
   const asmrMode = currentTheme.mode === 'asmr';
   const tranceMode = currentTheme.mode === 'trance'
     && !['classical', 'soundtrack', 'synthwave'].includes(currentTheme.id);
   const asmrBreath = 0.5 + 0.5 * Math.sin(time * 0.00062);
   const posterEnergyTarget = playbackActive
-    ? clamp(
+    ? synthwaveResponse?.starEnergy ?? clamp(
       clamp(((metrics.relativeEnergy || 1) - 0.72) / 1.06) * 0.52
         + clamp(metrics.volume || 0) * 0.2
         + clamp(metrics.drive || 0) * 0.28
@@ -1794,7 +1810,7 @@ function animate(time) {
   });
   posterImpact = smoothMotionEnvelope(
     posterImpact,
-    playbackActive ? clamp(metrics.rhythmPulse || 0) : 0,
+    playbackActive ? synthwaveResponse?.starImpact ?? clamp(metrics.rhythmPulse || 0) : 0,
     elapsedMs,
     { attackMs: 32, releaseMs: 190 }
   );
@@ -1884,7 +1900,7 @@ function animate(time) {
     appShell.style.setProperty('--poster-depth-opacity-a', depthOpacity(posterDepthA).toFixed(4));
     appShell.style.setProperty('--poster-depth-opacity-b', depthOpacity(posterDepthB).toFixed(4));
   }
-  if (tranceMode) {
+  if (tranceMode || synthwaveMode) {
     // The artwork is the vortex aperture. Letting the generic impact spring
     // scale it made the black-hole centre visibly pump out of sync with the
     // stable spiral geometry.
@@ -1903,6 +1919,8 @@ function animate(time) {
   if (tranceMode) {
     const artworkRotation = visual.tranceArmPhase || 0;
     coreArt.style.transform = `scale(1) rotate(${artworkRotation.toFixed(5)}rad)`;
+  } else if (synthwaveMode) {
+    coreArt.style.transform = 'scale(1)';
   } else {
     coreArt.style.transform = `scale(${coreScale})`;
   }
@@ -2057,6 +2075,10 @@ window.genrePolice.onNowPlaying((metadata) => {
   updateGenreCorrectionUi();
   updateDiagnosticsUi();
   if (!demoTheme) transitionTo(metadata);
+  else if (metadata?.artwork && currentDisplayContent?.artwork !== metadata.artwork) {
+    currentDisplayContent.artwork = metadata.artwork;
+    setArtwork(metadata.artwork);
+  }
 });
 window.genrePolice.onPlaybackTick(updatePlayback);
 window.genrePolice.onLyrics((lyrics) => {
@@ -2090,7 +2112,7 @@ window.genrePolice.onDemoTheme((theme) => {
       note: theme.id === 'moombahcore' ? '(NOT DUBSTEP)' : ''
     },
     genreSource: 'VISUAL DEMO',
-    artwork: theme.captureArtwork || '',
+    artwork: theme.captureArtwork || currentMetadata?.artwork || '',
     positionMs: 8200,
     durationMs: 24000,
     lyrics: theme.captureLyrics ? {
@@ -2192,6 +2214,9 @@ posterThemedBackgroundToggle.addEventListener('click', () => {
 });
 onlineLookupToggle.addEventListener('click', () => {
   setOnlineGenreLookupEnabled(!onlineGenreLookupEnabled, { persist: true });
+});
+alwaysOnTopToggle.addEventListener('click', () => {
+  setAlwaysOnTopEnabled(!alwaysOnTopEnabled, { persist: true });
 });
 launchAtLoginToggle.addEventListener('click', () => {
   setLaunchAtLoginEnabled(!launchAtLoginEnabled, {
@@ -2496,6 +2521,7 @@ window.genrePolice.getConfig().then((config) => {
   setPosterThemedBackground(config.posterThemedBackground !== false);
   setLyricSweepEnabled(config.lyricSweepEnabled !== false);
   setOnlineGenreLookupEnabled(config.onlineGenreLookupEnabled !== false);
+  setAlwaysOnTopEnabled(config.alwaysOnTop === true);
   setLaunchAtLoginEnabled(config.launchAtLogin === true, {
     supported: config.launchAtLoginSupported !== false
   });

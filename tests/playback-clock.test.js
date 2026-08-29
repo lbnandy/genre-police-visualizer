@@ -2,6 +2,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+test('fresh installs default to zero lyric delay', () => {
+  const mainSource = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  assert.match(mainSource, /const DEFAULT_LYRIC_DELAY_MS = 0;/);
+});
 
 test('lyric delay holds lyrics back and negative delay advances them', async () => {
   const { applyLyricDelay, normalizeLyricDelayMs } = await import('../renderer/playback-clock.mjs');

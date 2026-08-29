@@ -412,8 +412,8 @@ const THEMES = {
   },
   synthwave: {
     family: 'synthwave', parent: 'ELECTRONIC', label: 'SYNTHWAVE',
-    font: '"Audiowide"', accent: '#ff2bb9', accent2: '#00d9ff', hot: '#ffe866',
-    mode: 'trance', energy: 0.9
+    font: '"Audiowide"', accent: '#ff2ba6', accent2: '#44e7ff', hot: '#ffb35f',
+    mode: 'trance', energy: 0.9, fontWeight: 400, letterSpacing: '0.7px'
   },
   'dance-pop': {
     family: 'pop', parent: 'POP', label: 'DANCE POP',

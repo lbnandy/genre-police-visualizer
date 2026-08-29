@@ -581,7 +581,7 @@ test('kick profiles separate hardcore and hardstyle without branching per subtyp
   assert.equal(resolveKickProfile({ id: 'speed-garage', mode: 'garage', family: 'garage' }).id, 'four-floor');
   assert.equal(resolveKickProfile({ id: 'bassline', mode: 'garage', family: 'garage' }).id, 'four-floor');
   assert.equal(resolveKickProfile({ id: 'latin', mode: 'latin', family: 'latin' }).id, 'latin');
-  assert.equal(resolveKickProfile({ id: 'synthwave', mode: 'trance', family: 'synthwave' }).id, 'general');
+  assert.equal(resolveKickProfile({ id: 'synthwave', mode: 'trance', family: 'synthwave' }).id, 'synthwave');
   assert.equal(resolveKickProfile({ id: 'classical', mode: 'trance', family: 'classical' }).id, 'general');
   assert.equal(resolveKickProfile({ mode: 'metal', family: 'metal' }).id, 'rock-metal');
   assert.equal(resolveKickProfile({ mode: 'pop', family: 'pop' }).id, 'general');

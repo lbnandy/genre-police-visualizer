@@ -26,6 +26,10 @@ function normalizeClickThrough(value) {
   return value === true;
 }
 
+function normalizeAlwaysOnTop(value) {
+  return value === true;
+}
+
 function normalizeMotionMode(value) {
   return value === 'gentle' ? 'gentle' : 'standard';
 }
@@ -45,6 +49,7 @@ function normalizeIgnoredMediaSources(value) {
 
 module.exports = {
   RETIRED_SPOTIFY_CONFIG_KEYS,
+  normalizeAlwaysOnTop,
   normalizeClickThrough,
   normalizeIdleBehavior,
   normalizeIgnoredMediaSources,
