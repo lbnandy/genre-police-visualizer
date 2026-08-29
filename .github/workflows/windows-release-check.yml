@@ -15,10 +15,10 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -44,7 +44,7 @@ jobs:
           "$($hash.Hash) *$($exe.Name)" | Set-Content -LiteralPath dist/SHA256SUMS.txt -Encoding ascii
 
       - name: Upload verified release candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: genre-police-visualization-windows-x64
           if-no-files-found: error
