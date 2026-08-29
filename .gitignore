@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+artifacts/
+backups/
+qa/
+work/
+tmp-*.png
+*.log
+__pycache__/
+*.py[cod]
+.DS_Store

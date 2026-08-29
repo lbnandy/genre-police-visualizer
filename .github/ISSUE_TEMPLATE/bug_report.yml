@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a reproducible problem in Genre Police Visualization
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve Genre Police Visualization. Do not paste Last.fm or Discogs credentials.
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: player
+    attributes:
+      label: Player
+      options:
+        - Apple Music for Windows
+        - Spotify desktop
+        - Other Windows SMTC player
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the track/artist only if it is relevant to metadata, genre, artwork, or lyrics.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Windows and display environment
+      placeholder: Windows 11 24H2; 150% display scale; HDR off; NVIDIA driver version…
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed API keys, tokens, email addresses, and unrelated personal information from screenshots and logs.
+          required: true

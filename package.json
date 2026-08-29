@@ -1,0 +1,88 @@
+{
+  "name": "genre-police-visualization",
+  "version": "0.1.0",
+  "description": "Transparent, genre-aware now-playing visualizer for Windows media players.",
+  "main": "main.js",
+  "author": "LBN",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node --test tests/*.test.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource-variable/noto-sans-jp": "^5.3.0",
+    "@fontsource-variable/noto-sans-kr": "^5.3.0",
+    "@fontsource-variable/noto-sans-sc": "^5.3.0",
+    "@fontsource/audiowide": "^5.2.7",
+    "@fontsource/barlow-condensed": "^5.2.8",
+    "@fontsource/bebas-neue": "^5.3.0",
+    "@fontsource/biz-udpgothic": "^5.3.0",
+    "@fontsource/black-ops-one": "^5.2.7",
+    "@fontsource/bungee": "^5.3.0",
+    "@fontsource/chakra-petch": "^5.3.0",
+    "@fontsource/fredoka": "^5.3.0",
+    "@fontsource/gothic-a1": "^5.3.0",
+    "@fontsource/metal-mania": "^5.2.7",
+    "@fontsource/orbitron": "^5.2.7",
+    "@fontsource/oxanium": "^5.2.7",
+    "@fontsource/righteous": "^5.3.0",
+    "@fontsource/roboto-condensed": "^5.2.8",
+    "@fontsource/russo-one": "^5.2.7",
+    "@fontsource/space-grotesk": "^5.2.7",
+    "@fontsource/teko": "^5.2.7",
+    "onnxruntime-node": "^1.29.0"
+  },
+  "devDependencies": {
+    "electron": "43.4.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.genrepolice.visualization",
+    "productName": "Genre Police Visualization",
+    "asar": true,
+    "asarUnpack": [
+      "scripts/**/*",
+      "assets/**/*",
+      "node_modules/onnxruntime-node/bin/napi-v6/win32/x64/**/*"
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*",
+      "scripts/**/*",
+      "!scripts/rhythm-model.py",
+      "!scripts/export-rhythm-onnx.py",
+      "!scripts/**/__pycache__/**",
+      "!scripts/**/*.pyc",
+      "assets/**/*",
+      "!assets/models/beatnet-model-1.pt",
+      "LICENSE",
+      "README.md",
+      "CHANGELOG.md",
+      "THIRD_PARTY_NOTICES.md",
+      "node_modules/@fontsource/**/*",
+      "node_modules/@fontsource-variable/**/*",
+      "node_modules/onnxruntime-node/dist/**/*",
+      "node_modules/onnxruntime-node/package.json",
+      "!node_modules/onnxruntime-node/bin/**/*",
+      "node_modules/onnxruntime-node/bin/napi-v6/win32/x64/**/*",
+      "node_modules/onnxruntime-common/dist/cjs/**/*",
+      "node_modules/onnxruntime-common/package.json",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "assets/icon.png",
+      "artifactName": "Genre-Police-Visualization-${version}-portable.${ext}"
+    },
+    "portable": {
+      "artifactName": "Genre-Police-Visualization-${version}-portable.${ext}"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest a focused improvement or genre visual review
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What should improve?
+      description: Describe the user-facing problem before proposing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: input
+    id: genre
+    attributes:
+      label: Genre or subgenre (if relevant)
+  - type: textarea
+    id: references
+    attributes:
+      label: Reference tracks or visuals
+      description: Links are optional. Explain which musical or visual characteristic matters.

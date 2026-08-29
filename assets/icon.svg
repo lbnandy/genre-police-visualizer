@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!--
+    Flat Genre Police mark. The two opposing scan arcs remain legible when the
+    artwork is reduced, while the three bars retain the app's audio identity.
+    Shapes intentionally sit inside a generous optical safe area.
+  -->
+  <circle cx="256" cy="256" r="236" fill="#172033"/>
+  <path d="M126 232a134 134 0 0 1 244-62" fill="none" stroke="#4EDCFF" stroke-width="54" stroke-linecap="round"/>
+  <path d="M386 280a134 134 0 0 1-244 62" fill="none" stroke="#FF4F9A" stroke-width="54" stroke-linecap="round"/>
+  <rect x="184" y="224" width="40" height="88" rx="20" fill="#FFFFFF"/>
+  <rect x="236" y="182" width="40" height="172" rx="20" fill="#FFFFFF"/>
+  <rect x="288" y="208" width="40" height="120" rx="20" fill="#FFFFFF"/>
+</svg>

@@ -1,0 +1,53 @@
+name: Windows release check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Build portable Windows executable
+        run: npm run dist
+
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -LiteralPath dist -Filter *.exe -File | Select-Object -First 1
+          if (-not $exe) { throw 'Portable executable was not produced.' }
+          $hash = Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256
+          "$($hash.Hash) *$($exe.Name)" | Set-Content -LiteralPath dist/SHA256SUMS.txt -Encoding ascii
+
+      - name: Upload verified release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: genre-police-visualization-windows-x64
+          if-no-files-found: error
+          path: |
+            dist/Genre-Police-Visualization-*-portable.exe
+            dist/SHA256SUMS.txt
