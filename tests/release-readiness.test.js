@@ -100,6 +100,6 @@ test('GitHub CI reproduces the Windows release checks', () => {
   for (const command of ['npm ci', 'npm test', 'npm audit --audit-level=high', 'npm run dist']) {
     assert.match(workflow, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
-  assert.match(workflow, /actions\/upload-artifact@v4/);
+  assert.match(workflow, /actions\/upload-artifact@v7/);
   assert.ok(fs.existsSync(path.join(root, 'SECURITY.md')));
 });
