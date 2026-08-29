@@ -1,8 +1,8 @@
 # Privacy / 隐私说明
 
-Genre Police Visualization is designed as a local desktop visualizer. It contains no telemetry, analytics, advertising SDK, account system, or automatic crash uploader.
+Genre Police Visualizer is designed as a local desktop visualizer. It contains no telemetry, analytics, advertising SDK, account system, or automatic crash uploader.
 
-Genre Police Visualization 以本地桌面可视化为目标，不包含遥测、使用统计、广告 SDK、账号系统或自动崩溃上传。
+Genre Police Visualizer 以本地桌面可视化为目标，不包含遥测、使用统计、广告 SDK、账号系统或自动崩溃上传。
 
 ## Data processed locally / 本机处理的数据
 

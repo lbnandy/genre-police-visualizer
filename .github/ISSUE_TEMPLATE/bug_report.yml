@@ -1,11 +1,11 @@
 name: Bug report
-description: Report a reproducible problem in Genre Police Visualization
+description: Report a reproducible problem in Genre Police Visualizer
 title: "[Bug] "
 labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Thanks for helping improve Genre Police Visualization. Do not paste Last.fm or Discogs credentials.
+      value: Thanks for helping improve Genre Police Visualizer. Do not paste Last.fm or Discogs credentials.
   - type: input
     id: version
     attributes:

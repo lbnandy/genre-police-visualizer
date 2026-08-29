@@ -46,8 +46,8 @@ jobs:
       - name: Upload verified release candidate
         uses: actions/upload-artifact@v7
         with:
-          name: genre-police-visualization-windows-x64
+          name: genre-police-visualizer-windows-x64
           if-no-files-found: error
           path: |
-            dist/Genre-Police-Visualization-*-portable.exe
+            dist/Genre-Police-Visualizer-*-portable.exe
             dist/SHA256SUMS.txt

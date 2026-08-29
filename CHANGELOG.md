@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Genre Police Visualization are documented here.
+All notable changes to Genre Police Visualizer are documented here.
 
 ## 0.1.0 - 2026-08-29
 

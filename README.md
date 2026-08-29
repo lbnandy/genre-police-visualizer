@@ -1,4 +1,4 @@
-<h1 align="center">Genre Police Visualization</h1>
+<h1 align="center">Genre Police Visualizer</h1>
 
 <p align="center">根据正在播放的音乐曲风切换视觉语言的 Windows 桌面音乐可视化</p>
 
@@ -6,7 +6,7 @@
   简体中文 · <a href="README.en.md">English</a> · <a href="README.ja.md">日本語</a>
 </p>
 
-Genre Police Visualization 会读取 Windows 当前播放信息并分析系统回放音频，尝试判断正在播放的音乐属于什么曲风，再切换可视化结构、背景、字体和动态表现。它不只是为不同曲风更换配色，而是尽量让不同类型的音乐拥有不同的视觉语言。
+Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回放音频，尝试判断正在播放的音乐属于什么曲风，再切换可视化结构、背景、字体和动态表现。它不只是为不同曲风更换配色，而是尽量让不同类型的音乐拥有不同的视觉语言。
 
 当前为 `0.1.0` 测试版。设计现阶段以 EDM 为主，已经覆盖 20 多个主要曲风体系；其中一部分已经做了较细调整，其余内容仍会继续补充和修正。
 
@@ -15,7 +15,7 @@ Genre Police Visualization 会读取 Windows 当前播放信息并分析系统�
 **[前往 Releases 下载 Windows 便携版](../../releases)**
 
 - 系统要求：Windows 10 或 Windows 11，64 位（x64）。
-- 下载 `Genre-Police-Visualization-0.1.0-portable.exe` 后直接运行，无需安装。
+- 下载 `Genre-Police-Visualizer-0.1.0-portable.exe` 后直接运行，无需安装。
 - 不需要另外安装 Node.js、Python、PyTorch 或 AI 运行环境。
 - 建议同时下载 `SHA256SUMS.txt` 并核对文件校验值。
 
@@ -52,7 +52,7 @@ Genre Police Visualization 会读取 Windows 当前播放信息并分析系统�
 
 ## 支持范围
 
-只要播放器向 Windows 发布系统媒体会话，Genre Police Visualization 就可以读取它。Apple Music、Spotify、QQ 音乐、网易云音乐、酷狗、YouTube Music 和 Amazon Music 等播放器均可使用，但不同版本提供的封面、进度或曲风信息可能不完全一致。
+只要播放器向 Windows 发布系统媒体会话，Genre Police Visualizer 就可以读取它。Apple Music、Spotify、QQ 音乐、网易云音乐、酷狗、YouTube Music 和 Amazon Music 等播放器均可使用，但不同版本提供的封面、进度或曲风信息可能不完全一致。
 
 当前重点覆盖的曲风包括：
 

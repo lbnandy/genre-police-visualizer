@@ -1,6 +1,6 @@
 # Third-party notices
 
-Genre Police Visualization is licensed under the MIT License. The packaged application also contains third-party software and assets under their respective licenses.
+Genre Police Visualizer is licensed under the MIT License. The packaged application also contains third-party software and assets under their respective licenses.
 
 ## Fonts
 

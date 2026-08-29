@@ -1,4 +1,4 @@
-<h1 align="center">Genre Police Visualization</h1>
+<h1 align="center">Genre Police Visualizer</h1>
 
 <p align="center">A Windows desktop music visualizer that changes its visual language with the music genre</p>
 
@@ -6,7 +6,7 @@
   <a href="README.md">简体中文</a> · English · <a href="README.ja.md">日本語</a>
 </p>
 
-Genre Police Visualization reads the current Windows media session and analyzes system playback audio. It then attempts to identify the genre and adapts the visualization structure, background, typography, and motion. The goal is not simply to recolor one visualizer, but to give different kinds of music their own visual language.
+Genre Police Visualizer reads the current Windows media session and analyzes system playback audio. It then attempts to identify the genre and adapts the visualization structure, background, typography, and motion. The goal is not simply to recolor one visualizer, but to give different kinds of music their own visual language.
 
 The current release is the `0.1.0` test version. Its design currently focuses on EDM and covers more than 20 major genre families. Some families have received detailed tuning, while others will continue to be expanded and refined.
 
@@ -15,7 +15,7 @@ The current release is the `0.1.0` test version. Its design currently focuses on
 **[Open Releases to download the Windows portable build](../../releases)**
 
 - Requires 64-bit Windows 10 or Windows 11 (x64).
-- Download and run `Genre-Police-Visualization-0.1.0-portable.exe`; no installation is required.
+- Download and run `Genre-Police-Visualizer-0.1.0-portable.exe`; no installation is required.
 - Node.js, Python, PyTorch, and a separate AI runtime are not required.
 - Download `SHA256SUMS.txt` as well if you want to verify the executable.
 
@@ -52,7 +52,7 @@ Version `0.1.0` is not Authenticode-signed. Windows SmartScreen may therefore sh
 
 ## Compatibility and genre coverage
 
-Genre Police Visualization can follow any player that publishes a Windows system media session. Apple Music, Spotify, QQ Music, NetEase Cloud Music, Kugou, YouTube Music, Amazon Music, and other compatible players can be used, although the available artwork, progress, or genre metadata may differ between applications and versions.
+Genre Police Visualizer can follow any player that publishes a Windows system media session. Apple Music, Spotify, QQ Music, NetEase Cloud Music, Kugou, YouTube Music, Amazon Music, and other compatible players can be used, although the available artwork, progress, or genre metadata may differ between applications and versions.
 
 The current genre coverage includes:
 

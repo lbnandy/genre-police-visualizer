@@ -1,5 +1,5 @@
 {
-  "name": "genre-police-visualization",
+  "name": "genre-police-visualizer",
   "version": "0.1.0",
   "description": "Transparent, genre-aware now-playing visualizer for Windows media players.",
   "main": "main.js",
@@ -42,8 +42,8 @@
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.genrepolice.visualization",
-    "productName": "Genre Police Visualization",
+    "appId": "com.genrepolice.visualizer",
+    "productName": "Genre Police Visualizer",
     "asar": true,
     "asarUnpack": [
       "scripts/**/*",
@@ -79,10 +79,10 @@
     "win": {
       "target": "portable",
       "icon": "assets/icon.png",
-      "artifactName": "Genre-Police-Visualization-${version}-portable.${ext}"
+      "artifactName": "Genre-Police-Visualizer-${version}-portable.${ext}"
     },
     "portable": {
-      "artifactName": "Genre-Police-Visualization-${version}-portable.${ext}"
+      "artifactName": "Genre-Police-Visualizer-${version}-portable.${ext}"
     }
   }
 }

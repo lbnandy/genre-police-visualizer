@@ -1,6 +1,6 @@
 # Architecture
 
-Genre Police Visualization is a Windows-focused Electron application. The runtime is split into a privileged main process, a context-isolated renderer, Windows media helpers, and a local audio-analysis pipeline.
+Genre Police Visualizer is a Windows-focused Electron application. The runtime is split into a privileged main process, a context-isolated renderer, Windows media helpers, and a local audio-analysis pipeline.
 
 ## Runtime boundaries
 

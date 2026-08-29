@@ -468,7 +468,7 @@ function rebuildTrayMenu() {
   };
   const previewTree = buildPreviewTree(THEMES, DEMO_THEME_IDS);
   const template = [
-    { label: 'Genre Police Visualization', enabled: false },
+    { label: 'Genre Police Visualizer', enabled: false },
     {
       label: hasCurrentTrack
         ? tr('tray.currentTrack', { title: currentTitle.length > 42 ? `${currentTitle.slice(0, 39)}…` : currentTitle })
@@ -518,7 +518,7 @@ function rebuildTrayMenu() {
 
 function createTray() {
   tray = new Tray(trayImage());
-  tray.setToolTip('Genre Police Visualization');
+  tray.setToolTip('Genre Police Visualizer');
   tray.on('double-click', () => {
     showMainWindow();
     setClickThrough(!clickThrough);
@@ -557,7 +557,7 @@ function scheduleWindowPositionSave() {
 function createWindow() {
   mainWindow = new BrowserWindow({
     ...defaultWindowPosition(),
-    title: 'Genre Police Visualization',
+    title: 'Genre Police Visualizer',
     icon: assetPath('icon.png'),
     minWidth: 400,
     minHeight: 320,
