@@ -23,20 +23,22 @@ Genre Police Visualization 会读取 Windows 当前播放信息并分析系统�
 
 ## 界面预览
 
-![Electro House 胶囊型界面](docs/screenshots/electro-house-capsule.png)
+### 胶囊型
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/screenshots/trance-poster.png" alt="Trance 海报型界面" /></td>
-    <td align="center"><img src="docs/screenshots/dubstep-poster.png" alt="Dubstep 海报型界面" /></td>
-  </tr>
-  <tr>
-    <td align="center">Trance · 海报型</td>
-    <td align="center">Dubstep · 海报型</td>
-  </tr>
-</table>
+<p align="center">
+  <a href="docs/screenshots/electro-house-capsule.png"><img src="docs/screenshots/electro-house-capsule.png" alt="Electro House 胶囊型界面" width="92%" /></a>
+</p>
 
-![Neurofunk 胶囊型界面](docs/screenshots/neurofunk-capsule.png)
+<p align="center">
+  <a href="docs/screenshots/neurofunk-capsule.png"><img src="docs/screenshots/neurofunk-capsule.png" alt="Neurofunk 胶囊型界面" width="92%" /></a>
+</p>
+
+### 海报型
+
+<p align="center">
+  <a href="docs/screenshots/trance-poster.png"><img src="docs/screenshots/trance-poster.png" alt="Trance 海报型界面" width="46%" /></a>
+  <a href="docs/screenshots/dubstep-poster.png"><img src="docs/screenshots/dubstep-poster.png" alt="Dubstep 海报型界面" width="46%" /></a>
+</p>
 
 ## 主要功能
 

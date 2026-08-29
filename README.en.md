@@ -23,20 +23,22 @@ Version `0.1.0` is not Authenticode-signed. Windows SmartScreen may therefore sh
 
 ## Preview
 
-![Electro House capsule layout](docs/screenshots/electro-house-capsule.png)
+### Capsule
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/screenshots/trance-poster.png" alt="Trance poster layout" /></td>
-    <td align="center"><img src="docs/screenshots/dubstep-poster.png" alt="Dubstep poster layout" /></td>
-  </tr>
-  <tr>
-    <td align="center">Trance · Poster</td>
-    <td align="center">Dubstep · Poster</td>
-  </tr>
-</table>
+<p align="center">
+  <a href="docs/screenshots/electro-house-capsule.png"><img src="docs/screenshots/electro-house-capsule.png" alt="Electro House capsule layout" width="92%" /></a>
+</p>
 
-![Neurofunk capsule layout](docs/screenshots/neurofunk-capsule.png)
+<p align="center">
+  <a href="docs/screenshots/neurofunk-capsule.png"><img src="docs/screenshots/neurofunk-capsule.png" alt="Neurofunk capsule layout" width="92%" /></a>
+</p>
+
+### Poster
+
+<p align="center">
+  <a href="docs/screenshots/trance-poster.png"><img src="docs/screenshots/trance-poster.png" alt="Trance poster layout" width="46%" /></a>
+  <a href="docs/screenshots/dubstep-poster.png"><img src="docs/screenshots/dubstep-poster.png" alt="Dubstep poster layout" width="46%" /></a>
+</p>
 
 ## Features
 

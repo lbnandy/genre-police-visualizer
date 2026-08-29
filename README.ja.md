@@ -23,20 +23,22 @@ Genre Police Visualization は、Windows の再生中メディア情報とシス
 
 ## 画面プレビュー
 
-![Electro House・カプセルレイアウト](docs/screenshots/electro-house-capsule.png)
+### カプセル
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/screenshots/trance-poster.png" alt="Trance・ポスターレイアウト" /></td>
-    <td align="center"><img src="docs/screenshots/dubstep-poster.png" alt="Dubstep・ポスターレイアウト" /></td>
-  </tr>
-  <tr>
-    <td align="center">Trance · ポスター</td>
-    <td align="center">Dubstep · ポスター</td>
-  </tr>
-</table>
+<p align="center">
+  <a href="docs/screenshots/electro-house-capsule.png"><img src="docs/screenshots/electro-house-capsule.png" alt="Electro House・カプセルレイアウト" width="92%" /></a>
+</p>
 
-![Neurofunk・カプセルレイアウト](docs/screenshots/neurofunk-capsule.png)
+<p align="center">
+  <a href="docs/screenshots/neurofunk-capsule.png"><img src="docs/screenshots/neurofunk-capsule.png" alt="Neurofunk・カプセルレイアウト" width="92%" /></a>
+</p>
+
+### ポスター
+
+<p align="center">
+  <a href="docs/screenshots/trance-poster.png"><img src="docs/screenshots/trance-poster.png" alt="Trance・ポスターレイアウト" width="46%" /></a>
+  <a href="docs/screenshots/dubstep-poster.png"><img src="docs/screenshots/dubstep-poster.png" alt="Dubstep・ポスターレイアウト" width="46%" /></a>
+</p>
 
 ## 主な機能
 
