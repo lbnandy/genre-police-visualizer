@@ -1,6 +1,6 @@
 {
   "name": "genre-police-visualizer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Transparent, genre-aware now-playing visualizer for Windows media players.",
   "main": "main.js",
   "author": "LBN",

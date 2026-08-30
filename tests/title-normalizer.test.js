@@ -2,7 +2,12 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { cleanDisplayTitle, lookupTitle } = require('../src/title-normalizer');
+const {
+  cleanDisplayTitle,
+  cleanedBilibiliPlayerSuffix,
+  lookupTitle,
+  playerTitleInfo
+} = require('../src/title-normalizer');
 const { preferredAppleStorefront } = require('../src/genre-resolver');
 
 test('display title keeps player translations while lookup title drops them', () => {
@@ -20,6 +25,25 @@ test('lookup title removes Chinese source annotations in full-width brackets', (
 test('lookup title preserves recording versions that affect matching', () => {
   assert.equal(lookupTitle('Levels (Live)'), 'Levels (Live)');
   assert.equal(lookupTitle('Shelter (Porter Robinson Remix)'), 'Shelter (Porter Robinson Remix)');
+});
+
+test('display title removes common browser player suffixes', () => {
+  assert.equal(cleanDisplayTitle('Example Video - 哔哩哔哩_bilibili'), 'Example Video');
+  assert.equal(cleanDisplayTitle('Shelter - YouTube'), 'Shelter');
+  assert.equal(cleanDisplayTitle('Language | YouTube Music'), 'Language');
+  assert.equal(cleanDisplayTitle('Levels - 网易云音乐'), 'Levels');
+  assert.equal(cleanDisplayTitle('Track - Artist - SoundCloud'), 'Track - Artist');
+});
+
+test('records a Bilibili suffix only when it was actually removed from a usable title', () => {
+  assert.deepEqual(playerTitleInfo('Example Video - 哔哩哔哩_bilibili'), {
+    title: 'Example Video',
+    removedSources: ['bilibili']
+  });
+  assert.equal(cleanedBilibiliPlayerSuffix('Example Video | bilibili'), true);
+  assert.equal(cleanedBilibiliPlayerSuffix('bilibili'), false);
+  assert.equal(cleanedBilibiliPlayerSuffix('BILIBILI RADIO'), false);
+  assert.equal(cleanedBilibiliPlayerSuffix('bilibili creator - YouTube'), false);
 });
 
 test('network country, rather than player identity, selects the Chinese Apple storefront', () => {

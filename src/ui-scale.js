@@ -1,11 +1,11 @@
 'use strict';
 
 const UI_SCALE_BASE = 1.2;
-const UI_SCALE_PERCENTAGES = Object.freeze([70, 80, 90, 100, 110, 120, 130, 140, 150]);
+const UI_SCALE_PERCENTAGES = Object.freeze([50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150]);
 const UI_SCALES = Object.freeze(
   UI_SCALE_PERCENTAGES.map((percent) => Number((UI_SCALE_BASE * percent / 100).toFixed(2)))
 );
-const DEFAULT_UI_SCALE = UI_SCALE_BASE * 1.2;
+const DEFAULT_UI_SCALE = UI_SCALE_BASE;
 
 // Migrate the short-lived additive mapping while preserving the percentage
 // the user selected. For example, the old internal 1.5 represented 130%; the

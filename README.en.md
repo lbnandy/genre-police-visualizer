@@ -8,18 +8,18 @@
 
 Genre Police Visualizer reads the current Windows media session and analyzes system playback audio. It then attempts to identify the genre and adapts the visualization structure, background, typography, and motion. The goal is not simply to recolor one visualizer, but to give different kinds of music their own visual language.
 
-The current release is the `0.1.0` test version. Its design currently focuses on EDM and covers more than 20 major genre families. Some families have received detailed tuning, while others will continue to be expanded and refined.
+The current release is the `0.2.0` beta. Its design currently focuses on EDM and covers more than 20 major genre families. Some families have received detailed tuning, while others will continue to be expanded and refined.
 
 ## Download
 
 **[Open Releases to download the Windows portable build](../../releases)**
 
 - Requires 64-bit Windows 10 or Windows 11 (x64).
-- Download and run `Genre-Police-Visualizer-0.1.0-portable.exe`; no installation is required.
+- Download and run `Genre-Police-Visualizer-0.2.0-portable.exe`; no installation is required.
 - Node.js, Python, PyTorch, and a separate AI runtime are not required.
 - Download `SHA256SUMS.txt` as well if you want to verify the executable.
 
-Version `0.1.0` is not Authenticode-signed. Windows SmartScreen may therefore show an “Unknown publisher” warning. Only download the executable from this project's GitHub Releases page.
+Version `0.2.0` is not Authenticode-signed. Windows SmartScreen may therefore show an “Unknown publisher” warning. Only download the executable from this project's GitHub Releases page.
 
 ## Preview
 
@@ -31,6 +31,10 @@ Version `0.1.0` is not Authenticode-signed. Windows SmartScreen may therefore sh
 
 <p align="center">
   <a href="docs/screenshots/neurofunk-capsule.png"><img src="docs/screenshots/neurofunk-capsule.png" alt="Neurofunk capsule layout" width="92%" /></a>
+</p>
+
+<p align="center">
+  <a href="docs/screenshots/synthwave-capsule.png"><img src="docs/screenshots/synthwave-capsule.png" alt="Synthwave capsule layout" width="92%" /></a>
 </p>
 
 ### Poster
@@ -46,13 +50,16 @@ Version `0.1.0` is not Authenticode-signed. Windows SmartScreen may therefore sh
 - **Two layouts:** capsule and poster layouts keep separate settings and can use either a genre background or an adaptive surface that blends with the desktop wallpaper.
 - **Live audio response:** spectrum, rhythm, BPM, energy, and impact feedback are driven by system playback audio, with a bundled local BeatNet ONNX model assisting beat analysis.
 - **Now playing and controls:** displays title, artist, album, artwork, playback state, and progress, with previous, play/pause, and next controls.
+- **Custom genres:** adds local matching rules by tag alias or artist, reuses an existing visual style for the custom label, and optionally overrides its three theme colors.
 - **Synchronized lyrics:** supports synchronized lyrics, word or character highlighting, and translation when available. Lyric timing can be adjusted, and lyric lookup can be disabled completely.
-- **Desktop controls:** includes proportional 70%–150% scaling, Standard/Gentle motion, saved window position, media-source selection, mouse passthrough, and configurable idle behavior.
+- **Desktop controls:** includes proportional 50%–150% scaling, Standard/Gentle motion, saved window position, media-source selection, mouse passthrough, and configurable idle behavior.
 - **Multilingual interface:** the application UI supports Simplified Chinese, English, Japanese, and Korean.
 
 ## Compatibility and genre coverage
 
 Genre Police Visualizer can follow any player that publishes a Windows system media session. Apple Music, Spotify, QQ Music, NetEase Cloud Music, Kugou, YouTube Music, Amazon Music, and other compatible players can be used, although the available artwork, progress, or genre metadata may differ between applications and versions.
+
+NetEase Cloud Music may not publish a system media session by default. When the app detects NetEase without a media session, it points to **Settings → System** and the exact **开启SMTC** (Enable SMTC) checkbox.
 
 The current genre coverage includes:
 

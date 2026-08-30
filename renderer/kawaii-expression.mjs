@@ -43,9 +43,9 @@ export class KawaiiExpressionTracker {
     this.energy += (score - this.energy) * (1 - (1 - smoothing) ** Math.max(0.1, frameScale));
 
     const fullSpectrumBody = (metrics.bass || 0) + (metrics.lowMid || 0) + (metrics.mid || 0);
-    const highEnergyEvidence = this.energy >= 0.67
-      && (metrics.volume || 0) >= 0.16
-      && fullSpectrumBody >= 0.9;
+    const highEnergyEvidence = this.energy >= 0.65
+      && (metrics.volume || 0) >= 0.155
+      && fullSpectrumBody >= 0.88;
 
     if (highEnergyEvidence) {
       if (!this.candidateSince) this.candidateSince = time;
@@ -58,7 +58,7 @@ export class KawaiiExpressionTracker {
       if (this.excited && time >= this.holdUntil && this.energy < 0.5) this.excited = false;
     }
 
-    const target = this.excited ? clamp(0.72 + (this.energy - 0.67) * 0.85, 0.72, 1) : 0;
+    const target = this.excited ? clamp(0.72 + (this.energy - 0.65) * 0.85, 0.72, 1) : 0;
     const response = target > this.expression ? 0.085 : 0.035;
     this.expression += (target - this.expression) * (1 - (1 - response) ** Math.max(0.1, frameScale));
     if (this.expression < 0.001) this.expression = 0;

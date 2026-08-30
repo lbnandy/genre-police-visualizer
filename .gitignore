@@ -4,6 +4,7 @@ release/
 artifacts/
 backups/
 qa/
+creative-output/
 work/
 tmp-*.png
 *.log

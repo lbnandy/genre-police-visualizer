@@ -23,3 +23,8 @@ test('layout window sizes scale both presets from their own design canvas', () =
   assert.deepEqual(layoutWindowSize('side', 1.5), { width: 1380, height: 600 });
   assert.deepEqual(layoutWindowSize('side', 1.8), { width: 1656, height: 720 });
 });
+
+test('50% interface scaling keeps both layouts within the compact window bounds', () => {
+  assert.deepEqual(layoutWindowSize('side', 0.6), { width: 552, height: 240 });
+  assert.deepEqual(layoutWindowSize('poster', 0.6), { width: 300, height: 309 });
+});

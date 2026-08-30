@@ -2,6 +2,24 @@
 
 All notable changes to Genre Police Visualizer are documented here.
 
+## 0.2.0 - 2026-08-30
+
+- Added custom genres with user-defined labels, tag aliases, artists, inherited visual styles, and optional three-color theme overrides.
+- Added supplemental artist rules for associating an artist with an existing genre.
+- Added versioned JSON import and export for remembered track corrections, custom genres, and supplemental artist rules.
+- Added a conservative Bilibili fallback that only applies after a Bilibili player suffix is removed and all other genre resolution remains unknown.
+- Added a dedicated Bilibili visual with a speech-oriented TV signature, one-way danmaku, and pink-and-blue background motion.
+- Reorganized settings into Appearance, Lyrics, Playback, Genre, and App tabs with stable capsule and poster sizing.
+- Added settings controls for mouse passthrough, local rhythm enhancement, and the existing idle render limiter.
+- Expanded interface scaling to 50%-150%, changed the new-install default from 120% to 100%, and added first-launch Windows locale detection with an English fallback.
+- Allowed track corrections without an artist by using source, cleaned title, and duration as a fallback identity.
+- Added a direct SMTC setup notice when NetEase Cloud Music is running without a Windows media session.
+- Retuned BeatNet/DSP fusion to reduce low-confidence model influence while preserving local transient fallback behavior.
+- Raised the idle render limit from 15 FPS to 30 FPS and made the limiter optional.
+- Refined Synthwave scenery and horizon depth, Trance particle impact brightness, Kawaii Bass expression response, and the tonal backdrops used by several bright genre families.
+- Improved overflowing title motion and fixed capsule lyric-translation sweep clipping.
+- Kept Chinese-only lyric translation controls out of other interface languages and standardized music metadata terminology.
+
 ## 0.1.0 - 2026-08-29
 
 - Added a transparent, borderless Windows now-playing visualizer with genre-aware typography, color, particles, spectrum geometry, and impact effects.

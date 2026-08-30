@@ -345,12 +345,17 @@ class LocalRhythmModel {
     if (this.session || this.closed) return Boolean(this.session);
     try {
       this.ort ||= require('onnxruntime-node');
-      this.session = await this.ort.InferenceSession.create(this.modelPath, {
+      const session = await this.ort.InferenceSession.create(this.modelPath, {
         executionProviders: ['cpu'],
         graphOptimizationLevel: 'all',
         intraOpNumThreads: 1,
         interOpNumThreads: 1
       });
+      if (this.closed) {
+        if (session?.release) await session.release();
+        return false;
+      }
+      this.session = session;
       this.failed = false;
       this.onEvent({ type: 'ready', model: 'BeatNet-1 causal ONNX', hopMs: 20 });
       return true;
@@ -437,6 +442,9 @@ class LocalRhythmModel {
   async close() {
     this.closed = true;
     this.queue.length = 0;
+    while (this.processing) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
     if (this.session?.release) await this.session.release();
     this.session = null;
   }

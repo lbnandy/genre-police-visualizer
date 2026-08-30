@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('genrePolice', {
   mediaControl: (action) => ipcRenderer.invoke('media:control', action),
   recaptureAudio: () => ipcRenderer.invoke('media:recapture'),
   exportDiagnostics: (payload) => ipcRenderer.invoke('diagnostics:export', payload),
+  exportGenreData: () => ipcRenderer.invoke('genre-data:export'),
+  importGenreData: () => ipcRenderer.invoke('genre-data:import'),
   getConfig: () => ipcRenderer.invoke('config:get'),
   setConfig: (patch) => ipcRenderer.invoke('config:set', patch),
   setGenreCorrection: (genreId) => ipcRenderer.invoke('genre-correction:set', genreId),

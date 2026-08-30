@@ -143,7 +143,7 @@ export class RhythmFusion {
     if (newModelPeak && eligible.length) {
       const rawPeakAt = Number(model.peakAt) || now;
       const nearby = eligible.filter((candidate) => (
-        rawPeakAt - candidate.at >= -65 && rawPeakAt - candidate.at <= 155
+        Math.abs((rawPeakAt - candidate.at) - this.modelLatencyMs) <= 55
       )).sort((left, right) => {
         const leftError = Math.abs((rawPeakAt - left.at) - this.modelLatencyMs) - left.impact * 12;
         const rightError = Math.abs((rawPeakAt - right.at) - this.modelLatencyMs) - right.impact * 12;
@@ -161,8 +161,8 @@ export class RhythmFusion {
     // missed model peak from a real transient near the learned grid. The grid
     // can confirm a transient but is never allowed to create one by itself.
     if (!matchedCandidate && hardDance && modelAvailable && eligible.length
-      && tempo.sampleCount >= 3 && tempo.confidence >= 0.3
-      && clamp(model.groove) >= 0.24 && this.lastModelPeakAt && gridPeriod) {
+      && tempo.sampleCount >= 4 && tempo.confidence >= 0.38
+      && clamp(model.groove) >= 0.3 && this.lastModelPeakAt && gridPeriod) {
       const audioAnchor = this.lastModelPeakAt - this.modelLatencyMs;
       matchedCandidate = eligible.find((candidate) => (
         nearestGridDistance(candidate.at, audioAnchor, gridPeriod) <= Math.min(82, gridPeriod * 0.25)
@@ -193,6 +193,14 @@ export class RhythmFusion {
       const relative = smoothstep(0.36, 1.06, candidate.impact / referenceImpact);
       return { timbre, relative, airOnly };
     };
+    const localGate = hardcore ? 0.47 : hardstyle ? 0.49 : hardDance ? 0.5 : 0.56;
+    const localSalienceFor = (candidate) => {
+      const description = describeCandidate(candidate);
+      return candidate.impact * 0.55
+        + description.timbre * 0.3
+        + description.relative * 0.15
+        - description.airOnly * 0.18;
+    };
 
     let selectedCandidate = null;
     let selectedSource = 'none';
@@ -211,17 +219,19 @@ export class RhythmFusion {
         airEvidence: clamp(airEvidence)
       };
       selectedSource = 'dsp';
-    } else if (matchedCandidate) {
-      selectedCandidate = matchedCandidate;
-      selectedSource = alignment;
-    } else if (currentCandidate) {
-      const description = describeCandidate(currentCandidate);
-      const localSalience = currentCandidate.impact * 0.55
-        + description.timbre * 0.3
-        + description.relative * 0.15
-        - description.airOnly * 0.18;
-      const localGate = hardcore ? 0.47 : hardstyle ? 0.49 : hardDance ? 0.5 : 0.56;
-      if (localSalience >= localGate) {
+    } else {
+      if (matchedCandidate) {
+        const confirmationStrength = alignment === 'ai-grid'
+          ? clamp(modelStrength * 0.45 + pulse.confidence * 0.3 + tempo.confidence * 0.25)
+          : modelStrength;
+        const modelTrust = smoothstep(0.28, 0.72, confirmationStrength);
+        const assistedGate = localGate - modelTrust * 0.1;
+        if (confirmationStrength >= 0.3 && localSalienceFor(matchedCandidate) >= assistedGate) {
+          selectedCandidate = matchedCandidate;
+          selectedSource = alignment;
+        }
+      }
+      if (!selectedCandidate && currentCandidate && localSalienceFor(currentCandidate) >= localGate) {
         selectedCandidate = currentCandidate;
         selectedSource = 'dsp-soft';
       }
@@ -240,7 +250,7 @@ export class RhythmFusion {
         + description.timbre * (hardDance ? 0.32 : 0.27)
         + description.relative * 0.18
         + (aligned ? modelStrength * 0.08 : 0)
-        + (selectedSource === 'dsp' ? 0.07 : selectedSource === 'ai-beat' ? 0.055 : selectedSource === 'ai-grid' ? 0.035 : 0)
+        + (selectedSource === 'dsp' ? 0.07 : selectedSource === 'ai-beat' ? 0.028 : selectedSource === 'ai-grid' ? 0.018 : 0)
         - description.airOnly * (hardDance ? 0.24 : 0.18);
       const gradedImpact = smoothstep(hardDance ? 0.2 : 0.23, hardDance ? 0.78 : 0.82, rawStrength);
       // A soft gate prevents low-level texture from looking like a beat, while

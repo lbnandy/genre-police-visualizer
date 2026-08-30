@@ -87,10 +87,25 @@ test('Trance artwork clarity follows section energy and kick impact without scal
   assert.match(css, /filter:\s*blur\(var\(--trance-artwork-blur\)\)/);
 });
 
-test('Capsule lyrics truncate on one row instead of reflowing', () => {
+test('Trance kick impact relights particles without flashing or scaling the vortex arms', () => {
+  const start = visualSource.indexOf('drawTranceAccretionVortex(');
+  const end = visualSource.indexOf('drawTranceBackdropExtensions(', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const tranceVortex = visualSource.slice(start, end);
+
+  assert.match(tranceVortex, /const particleImpactLift = Math\.pow\(impactDrive, 0\.68\);/);
+  assert.match(tranceVortex, /brightness\(\$\{1\.16 \+ particleImpactLift \* 0\.94\}\)/);
+  assert.match(tranceVortex, /ctx\.globalAlpha = particleImpactLift \* 0\.9 \* armBrightnessScale;/);
+  assert.match(tranceVortex, /ctx\.filter = `brightness\(\$\{1 \+ particleImpactLift \* 0\.42\}\)`;/);
+  assert.match(tranceVortex, /ctx\.globalAlpha = 0\.78 \* armBrightnessScale;/);
+  assert.doesNotMatch(tranceVortex, /this\.tranceArmCache[\s\S]{0,180}particleImpactLift/);
+});
+
+test('Capsule lyrics truncate on one row while sweep overlays clip cleanly', () => {
   assert.match(appSource, /const singleLineLyrics = \['side', 'poster'\]\.includes\(document\.body\.dataset\.layout\)/);
   assert.match(css, /body\[data-layout="side"\] #lyric-current-base[\s\S]*text-overflow:\s*ellipsis;[\s\S]*white-space:\s*nowrap;/);
-  assert.match(css, /body\[data-layout="side"\] #synced-lyrics\[data-overflowing="true"\] #lyric-current-fill-content[\s\S]*text-overflow:\s*ellipsis/);
+  assert.match(css, /body\[data-layout="side"\] #synced-lyrics\[data-overflowing="true"\] #lyric-current-fill-content,[\s\S]*#lyric-translation-fill-content[\s\S]*text-overflow:\s*clip/);
   assert.match(css, /body\[data-layout="side"\] #synced-lyrics[\s\S]*padding:\s*1px 14px 1px 0/);
 });
 
@@ -99,6 +114,155 @@ test('Capsule genre background defaults on while preserving an explicit opt-out'
   assert.match(mainSource, /capsuleThemedBackground:\s*config\.capsuleThemedBackground\s*!==\s*false/);
   assert.match(appSource, /let capsuleThemedBackground\s*=\s*true/);
   assert.match(appSource, /setCapsuleThemedBackground\(config\.capsuleThemedBackground\s*!==\s*false\)/);
+});
+
+test('overflowing track titles pan to both complete endpoints without measurement restarts', () => {
+  assert.match(appSource, /let titlePanAnimation = null;[\s\S]*?let titlePanSignature = '';/);
+  assert.match(appSource, /const horizontalPadding = \(parseFloat\(titleStyle\.paddingLeft\) \|\| 0\)[\s\S]*?parseFloat\(titleStyle\.paddingRight\)/);
+  assert.match(appSource, /const viewportWidth = Math\.max\(0, titleLabel\.clientWidth - horizontalPadding\)/);
+  assert.match(appSource, /const signature = `\$\{text\.textContent\}::\$\{Math\.round\(viewportWidth\)\}::\$\{roundedDistance\}`/);
+  assert.match(appSource, /if \(signature === titlePanSignature && Boolean\(titlePanAnimation\) === overflowing\) return;/);
+  assert.match(appSource, /if \(current\?\.textContent === text\) \{[\s\S]*?requestAnimationFrame\(updateTitleOverflow\);[\s\S]*?return text;/);
+  assert.match(appSource, /const holdMs = 2000;/);
+  assert.match(appSource, /titlePanAnimation = text\.animate\(\[[\s\S]*?translateX\(-\$\{roundedDistance\}px\)[\s\S]*?translateX\(0\)[\s\S]*?iterations: Infinity/);
+  assert.match(appSource, /titlePanAnimation = text\.animate\([\s\S]*?easing: 'linear'/);
+  assert.match(css, /body\[data-layout="side"\] #title\s*\{[\s\S]*?padding-right:\s*24px;[\s\S]*?box-sizing:\s*border-box;/);
+  assert.doesNotMatch(css, /body\[data-layout="side"\] #title\s*\{[\s\S]*?margin-left:\s*-10px;/);
+  assert.match(css, /body\[data-layout="side"\] #title\.is-overflowing\s*\{[\s\S]*?mask-image:\s*linear-gradient\(to right, rgba\(0,0,0,\.68\) 0, #000 7px, #000 calc\(100% - 24px\), transparent calc\(100% - 8px\), transparent 100%\)/);
+  assert.doesNotMatch(css, /#title\.is-overflowing \.title-scroll-text\s*\{[\s\S]*?animation:\s*title-pan/);
+});
+
+test('Bilibili capsule keeps a hard light stock and speech-safe one-way motion', () => {
+  assert.match(
+    css,
+    /body\[data-background-style="themed"\] \.themed-backdrop\[data-mode="bilibili"\]\s*\{[\s\S]*?visibility:\s*hidden;[\s\S]*?opacity:\s*0\s*!important;/
+  );
+  assert.doesNotMatch(css, /data-mode="bilibili"\] #app::before\s*\{/);
+  assert.match(
+    css,
+    /body\[data-layout="poster"\]\[data-mode="bilibili"\] #app\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?mask-image:\s*none;/
+  );
+  assert.match(
+    css,
+    /body\[data-idle-behavior="dim"\]\[data-playback="idle"\]\.idle-settled\[data-mode="bilibili"\]\[data-background-style="themed"\] #app\s*\{\s*opacity:\s*\.82;/
+  );
+
+  const headlineStart = css.indexOf('body[data-mode="bilibili"] #genre {');
+  const headlineEnd = css.indexOf('\n}', headlineStart);
+  const headline = css.slice(headlineStart, headlineEnd);
+  assert.match(headline, /font-family:\s*"Righteous"/);
+  assert.match(headline, /text-transform:\s*lowercase/);
+  assert.match(headline, /letter-spacing:\s*-\.015em/);
+  assert.match(headline, /filter:\s*none/);
+  assert.doesNotMatch(headline, /drop-shadow|--genre-depth|rgba\(0,0,0/);
+  assert.match(css, /body\[data-mode="bilibili"\] #hud,[\s\S]*?text-shadow:\s*none\s*!important;/);
+  assert.match(css, /body\[data-layout="poster"\]\[data-mode="bilibili"\] #hud\s*\{\s*filter:\s*none;/);
+  assert.match(css, /body\[data-mode="bilibili"\] \.unit-mark\s*\{[\s\S]*?box-shadow:\s*none;[\s\S]*?filter:\s*none;/);
+  assert.match(visualSource, /this\.ctx = canvas\.getContext\('2d', \{ alpha: true \}\);/);
+  assert.match(visualSource, /drawBilibiliStock\(metrics, time\)[\s\S]*document\.body\.dataset\.backgroundStyle !== 'themed'/);
+  const stockStart = visualSource.indexOf('drawBilibiliStock(metrics, time)');
+  const stockEnd = visualSource.indexOf('\n  drawAtmosphere', stockStart);
+  const stock = visualSource.slice(stockStart, stockEnd);
+  assert.doesNotMatch(stock, /ctx\.filter|metrics\.(?:volume|mid|high)/);
+  assert.match(stock, /const bandAmplitude = 1\.6[\s\S]*?bilibiliSectionDrive \* 4\.2[\s\S]*?bilibiliTransientDrive \* 4\.8/);
+  assert.match(stock, /const bandDrift = Math\.sin\(time \* 0\.00034\) \* bandAmplitude/);
+  assert.match(stock, /const pinkBandOffset = width \* 0\.06;/);
+  assert.match(stock, /width \* 0\.13 \+ pinkBandOffset \+ bandDrift[\s\S]*?width \* 0\.03 \+ pinkBandOffset \+ bandDrift/);
+  assert.doesNotMatch(stock, /rgba\(255, 255, 255, 0\.28\)|for \(let line = -2/);
+  assert.match(visualSource, /if \(bilibiliMode\) \{\s*this\.updateBilibiliResponse\(energyMetrics, time\);\s*this\.drawBilibiliStock\(energyMetrics, time\);/);
+  assert.match(visualSource, /if \(!synthwaveMode && !bilibiliMode\) this\.featherCanvasEdges\(x, y\);/);
+  assert.match(visualSource, /const bilibiliDanmakuCount = 22;[\s\S]*?const bilibiliDanmakuLanes = 9;/);
+  assert.match(visualSource, /this\.bilibiliDanmaku = Array\.from\(\{ length: bilibiliDanmakuCount \}/);
+  assert.match(visualSource, /const lane = index % bilibiliDanmakuLanes;[\s\S]*?const laneSlots = Math\.ceil/);
+  assert.match(visualSource, /progress:\s*\(laneSlot \/ laneSlots \+ sample\(4\) \* 0\.06\) % 1/);
+  assert.match(visualSource, /alpha:\s*0\.078 \+ sample\(6\) \* 0\.07/);
+  assert.match(visualSource, /spawnAt:\s*0\.2 \+ sample\(7\) \* 0\.72/);
+  assert.match(visualSource, /this\.bilibiliVoiceActivity = follow\([\s\S]*?260, 920\)/);
+  assert.match(visualSource, /this\.bilibiliSectionDrive = follow\([\s\S]*?780, 1450\)/);
+  assert.match(visualSource, /this\.bilibiliTransientDrive = follow\([\s\S]*?90, 480\)/);
+  assert.match(visualSource, /item\.progress = \(item\.progress \+ deltaMs \* speed \/ cycleWidth\) % 1;/);
+  assert.match(visualSource, /const cycleWidth = width \+ 92 \+ 36;[\s\S]*?const entryX = bounds\.right \+ 18;/);
+  assert.match(visualSource, /const itemX = entryX - distance;/);
+  assert.match(visualSource, /const population = clamp\([\s\S]*?bilibiliSectionDrive \* 0\.58[\s\S]*?bilibiliTransientDrive \* 0\.5/);
+  assert.match(visualSource, /const speed = item\.speed \+ \(motionDrive \*\* 1\.35\) \* 0\.07/);
+  assert.match(visualSource, /item\.active = item\.spawnAt <= population/);
+  const atmosphereStart = visualSource.indexOf("if (theme.mode === 'bilibili')", visualSource.indexOf('drawAtmosphere'));
+  const atmosphereEnd = visualSource.indexOf("if (theme.mode === 'trance'", atmosphereStart);
+  const atmosphere = visualSource.slice(atmosphereStart, atmosphereEnd);
+  assert.doesNotMatch(atmosphere, /Math\.sin|itemX\s*\+=|itemY\s*\+=/);
+  assert.match(atmosphere, /ctx\.fillStyle = rgba\(color, item\.alpha\)/);
+  assert.doesNotMatch(atmosphere, /const alpha\s*=|item\.alpha\s*\+/);
+  assert.match(visualSource, /!integratedTranceFx && !synthwaveMode && !bilibiliMode && motionElapsed/);
+  assert.match(visualSource, /if \(!synthwaveMode && !bilibiliMode\) this\.updateParticles/);
+  assert.match(visualSource, /if \(!integratedTranceFx && !synthwaveMode && !bilibiliMode\) \{/);
+  assert.match(appSource, /if \(tranceMode \|\| synthwaveMode \|\| bilibiliMode\) \{[\s\S]*?coreScale = 1;/);
+  assert.match(appSource, /else if \(bilibiliMode\) \{\s*coreArt\.style\.transform = `scale\(\$\{visual\.bilibiliTvScaleX/);
+  assert.match(appSource, /const bilibiliGenreTarget = playbackActive[\s\S]*?bilibiliSectionDrive \* 0\.028[\s\S]*?bilibiliTransientDrive \* 0\.05/);
+  const bilibiliSignatureStart = visualSource.indexOf("} else if (mode === 'bilibili')", visualSource.indexOf('drawGenreSignature'));
+  const bilibiliSignatureEnd = visualSource.indexOf("} else if (mode === 'hardcore')", bilibiliSignatureStart);
+  const bilibiliSignature = visualSource.slice(bilibiliSignatureStart, bilibiliSignatureEnd);
+  assert.match(bilibiliSignature, /ctx\.scale\(this\.bilibiliTvScaleX, this\.bilibiliTvScaleY\)/);
+  assert.match(bilibiliSignature, /const frameWidth = 174/);
+  assert.match(bilibiliSignature, /const progressY = frameTop \+ frameHeight - 14/);
+  assert.match(bilibiliSignature, /const progressWidth = 112/);
+  assert.match(bilibiliSignature, /const playhead = clamp\(0\.1 \+ activity \* 0\.06 \+ section \* 0\.62 \+ transient \* 0\.26\)/);
+  assert.doesNotMatch(bilibiliSignature, /const playhead = \(time|addColorStop\(0\.5, '#ffffff'\)|ctx\.arc\(-38, antennaTop|ctx\.arc\(40, antennaTop/);
+  assert.doesNotMatch(bilibiliSignature, /for \(let dot = 0; dot < 2; dot \+= 1\)/);
+  assert.match(bilibiliSignature, /ctx\.fillStyle = theme\.accent;[\s\S]*?ctx\.arc\(-65, progressY/);
+
+  const faceStart = css.indexOf('body[data-mode="bilibili"] #genre-face {');
+  const faceEnd = css.indexOf('\n}', faceStart);
+  const face = css.slice(faceStart, faceEnd);
+  assert.match(face, /background:\s*none/);
+  assert.match(face, /-webkit-text-fill-color:\s*#fb7299/);
+  assert.match(face, /-webkit-text-stroke:\s*0/);
+  assert.doesNotMatch(face, /gradient/);
+
+  const artworkStart = css.indexOf('body[data-mode="bilibili"] #core-art {');
+  const artworkEnd = css.indexOf('\n}', artworkStart);
+  const artwork = css.slice(artworkStart, artworkEnd);
+  assert.match(artwork, /border:\s*0/);
+  assert.match(artwork, /box-shadow:\s*none/);
+});
+
+test('bright and organic genres use tailored full-card backdrop stock', () => {
+  assert.match(
+    css,
+    /\.themed-backdrop:is\([\s\S]*?\[data-mode="future-bass"\][\s\S]*?\[data-mode="kawaii-bass"\][\s\S]*?\[data-mode="pop"\][\s\S]*?\[data-mode="j-pop"\][\s\S]*?#09121c/
+  );
+  assert.match(
+    css,
+    /\[data-genre="happy-hardcore"\][\s\S]*?\[data-genre="euphoric-hardstyle"\][\s\S]*?\[data-genre="colour-bass"\]/
+  );
+  assert.match(
+    css,
+    /\.themed-backdrop:is\([\s\S]*?\[data-genre="rock"\][\s\S]*?\[data-genre="pop-rock"\][\s\S]*?\[data-genre="punk"\][\s\S]*?#140c0e/
+  );
+  assert.match(
+    css,
+    /\.themed-backdrop:is\([\s\S]*?\[data-genre="tropical-house"\][\s\S]*?\[data-genre="city-pop"\][\s\S]*?\[data-genre="folk"\][\s\S]*?\[data-genre="country"\][\s\S]*?\[data-genre="reggae"\][\s\S]*?\[data-genre="electro-swing"\][\s\S]*?\[data-mode="latin"\][\s\S]*?#170e0f/
+  );
+  assert.match(
+    css,
+    /\.themed-backdrop:is\([\s\S]*?\[data-genre="rnb"\][\s\S]*?\[data-genre="jazz"\][\s\S]*?#140b15/
+  );
+  assert.match(
+    css,
+    /body\[data-background-style="themed"\] \.themed-backdrop\s*\{[\s\S]*?--tonal-well-shape:\s*circle 124px;/
+  );
+  assert.match(
+    css,
+    /body\[data-layout="side"\]\[data-background-style="themed"\] \.themed-backdrop\s*\{[\s\S]*?--tonal-well-shape:\s*circle 106px;/
+  );
+  const tonalStockStart = css.indexOf('/* Brighter genres need coloured stock');
+  const tonalStockEnd = css.indexOf('body[data-background-style="themed"] #poster-backdrop', tonalStockStart);
+  const tonalStock = css.slice(tonalStockStart, tonalStockEnd);
+  assert.equal((tonalStock.match(/radial-gradient\(var\(--tonal-well-shape\)/g) || []).length, 3);
+  assert.match(
+    tonalStock,
+    /\[data-genre="rock"\][\s\S]*?radial-gradient\(ellipse 84% 56%[^\n]+rgba\(2,4,9,\.6\)/
+  );
+  assert.equal((tonalStock.match(/radial-gradient\(ellipse[^\n]+rgba\(/g) || []).length, 1);
 });
 
 test('Missing artwork uses a flat badge and Phonk background has no concentric membrane', () => {
@@ -251,6 +415,34 @@ test('Synthwave uses one audio-reactive sunset plane without a foreground visual
   assert.match(road, /const scanLineCount = 5/);
   assert.match(road, /const exitFade = 1 - smoothstep\(0\.68, 1, progress\)/);
   assert.match(road, /const gapHeight = \(1\.2 \+ \(1 - travel\) \* 5\.4\) \* entryFade \* exitFade/);
+  assert.match(road, /const mountainGap = sunRadius \* 0\.58;/);
+  assert.match(road, /const farMountainHeight = posterLayout \? 40 : 30;/);
+  assert.match(road, /const nearMountainHeight = posterLayout \? 58 : 42;/);
+  assert.match(road, /const drawMountainRange = \(\{ startX, endX, height, profile, near, facetDirection \}\) =>/);
+  assert.match(road, /farLeft:[\s\S]*farRight:[\s\S]*nearLeft:[\s\S]*nearRight:/);
+  assert.equal((road.match(/drawMountainRange\(\{/g) || []).length, 4);
+  assert.match(road, /const peakFacets = \[\];[\s\S]*const lightFace = facetDirection > 0[\s\S]*const shadowFace = facetDirection > 0/);
+  assert.match(road, /ctx\.shadowColor = 'rgba\(2, 1, 14, 0\.48\)'[\s\S]*ctx\.shadowOffsetY = near \? 2 : 1/);
+  assert.match(road, /const footing = ctx\.createLinearGradient\(0, horizonY - 2, 0, horizonY \+ \(near \? 8 : 5\)\)/);
+  assert.match(road, /endX: x - mountainGap \* 0\.72/);
+  assert.match(road, /startX: x \+ mountainGap \* 0\.72/);
+  assert.match(road, /endX: x - mountainGap \* 0\.96/);
+  assert.match(road, /startX: x \+ mountainGap \* 0\.96/);
+  assert.match(road, /farLeft:[^\n]*\[0\.92, 0\.17\], \[1, 0\.025\]/);
+  assert.match(road, /nearRight:[^\n]*\[0, 0\.025\], \[0\.06, 0\.13\]/);
+  const mountainScene = road.slice(
+    road.indexOf('// Low polygon ridges'),
+    road.indexOf('// The road keeps its fixed geometry')
+  );
+  assert.match(mountainScene, /#10143b/);
+  assert.match(mountainScene, /#181a4b/);
+  assert.doesNotMatch(mountainScene, /theme\.hot/);
+  assert.match(road, /const mountainHaze = ctx\.createLinearGradient\(0, horizonY - 34, 0, horizonY \+ 10\)/);
+  assert.match(road, /mountainHaze\.addColorStop\(0\.78, rgba\('#ff65bd', 0\.2/);
+  assert.match(road, /ctx\.filter = 'blur\(4px\)'/);
+  assert.match(road, /horizonGlow\.addColorStop\(0\.5, rgba\('#ffe1ef', 0\.52/);
+  assert.match(road, /ctx\.strokeStyle = rgba\('#ff63ca', 0\.18[\s\S]*ctx\.lineWidth = 6;/);
+  assert.match(road, /ctx\.shadowBlur = 46 \+ lineEnergy \* 20 \+ impact \* 12;/);
   assert.match(road, /const artworkLayer = this\.synthArtworkCtx/);
   assert.match(road, /const artworkRadius = sunRadius/);
   assert.match(road, /artworkLayer\.arc\(x, y, artworkRadius, 0, TAU\);\s*artworkLayer\.clip\(\)/);
@@ -283,7 +475,7 @@ test('Synthwave uses one audio-reactive sunset plane without a foreground visual
   assert.match(road, /ctx\.globalAlpha = edgeFade \* reflection\s*\* \(0\.58 \+ lineEnergy \* 0\.28 \+ impact \* 0\.12\)/);
   assert.match(road, /ctx\.globalAlpha = \(0\.58 \+ lineEnergy \* 0\.28 \+ impact \* 0\.12\)/);
   assert.match(road, /1 - smoothstep\(0\.78, 1, reflectionProgress\)/);
-  assert.match(road, /ctx\.shadowBlur = 36 \+ lineEnergy \* 18 \+ impact \* 12/);
+  assert.match(road, /ctx\.shadowBlur = 46 \+ lineEnergy \* 20 \+ impact \* 12/);
   assert.doesNotMatch(road, /const profile|spectrumSpan|metrics\.frequency|traceProfile/);
 
   const signatureStart = visualSource.indexOf('if (synthwave) {', visualSource.indexOf('drawGenreSignature'));
@@ -296,8 +488,8 @@ test('Synthwave uses one audio-reactive sunset plane without a foreground visual
   assert.match(visualSource, /if \(theme\.id === 'synthwave'\) \{\s*this\.lastSpectrum = null;\s*return;/);
   assert.match(visualSource, /if \(mode === 'asmr' \|\| theme\.id === 'synthwave'\) return;/);
   assert.match(visualSource, /if \(!synthwaveMode\) this\.drawAtmosphere/);
-  assert.match(visualSource, /if \(!synthwaveMode\) this\.updateParticles/);
-  assert.match(visualSource, /if \(!integratedTranceFx && !synthwaveMode\) this\.applyImpactPostFx/);
+  assert.match(visualSource, /if \(!synthwaveMode && !bilibiliMode\) this\.updateParticles/);
+  assert.match(visualSource, /if \(!integratedTranceFx && !synthwaveMode && !bilibiliMode\) \{/);
   assert.match(css, /data-background-style="themed"[^\n]+data-genre="synthwave"[^\n]+#core-art[\s\S]*opacity:\s*0;[\s\S]*visibility:\s*hidden/);
   assert.match(appSource, /else if \(synthwaveMode\) \{\s*coreArt\.style\.transform = 'scale\(1\)'/);
   assert.match(appSource, /artwork: theme\.captureArtwork \|\| currentMetadata\?\.artwork \|\| ''/);

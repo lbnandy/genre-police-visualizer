@@ -23,11 +23,18 @@ const {
 const { resolveWindowBounds } = require('./src/window-position');
 const { isHardcoreTanocArtist } = require('./src/hardcore-tanoc');
 const { displayArtistName } = require('./src/genre-classifier');
-const { normalizeLocale, translate } = require('./src/i18n');
+const { normalizeLocale, resolveInitialLocale, translate } = require('./src/i18n');
 const { buildPreviewTree } = require('./src/preview-menu');
 const { normalizeLayoutMode, layoutWindowSize } = require('./src/layout-mode');
 const { UI_SCALES, normalizeUiScale, uiScaleLabel } = require('./src/ui-scale');
 const { HOP_SIZE, LocalRhythmModel } = require('./src/rhythm-model-runtime');
+const {
+  customGenreCorrectionId,
+  findCustomGenreByCorrectionId,
+  normalizeCustomGenreRules
+} = require('./src/custom-genres');
+const { normalizeGenreArtistRules } = require('./src/genre-artist-rules');
+const { createGenreDataExport, mergeGenreData } = require('./src/genre-data-transfer');
 const {
   clearGenreCorrection,
   createGenreCorrections,
@@ -41,6 +48,7 @@ let mediaProcess = null;
 let mediaWatchdogTimer = null;
 let mediaRestartTimer = null;
 let availableMediaSources = [];
+let detectedMediaPlayers = { neteaseRunning: false, neteaseSmtcAvailable: false };
 let idleHideTimer = null;
 let idleAutoHidden = false;
 let rhythmModel = null;
@@ -65,6 +73,7 @@ const LYRIC_DELAY_MIN_MS = -2000;
 const LYRIC_DELAY_MAX_MS = 2000;
 const DEFAULT_LYRIC_DELAY_MS = 0;
 const NETWORK_REGION_TIMEOUT_MS = 1200;
+const MAX_GENRE_DATA_FILE_BYTES = 2_000_000;
 let networkCountry = '';
 let networkCountryTask = null;
 
@@ -203,11 +212,14 @@ function loadConfig() {
   config = sanitized.config;
   const storedLayoutMode = config.layoutMode;
   const storedUiScale = config.uiScale;
+  const storedLanguage = config.language;
   clickThrough = normalizeClickThrough(config.clickThrough);
   alwaysOnTop = normalizeAlwaysOnTop(config.alwaysOnTop);
   config.uiScale = normalizeUiScale(process.env.GP_UI_SCALE || config.uiScale);
   config.layoutMode = normalizeLayoutMode(process.env.GP_LAYOUT_MODE || config.layoutMode);
-  config.language = normalizeLocale(process.env.GP_CAPTURE_LANGUAGE || config.language);
+  config.language = process.env.GP_CAPTURE_LANGUAGE
+    ? normalizeLocale(process.env.GP_CAPTURE_LANGUAGE, 'en')
+    : resolveInitialLocale(storedLanguage, app.getLocale());
   config.lyricDelayMs = normalizeLyricDelayMs(config.lyricDelayMs);
   config.lyricsEnabled = config.lyricsEnabled !== false;
   config.lyricTranslationEnabled = config.lyricTranslationEnabled !== false;
@@ -219,12 +231,23 @@ function loadConfig() {
   config.launchAtLogin = config.launchAtLogin === true;
   config.motionMode = normalizeMotionMode(config.motionMode);
   config.idleBehavior = normalizeIdleBehavior(config.idleBehavior);
+  config.idleFrameLimitEnabled = config.idleFrameLimitEnabled !== false;
+  config.rhythmModelEnabled = config.rhythmModelEnabled !== false;
   config.preferredMediaSource = normalizeMediaSource(config.preferredMediaSource);
   config.ignoredMediaSources = normalizeIgnoredMediaSources(config.ignoredMediaSources);
+  const storedCustomGenres = JSON.stringify(config.customGenres || []);
+  config.customGenres = normalizeCustomGenreRules(config.customGenres, Object.keys(THEMES));
+  const customGenresSanitized = storedCustomGenres !== JSON.stringify(config.customGenres);
+  const storedGenreArtistRules = JSON.stringify(config.genreArtistRules || []);
+  config.genreArtistRules = normalizeGenreArtistRules(config.genreArtistRules, Object.keys(THEMES));
+  const genreArtistRulesSanitized = storedGenreArtistRules !== JSON.stringify(config.genreArtistRules);
   const uiScaleMigrated = process.env.GP_UI_SCALE === undefined
     && Number.isFinite(Number(storedUiScale))
     && Math.abs(Number(storedUiScale) - config.uiScale) > 0.000001;
-  if (sanitized.changed || uiScaleMigrated || (storedLayoutMode && storedLayoutMode !== config.layoutMode)) saveConfig();
+  const languageInitialized = process.env.GP_CAPTURE_LANGUAGE === undefined
+    && String(storedLanguage || '').trim() !== config.language;
+  if (sanitized.changed || customGenresSanitized || genreArtistRulesSanitized || uiScaleMigrated
+    || languageInitialized || (storedLayoutMode && storedLayoutMode !== config.layoutMode)) saveConfig();
 }
 
 function saveConfig(patch = {}) {
@@ -255,17 +278,34 @@ function sendRhythmModel(payload) {
 }
 
 function startRhythmModel() {
+  if (config.rhythmModelEnabled === false) {
+    sendRhythmModel({ type: 'disabled', reason: 'disabled in settings' });
+    return null;
+  }
   if (rhythmModel || rhythmModelStartTask || app.isQuitting) return rhythmModelStartTask;
   const modelPath = assetPath(path.join('models', 'beatnet-model-1.onnx'));
   if (!fs.existsSync(modelPath)) {
     sendRhythmModel({ type: 'unavailable', reason: 'bundled ONNX rhythm model is missing' });
     return null;
   }
-  rhythmModel = new LocalRhythmModel({ modelPath, onEvent: sendRhythmModel });
-  rhythmModelStartTask = rhythmModel.initialize().finally(() => {
-    rhythmModelStartTask = null;
+  const model = new LocalRhythmModel({ modelPath, onEvent: sendRhythmModel });
+  rhythmModel = model;
+  rhythmModelStartTask = model.initialize().finally(() => {
+    if (rhythmModel === model) rhythmModelStartTask = null;
   });
   return rhythmModelStartTask;
+}
+
+async function setRhythmModelEnabled(enabled) {
+  if (enabled !== false) {
+    startRhythmModel();
+    return;
+  }
+  const model = rhythmModel;
+  rhythmModel = null;
+  rhythmModelStartTask = null;
+  if (model) await model.close();
+  sendRhythmModel({ type: 'disabled', reason: 'disabled in settings' });
 }
 
 function restartRhythmModelForOutputDevice() {
@@ -331,12 +371,19 @@ function currentGenreCorrection() {
 function rememberCurrentGenre(genreId) {
   const cleanId = String(genreId || '').trim();
   const theme = THEMES[cleanId];
+  const customRule = findCustomGenreByCorrectionId(config.customGenres, cleanId);
   if (!lastRawMetadata?.title) return { ok: false, error: 'no-track' };
-  if (!theme || cleanId === 'unknown') return { ok: false, error: 'invalid-genre' };
-  const updated = setGenreCorrection(genreCorrections, lastRawMetadata, {
-    id: cleanId,
-    label: theme.label
-  });
+  if ((!theme || cleanId === 'unknown') && !customRule) return { ok: false, error: 'invalid-genre' };
+  const correctionGenre = customRule
+    ? {
+      id: customGenreCorrectionId(customRule.id),
+      label: customRule.name.toLocaleUpperCase(),
+      customGenreId: customRule.id,
+      baseGenreId: customRule.baseGenreId,
+      colors: customRule.colors
+    }
+    : { id: cleanId, label: theme.label };
+  const updated = setGenreCorrection(genreCorrections, lastRawMetadata, correctionGenre);
   if (!updated.changed) return { ok: false, error: 'invalid-track' };
   genreCorrections = updated.state;
   saveGenreCorrections();
@@ -379,9 +426,9 @@ function trayImage() {
   return resized;
 }
 
-function setClickThrough(value) {
+function setClickThrough(value, { persist = true } = {}) {
   clickThrough = Boolean(value);
-  saveConfig({ clickThrough });
+  if (persist) saveConfig({ clickThrough });
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
     mainWindow.webContents.send('interaction-state', { clickThrough });
@@ -574,8 +621,8 @@ function createWindow() {
     ...defaultWindowPosition(),
     title: 'Genre Police Visualizer',
     icon: assetPath('icon.png'),
-    minWidth: 400,
-    minHeight: 320,
+    minWidth: 300,
+    minHeight: 240,
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
@@ -616,20 +663,53 @@ function createWindow() {
       setDemoTheme(process.env.GP_DEMO_THEME);
       setTimeout(() => setDemoTheme(process.env.GP_DEMO_THEME), 320);
     }
-    if (process.env.GP_CAPTURE_SETTINGS || process.env.GP_CAPTURE_SCALE_MENU || process.env.GP_CAPTURE_MEDIA_MENU) {
+    if (process.env.GP_CAPTURE_SETTINGS || process.env.GP_CAPTURE_SCALE_MENU
+      || process.env.GP_CAPTURE_MEDIA_MENU || process.env.GP_CAPTURE_CUSTOM_GENRES
+      || process.env.GP_CAPTURE_GENRE_ARTISTS
+      || process.env.GP_CAPTURE_NETEASE_HINT || process.env.GP_CAPTURE_SETTINGS_PANE
+      || (process.env.GP_CAPTURE_LANGUAGE && !process.env.GP_CAPTURE_NETEASE_TOAST)
+      || process.env.GP_CAPTURE_CORRECTION_QUERY
+      || process.env.GP_CAPTURE_CUSTOM_GENRE_DELETE) {
       setTimeout(() => {
         mainWindow?.webContents.executeJavaScript("document.querySelector('#settings-button')?.click()").catch(() => {});
       }, 480);
     }
+    if (process.env.GP_CAPTURE_SETTINGS_PANE) {
+      setTimeout(() => {
+        const pane = JSON.stringify(String(process.env.GP_CAPTURE_SETTINGS_PANE));
+        mainWindow?.webContents.executeJavaScript(
+          `document.querySelector('.settings-tab[data-settings-pane=' + ${pane} + ']')?.click()`
+        ).catch(() => {});
+      }, 780);
+    }
     if (process.env.GP_CAPTURE_CORRECTION) {
       setTimeout(() => {
         mainWindow?.webContents.executeJavaScript(`(() => {
+          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
           const settings = document.querySelector('.settings-scroll');
           const panel = document.querySelector('.genre-correction-settings');
           if (settings && panel) settings.scrollTo({ top: Math.max(0, panel.offsetTop - 58) });
           document.querySelector('#genre-correction-input')?.focus();
         })()`).catch(() => {});
       }, 850);
+    }
+    if (process.env.GP_CAPTURE_CORRECTION_QUERY) {
+      setTimeout(() => {
+        const query = JSON.stringify(String(process.env.GP_CAPTURE_CORRECTION_QUERY));
+        mainWindow?.webContents.executeJavaScript(`(() => {
+          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
+          const input = document.querySelector('#genre-correction-input');
+          const settings = document.querySelector('.settings-scroll');
+          const panel = document.querySelector('.genre-correction-settings');
+          if (!input) return;
+          input.disabled = false;
+          input.value = ${query};
+          input.dataset.genreId = '';
+          input.focus();
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          if (settings && panel) settings.scrollTo({ top: Math.max(0, panel.offsetTop - 58) });
+        })()`).catch(() => {});
+      }, 900);
     }
     if (process.env.GP_CAPTURE_CONTROLS) {
       setTimeout(() => {
@@ -644,11 +724,89 @@ function createWindow() {
     if (process.env.GP_CAPTURE_MEDIA_MENU) {
       setTimeout(() => {
         mainWindow?.webContents.executeJavaScript(`(() => {
+          document.querySelector('.settings-tab[data-settings-pane="playback"]')?.click();
           const settings = document.querySelector('.settings-scroll');
           const panel = document.querySelector('.media-source-settings');
           if (settings && panel) settings.scrollTo({ top: Math.max(0, panel.offsetTop - 68) });
           document.querySelector('#media-source-button')?.click();
         })()`).catch(() => {});
+      }, 820);
+    }
+    if (process.env.GP_CAPTURE_CUSTOM_GENRES) {
+      setTimeout(() => {
+        mainWindow?.webContents.executeJavaScript(`(() => {
+          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
+          document.querySelector('#custom-genre-panel')?.setAttribute('open', '');
+          const settings = document.querySelector('.settings-scroll');
+          const panel = document.querySelector('.custom-genre-settings');
+          if (settings && panel) {
+            const top = settings.scrollTop + panel.parentElement.getBoundingClientRect().top
+              - settings.getBoundingClientRect().top - 28;
+            settings.scrollTo({ top: Math.max(0, top) });
+          }
+        })()`).catch(() => {});
+      }, 820);
+    }
+    if (process.env.GP_CAPTURE_GENRE_ARTISTS) {
+      setTimeout(() => {
+        mainWindow?.webContents.executeJavaScript(`(() => {
+          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
+          document.querySelector('#genre-artist-panel')?.setAttribute('open', '');
+          const settings = document.querySelector('.settings-scroll');
+          const panel = document.querySelector('#genre-artist-panel');
+          if (settings && panel) {
+            const top = settings.scrollTop + panel.getBoundingClientRect().top
+              - settings.getBoundingClientRect().top - 178;
+            settings.scrollTo({ top: Math.max(0, top) });
+          }
+          setTimeout(() => document.querySelector('#genre-artist-genre')?.click(), 160);
+        })()`).catch(() => {});
+      }, 820);
+    }
+    if (process.env.GP_CAPTURE_CUSTOM_GENRE_DELETE) {
+      setTimeout(() => {
+        mainWindow?.webContents.executeJavaScript(`(() => {
+          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
+          document.querySelector('#custom-genre-panel')?.setAttribute('open', '');
+          const timer = setInterval(() => {
+            const remove = document.querySelector('.custom-genre-item [data-action="delete"]');
+            if (!remove) return;
+            clearInterval(timer);
+            remove.click();
+            setTimeout(() => {
+              document.querySelector('.custom-genre-item [data-action="confirm-delete"]')
+                ?.closest('.custom-genre-item')?.scrollIntoView({ block: 'center' });
+            }, 80);
+          }, 100);
+        })()`).catch(() => {});
+      }, 900);
+    }
+    if (process.env.GP_CAPTURE_NETEASE_HINT) {
+      setTimeout(() => {
+        mainWindow?.webContents.send('media-sources', {
+          sources: [],
+          currentSource: '',
+          preferredSource: '',
+          ignoredSources: [],
+          detectedPlayers: { neteaseRunning: true, neteaseSmtcAvailable: false }
+        });
+        mainWindow?.webContents.executeJavaScript(`(() => {
+          document.querySelector('.settings-tab[data-settings-pane="playback"]')?.click();
+          const settings = document.querySelector('.settings-scroll');
+          const panel = document.querySelector('.media-source-settings');
+          if (settings && panel) settings.scrollTo({ top: Math.max(0, panel.offsetTop - 56) });
+        })()`).catch(() => {});
+      }, 820);
+    }
+    if (process.env.GP_CAPTURE_NETEASE_TOAST) {
+      setTimeout(() => {
+        mainWindow?.webContents.send('media-sources', {
+          sources: [],
+          currentSource: '',
+          preferredSource: '',
+          ignoredSources: [],
+          detectedPlayers: { neteaseRunning: true, neteaseSmtcAvailable: false }
+        });
       }, 820);
     }
     if (process.env.GP_CAPTURE_PATH && process.env.GP_CAPTURE_BACKDROP === 'bright') {
@@ -752,20 +910,33 @@ function mediaPreferenceArguments() {
   return args;
 }
 
-function publishMediaSources(sources = [], currentSource = lastRawMetadata?.source || '') {
+function publishMediaSources(sources = [], currentSource = lastRawMetadata?.source || '', playerState = null) {
+  const rawSources = [...new Set(sources.map(normalizeMediaSource).filter(Boolean))];
+  let nextDetectedPlayers = {
+    neteaseRunning: typeof playerState?.neteaseRunning === 'boolean'
+      ? playerState.neteaseRunning
+      : detectedMediaPlayers.neteaseRunning,
+    neteaseSmtcAvailable: rawSources.some((source) => /cloudmusic|netease/i.test(source))
+  };
+  if (process.env.GP_CAPTURE_NETEASE_HINT || process.env.GP_CAPTURE_NETEASE_TOAST) {
+    nextDetectedPlayers = { neteaseRunning: true, neteaseSmtcAvailable: false };
+  }
   const normalized = [...new Set([
-    ...sources,
+    ...rawSources,
     config.preferredMediaSource,
     ...normalizeIgnoredMediaSources(config.ignoredMediaSources)
   ].map(normalizeMediaSource).filter(Boolean))].sort((left, right) => left.localeCompare(right));
   const changed = JSON.stringify(normalized) !== JSON.stringify(availableMediaSources);
+  const detectedPlayersChanged = JSON.stringify(nextDetectedPlayers) !== JSON.stringify(detectedMediaPlayers);
   availableMediaSources = normalized;
-  if ((changed || currentSource) && mainWindow && !mainWindow.isDestroyed()) {
+  detectedMediaPlayers = nextDetectedPlayers;
+  if ((changed || detectedPlayersChanged || currentSource) && mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('media-sources', {
       sources: availableMediaSources,
       currentSource: normalizeMediaSource(currentSource),
       preferredSource: config.preferredMediaSource,
-      ignoredSources: normalizeIgnoredMediaSources(config.ignoredMediaSources)
+      ignoredSources: normalizeIgnoredMediaSources(config.ignoredMediaSources),
+      detectedPlayers: detectedMediaPlayers
     });
   }
 }
@@ -810,7 +981,7 @@ function startMediaMonitor() {
     armWatchdog();
     try {
       const payload = JSON.parse(line);
-      publishMediaSources(Array.isArray(payload.sources) ? payload.sources : [], payload.source);
+      publishMediaSources(Array.isArray(payload.sources) ? payload.sources : [], payload.source, payload);
       handleMetadata(payload);
     } catch (error) { console.warn('Bad metadata line:', error.message); }
   });
@@ -922,13 +1093,14 @@ async function handleMetadata(raw) {
   // visible while applying them instead of flashing IDENTIFYING between the
   // detected genre and the user's authoritative correction.
   const hasRememberedCorrection = Boolean(getGenreCorrection(genreCorrections, raw));
+  const hasBilibiliFallbackHint = resolver.isBilibiliFallbackCandidate(raw);
   if (!hasRememberedCorrection) {
     mainWindow.webContents.send('now-playing', {
       ...raw,
       displayArtist: displayArtistName(raw.artist || raw.albumArtist),
       hardcoreTanoc: isHardcoreTanocArtist(raw.artist || raw.albumArtist),
       resolving: true,
-      genre: themeFor('unknown')
+      genre: themeFor(hasBilibiliFallbackHint ? 'bilibili' : 'unknown')
     });
   }
   const [resolved, lyrics] = await Promise.all([
@@ -970,8 +1142,14 @@ function diagnosticSnapshot(rendererState = {}) {
       uiScale: normalizeUiScale(config.uiScale),
       motionMode: normalizeMotionMode(config.motionMode),
       idleBehavior: normalizeIdleBehavior(config.idleBehavior),
+      idleFrameLimitEnabled: config.idleFrameLimitEnabled !== false,
+      rhythmModelEnabled: config.rhythmModelEnabled !== false,
       preferredMediaSource: normalizeMediaSource(config.preferredMediaSource),
       ignoredMediaSourceCount: normalizeIgnoredMediaSources(config.ignoredMediaSources).length,
+      supplementalArtistRuleCount: normalizeGenreArtistRules(
+        config.genreArtistRules,
+        Object.keys(THEMES)
+      ).length,
       themedBackground: normalizeLayoutMode(config.layoutMode) === 'poster'
         ? config.posterThemedBackground !== false
         : config.capsuleThemedBackground !== false,
@@ -992,6 +1170,16 @@ function diagnosticSnapshot(rendererState = {}) {
       },
       audioCapture: diagnosticText(rendererState.audioStatus),
       genreSource: diagnosticText(rendererState.genreSource || lastResolvedMetadata?.genreSource),
+      genreSources: (Array.isArray(rendererState.genreSources)
+        ? rendererState.genreSources
+        : lastResolvedMetadata?.genreSources || []).map((source) => diagnosticText(source)),
+      genreEvidence: (() => {
+        const evidence = rendererState.genreEvidence || lastResolvedMetadata?.genreEvidence;
+        if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return null;
+        return Object.fromEntries(Object.entries(evidence)
+          .slice(0, 8)
+          .map(([key, value]) => [diagnosticText(key, 48), diagnosticText(value, 160)]));
+      })(),
       lyricSource: diagnosticText(rendererState.lyricSource || lastResolvedMetadata?.lyrics?.source)
     }
   };
@@ -1012,6 +1200,110 @@ async function exportDiagnostics(rendererState = {}) {
   return { ok: true, filePath: result.filePath };
 }
 
+function genreDataDialogTitle(key) {
+  return translate(normalizeLocale(config.language), key);
+}
+
+async function exportGenreData() {
+  const date = new Date().toISOString().slice(0, 10);
+  const options = {
+    title: genreDataDialogTitle('genreData.exportDialogTitle'),
+    defaultPath: `genre-police-data-${date}.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  };
+  const result = mainWindow && !mainWindow.isDestroyed()
+    ? await dialog.showSaveDialog(mainWindow, options)
+    : await dialog.showSaveDialog(options);
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+  try {
+    const payload = createGenreDataExport({
+      corrections: genreCorrections,
+      customGenres: config.customGenres,
+      genreArtistRules: config.genreArtistRules,
+      themes: THEMES,
+      appVersion: app.getVersion()
+    });
+    fs.writeFileSync(result.filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    return {
+      ok: true,
+      filePath: result.filePath,
+      correctionCount: Object.keys(payload.corrections.tracks).length,
+      customGenreCount: payload.customGenres.length,
+      genreArtistRuleCount: payload.genreArtistRules.length
+    };
+  } catch (error) {
+    console.warn('Could not export genre data:', error.message);
+    return { ok: false, error: 'write-failed' };
+  }
+}
+
+async function importGenreData() {
+  const options = {
+    title: genreDataDialogTitle('genreData.importDialogTitle'),
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openFile']
+  };
+  const result = mainWindow && !mainWindow.isDestroyed()
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options);
+  const filePath = result.filePaths?.[0];
+  if (result.canceled || !filePath) return { ok: false, canceled: true };
+
+  let payload;
+  try {
+    if (fs.statSync(filePath).size > MAX_GENRE_DATA_FILE_BYTES) {
+      return { ok: false, error: 'too-large' };
+    }
+    const source = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/u, '');
+    payload = JSON.parse(source);
+  } catch (error) {
+    console.warn('Could not read genre data:', error.message);
+    return { ok: false, error: error instanceof SyntaxError ? 'invalid-json' : 'read-failed' };
+  }
+
+  let merged;
+  try {
+    merged = mergeGenreData({
+      payload,
+      corrections: genreCorrections,
+      customGenres: config.customGenres,
+      genreArtistRules: config.genreArtistRules,
+      themes: THEMES
+    });
+  } catch (error) {
+    return { ok: false, error: error.code || 'invalid-format' };
+  }
+
+  const previousCorrections = genreCorrections;
+  const previousCustomGenres = config.customGenres;
+  const previousGenreArtistRules = config.genreArtistRules;
+  try {
+    genreCorrections = merged.corrections;
+    config.customGenres = merged.customGenres;
+    config.genreArtistRules = merged.genreArtistRules;
+    saveGenreCorrections();
+    saveConfig({
+      customGenres: merged.customGenres,
+      genreArtistRules: merged.genreArtistRules
+    });
+  } catch (error) {
+    genreCorrections = previousCorrections;
+    config.customGenres = previousCustomGenres;
+    config.genreArtistRules = previousGenreArtistRules;
+    console.warn('Could not save imported genre data:', error.message);
+    return { ok: false, error: 'write-failed' };
+  }
+
+  rebuildTrayMenu();
+  refreshCurrentGenre();
+  return {
+    ok: true,
+    summary: merged.summary,
+    customGenres: merged.customGenres,
+    genreArtistRules: merged.genreArtistRules
+  };
+}
+
 ipcMain.handle('window:close', () => app.quit());
 ipcMain.handle('window:minimize', () => mainWindow?.minimize());
 ipcMain.handle('window:set-ui-scale', (_event, value) => setUiScale(value));
@@ -1022,6 +1314,8 @@ ipcMain.handle('media:recapture', () => {
   return { ok: true };
 });
 ipcMain.handle('diagnostics:export', (_event, rendererState) => exportDiagnostics(rendererState));
+ipcMain.handle('genre-data:export', () => exportGenreData());
+ipcMain.handle('genre-data:import', () => importGenreData());
 ipcMain.handle('artwork:face-palette', async (_event, payload) => {
   try {
     const sample = await sampleArtwork(payload?.url);
@@ -1048,9 +1342,14 @@ ipcMain.handle('config:get', () => ({
   launchAtLoginSupported: launchAtLoginSupported(),
   motionMode: normalizeMotionMode(config.motionMode),
   idleBehavior: normalizeIdleBehavior(config.idleBehavior),
+  idleFrameLimitEnabled: config.idleFrameLimitEnabled !== false,
+  rhythmModelEnabled: config.rhythmModelEnabled !== false,
   preferredMediaSource: normalizeMediaSource(config.preferredMediaSource),
   ignoredMediaSources: normalizeIgnoredMediaSources(config.ignoredMediaSources),
   availableMediaSources,
+  detectedPlayers: detectedMediaPlayers,
+  customGenres: normalizeCustomGenreRules(config.customGenres, Object.keys(THEMES)),
+  genreArtistRules: normalizeGenreArtistRules(config.genreArtistRules, Object.keys(THEMES)),
   currentMediaSource: normalizeMediaSource(lastRawMetadata?.source),
   rhythmModelState,
   language: normalizeLocale(config.language),
@@ -1060,10 +1359,17 @@ ipcMain.handle('config:get', () => ({
   alwaysOnTop,
   genreOptions: Object.entries(THEMES)
     .filter(([id]) => id !== 'unknown')
-    .map(([id, theme]) => ({ id, label: theme.label, parent: theme.parent }))
+    .map(([id, theme]) => ({
+      id,
+      label: theme.label,
+      parent: theme.parent,
+      accent: theme.accent,
+      accent2: theme.accent2,
+      hot: theme.hot
+    }))
     .sort((left, right) => left.label.localeCompare(right.label))
 }));
-ipcMain.handle('config:set', (_event, patch) => {
+ipcMain.handle('config:set', async (_event, patch) => {
   const safe = {};
   if (typeof patch?.lastFmApiKey === 'string') safe.lastFmApiKey = patch.lastFmApiKey.trim();
   if (typeof patch?.discogsToken === 'string') safe.discogsToken = patch.discogsToken.trim();
@@ -1077,18 +1383,31 @@ ipcMain.handle('config:set', (_event, patch) => {
   if (typeof patch?.onlineGenreLookupEnabled === 'boolean') safe.onlineGenreLookupEnabled = patch.onlineGenreLookupEnabled;
   if (typeof patch?.launchAtLogin === 'boolean') safe.launchAtLogin = patch.launchAtLogin;
   if (typeof patch?.alwaysOnTop === 'boolean') safe.alwaysOnTop = normalizeAlwaysOnTop(patch.alwaysOnTop);
+  if (typeof patch?.clickThrough === 'boolean') safe.clickThrough = normalizeClickThrough(patch.clickThrough);
   if (typeof patch?.motionMode === 'string') safe.motionMode = normalizeMotionMode(patch.motionMode);
   if (typeof patch?.idleBehavior === 'string') safe.idleBehavior = normalizeIdleBehavior(patch.idleBehavior);
+  if (typeof patch?.idleFrameLimitEnabled === 'boolean') safe.idleFrameLimitEnabled = patch.idleFrameLimitEnabled;
+  if (typeof patch?.rhythmModelEnabled === 'boolean') safe.rhythmModelEnabled = patch.rhythmModelEnabled;
   if (typeof patch?.preferredMediaSource === 'string') safe.preferredMediaSource = normalizeMediaSource(patch.preferredMediaSource);
   if (Array.isArray(patch?.ignoredMediaSources)) safe.ignoredMediaSources = normalizeIgnoredMediaSources(patch.ignoredMediaSources);
   if (Object.hasOwn(patch || {}, 'lyricDelayMs')) safe.lyricDelayMs = normalizeLyricDelayMs(patch.lyricDelayMs);
   if (typeof patch?.language === 'string') safe.language = normalizeLocale(patch.language);
+  if (Array.isArray(patch?.customGenres)) {
+    safe.customGenres = normalizeCustomGenreRules(patch.customGenres, Object.keys(THEMES));
+  }
+  if (Array.isArray(patch?.genreArtistRules)) {
+    safe.genreArtistRules = normalizeGenreArtistRules(patch.genreArtistRules, Object.keys(THEMES));
+  }
   const genreSourcesChanged = (Object.hasOwn(safe, 'lastFmApiKey')
       && safe.lastFmApiKey !== (config.lastFmApiKey || ''))
     || (Object.hasOwn(safe, 'discogsToken')
       && safe.discogsToken !== (config.discogsToken || ''))
     || (Object.hasOwn(safe, 'onlineGenreLookupEnabled')
-      && safe.onlineGenreLookupEnabled !== (config.onlineGenreLookupEnabled !== false));
+      && safe.onlineGenreLookupEnabled !== (config.onlineGenreLookupEnabled !== false))
+    || (Object.hasOwn(safe, 'customGenres')
+      && JSON.stringify(safe.customGenres) !== JSON.stringify(config.customGenres || []))
+    || (Object.hasOwn(safe, 'genreArtistRules')
+      && JSON.stringify(safe.genreArtistRules) !== JSON.stringify(config.genreArtistRules || []));
   const lyricsSettingChanged = Object.hasOwn(safe, 'lyricsEnabled')
     && safe.lyricsEnabled !== (config.lyricsEnabled !== false);
   const backgroundSettingChanged = Object.hasOwn(safe, 'posterThemedBackground')
@@ -1097,6 +1416,8 @@ ipcMain.handle('config:set', (_event, patch) => {
     || Object.hasOwn(safe, 'ignoredMediaSources');
   saveConfig(safe);
   if (Object.hasOwn(safe, 'alwaysOnTop')) setAlwaysOnTop(safe.alwaysOnTop, { persist: false });
+  if (Object.hasOwn(safe, 'clickThrough')) setClickThrough(safe.clickThrough, { persist: false });
+  if (Object.hasOwn(safe, 'rhythmModelEnabled')) await setRhythmModelEnabled(safe.rhythmModelEnabled);
   if (Object.hasOwn(safe, 'launchAtLogin')) {
     safe.launchAtLogin = applyLaunchAtLogin(safe.launchAtLogin);
     saveConfig({ launchAtLogin: safe.launchAtLogin });
@@ -1135,7 +1456,11 @@ ipcMain.handle('config:set', (_event, patch) => {
     ok: true,
     launchAtLogin: config.launchAtLogin === true,
     launchAtLoginSupported: launchAtLoginSupported(),
-    alwaysOnTop
+    alwaysOnTop,
+    clickThrough,
+    rhythmModelEnabled: config.rhythmModelEnabled !== false,
+    customGenres: normalizeCustomGenreRules(config.customGenres, Object.keys(THEMES)),
+    genreArtistRules: normalizeGenreArtistRules(config.genreArtistRules, Object.keys(THEMES))
   };
 });
 ipcMain.handle('genre-correction:set', (_event, genreId) => rememberCurrentGenre(genreId));

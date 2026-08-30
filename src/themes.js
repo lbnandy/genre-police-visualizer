@@ -6,6 +6,12 @@ const THEMES = {
     font: '"Fredoka"', accent: '#8fd8ff', accent2: '#c6b6ff', hot: '#effcff',
     mode: 'asmr', energy: 0.48, textFx: 0.48, textBaseGlow: 10
   },
+  bilibili: {
+    family: 'bilibili', parent: 'NON-MUSIC', label: 'bilibili',
+    font: '"Righteous"', accent: '#fb7299', accent2: '#23ade5', hot: '#f4f4f4',
+    genreInk: '#fb7299', genreInk2: '#fb7299', genreInkEdge: '#fb7299',
+    mode: 'bilibili', energy: 0.58, textFx: 0, textBaseGlow: 0
+  },
   'hard-dance': {
     family: 'hardcore', parent: 'ELECTRONIC DANCE', label: 'HARD DANCE',
     font: '"Black Ops One"', accent: '#ff284f', accent2: '#20dfff', hot: '#ffffff',
@@ -610,7 +616,7 @@ const THEMES = {
 };
 
 const DEMO_THEME_IDS = [
-  'asmr',
+  'asmr', 'bilibili',
   'happy-hardcore', 'uk-hardcore', 'gabber', 'frenchcore', 'uptempo-hardcore', 'puzzycore',
   'hardstyle', 'rawstyle', 'euphoric-hardstyle',
   'house', 'deep-house', 'tech-house', 'progressive-house', 'bass-house', 'future-house', 'amapiano',
@@ -646,6 +652,7 @@ const FONT_TYPOGRAPHY = Object.freeze({
 
 const MODE_TEXT_FX = Object.freeze({
   asmr: { textFx: 0.48, textBaseGlow: 10 },
+  bilibili: { textFx: 0, textBaseGlow: 0 },
   hardcore: { textFx: 0.84, textBaseGlow: 15 },
   hardstyle: { textFx: 0.8, textBaseGlow: 14 },
   house: { textFx: 0.67, textBaseGlow: 12 },

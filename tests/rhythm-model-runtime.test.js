@@ -87,6 +87,27 @@ test('bundled ONNX BeatNet keeps recurrent state and emits rhythm updates', { ti
   await model.close();
 });
 
+test('closing the rhythm model during initialization releases the late session', async () => {
+  let finishCreate;
+  let releases = 0;
+  const events = [];
+  const session = { release: async () => { releases += 1; } };
+  const ort = {
+    InferenceSession: {
+      create: () => new Promise((resolve) => { finishCreate = () => resolve(session); })
+    }
+  };
+  const model = new LocalRhythmModel({ modelPath: 'delayed.onnx', ort, onEvent: (event) => events.push(event) });
+  const initialization = model.initialize();
+
+  await model.close();
+  finishCreate();
+
+  assert.equal(await initialization, false);
+  assert.equal(releases, 1);
+  assert.deepEqual(events, []);
+});
+
 test('portable runtime no longer depends on a user-installed Python model host', () => {
   const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
   const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');

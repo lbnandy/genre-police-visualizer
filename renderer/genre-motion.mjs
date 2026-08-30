@@ -6,6 +6,7 @@ const DEFAULT_PROFILE = Object.freeze({
 
 const PROFILES = Object.freeze({
   asmr: { kind: 'mote', flow: 'rise', count: 0, speed: 0.24, startRadius: 72, size: 0.9, decay: 0.009, drag: 0.997, curve: 0.004 },
+  bilibili: { kind: 'bead', flow: 'lateral', count: 3, speed: 0.86, startRadius: 76, size: 0.78, decay: 0.018, drag: 0.993, curve: 0.014 },
   hardcore: { kind: 'spark', flow: 'radial', count: 4, speed: 2.45, startRadius: 62, size: 0.78, decay: 0.03, drag: 0.982 },
   hardstyle: { kind: 'chevron', flow: 'radial', count: 3, speed: 1.95, startRadius: 68, size: 0.88, decay: 0.028, drag: 0.984 },
   house: { kind: 'orb', flow: 'orbit', count: 3, speed: 1.05, startRadius: 84, size: 0.9, decay: 0.018, drag: 0.993, curve: 0.025 },

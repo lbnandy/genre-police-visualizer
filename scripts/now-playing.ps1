@@ -32,6 +32,8 @@ $propertiesType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessi
 $thumbnailStreamType = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
 $script:lastThumbnailKey = ''
 $script:lastThumbnailData = ''
+$script:neteaseRunning = $false
+$script:lastPlayerProbeAt = [DateTimeOffset]::MinValue
 $script:ignoredSources = @{}
 if (-not [string]::IsNullOrWhiteSpace($IgnoredSourcesBase64)) {
     try {
@@ -47,6 +49,20 @@ if (-not [string]::IsNullOrWhiteSpace($IgnoredSourcesBase64)) {
 function Test-MediaSourceAllowed {
     param([string] $Source)
     return -not $script:ignoredSources.ContainsKey([string] $Source)
+}
+
+function Test-NeteaseRunning {
+    $now = [DateTimeOffset]::UtcNow
+    if (($now - $script:lastPlayerProbeAt).TotalMilliseconds -ge 5000) {
+        $script:lastPlayerProbeAt = $now
+        try {
+            $script:neteaseRunning = $null -ne (Get-Process -Name 'cloudmusic' -ErrorAction SilentlyContinue | Select-Object -First 1)
+        }
+        catch {
+            $script:neteaseRunning = $false
+        }
+    }
+    return $script:neteaseRunning
 }
 
 function Select-MediaSession {
@@ -143,6 +159,7 @@ catch {
     @{
         playing = $false
         status = 'Error'
+        neteaseRunning = Test-NeteaseRunning
         errorStage = $stage
         error = $_.Exception.Message
     } | ConvertTo-Json -Compress
@@ -156,6 +173,7 @@ while ($true) {
         # Windows PowerShell can otherwise member-enumerate `.Count` into
         # values such as `1 1 1` instead of returning one collection length.
         $sessions = @($manager.GetSessions())
+        $neteaseRunning = Test-NeteaseRunning
         $availableSources = @(
             for ($index = 0; $index -lt $sessions.Count; $index += 1) {
                 [string] $sessions[$index].SourceAppUserModelId
@@ -164,7 +182,7 @@ while ($true) {
         $session = Select-MediaSession -Manager $manager -Sessions $sessions
 
         if ($null -eq $session) {
-            @{ playing = $false; status = 'NoSession'; sources = @($availableSources) } | ConvertTo-Json -Compress -Depth 4
+            @{ playing = $false; status = 'NoSession'; sources = @($availableSources); neteaseRunning = $neteaseRunning } | ConvertTo-Json -Compress -Depth 4
             Start-Sleep -Milliseconds 1200
             continue
         }
@@ -225,12 +243,14 @@ while ($true) {
             timelineAgeMs = [Math]::Floor($timelineAgeMs)
             sampledAtMs = $sampledAt.ToUnixTimeMilliseconds()
             sources = @($availableSources)
+            neteaseRunning = $neteaseRunning
         } | ConvertTo-Json -Compress -Depth 4
     }
     catch {
         @{
             playing = $false
             status = 'Error'
+            neteaseRunning = Test-NeteaseRunning
             errorStage = $stage
             error = $_.Exception.Message
         } | ConvertTo-Json -Compress

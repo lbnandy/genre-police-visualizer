@@ -45,6 +45,7 @@ export class AudioEngine extends EventTarget {
     this.outputSignature = '';
     this.deviceRestartTimer = 0;
     this.devicePollTimer = 0;
+    this.rhythmModelEnabled = true;
     this.installOutputDeviceMonitor();
   }
 
@@ -128,6 +129,20 @@ export class AudioEngine extends EventTarget {
     this.kickProfile = resolveKickProfile(theme);
   }
 
+  setRhythmModelEnabled(enabled) {
+    const next = enabled !== false;
+    if (next === this.rhythmModelEnabled) return;
+    this.rhythmModelEnabled = next;
+    if (!next) {
+      this.stopRhythmFeed();
+      this.setModelAssist({ type: 'disabled' });
+      return;
+    }
+    // Rebuild the capture graph once so the optional 22.05 kHz model branch
+    // is connected without disturbing the normal DSP path on later frames.
+    if (this.stream && this.status === 'live') this.start();
+  }
+
   setModelAssist(payload = {}) {
     if (payload.type === 'ready') {
       this.modelAssist = {
@@ -206,7 +221,8 @@ export class AudioEngine extends EventTarget {
       const source = this.context.createMediaStreamSource(stream);
       source.connect(this.analyser);
       source.connect(this.beatAnalyser);
-      try {
+      if (this.rhythmModelEnabled) {
+        try {
         // BeatNet was trained at 22.05 kHz. Both graphs consume the same
         // captured MediaStream, but Chromium resamples only the model branch.
         try {
@@ -235,20 +251,12 @@ export class AudioEngine extends EventTarget {
         this.rhythmSource.connect(this.rhythmWorklet);
         this.rhythmWorklet.connect(this.rhythmMute);
         this.rhythmMute.connect(this.rhythmContext.destination);
-      } catch (error) {
-        // DSP analysis remains fully operational when the optional model feed
-        // cannot be created on a particular Chromium/audio-driver build.
-        console.warn('Local rhythm model audio feed unavailable:', error);
-        this.rhythmSource?.disconnect();
-        this.rhythmWorklet?.disconnect();
-        this.rhythmMute?.disconnect();
-        if (this.rhythmContext && this.rhythmContext.state !== 'closed') {
-          this.rhythmContext.close().catch(() => {});
+        } catch (error) {
+          // DSP analysis remains fully operational when the optional model feed
+          // cannot be created on a particular Chromium/audio-driver build.
+          console.warn('Local rhythm model audio feed unavailable:', error);
+          this.stopRhythmFeed();
         }
-        this.rhythmContext = null;
-        this.rhythmSource = null;
-        this.rhythmWorklet = null;
-        this.rhythmMute = null;
       }
       this.status = 'live';
       this.captureStartedAt = performance.now();
@@ -272,22 +280,26 @@ export class AudioEngine extends EventTarget {
     const stream = this.stream;
     this.stream = null;
     if (stream) stream.getTracks().forEach((track) => track.stop());
-    this.rhythmSource?.disconnect();
-    this.rhythmWorklet?.disconnect();
-    this.rhythmMute?.disconnect();
-    if (this.rhythmContext && this.rhythmContext.state !== 'closed') this.rhythmContext.close().catch(() => {});
+    this.stopRhythmFeed();
     if (this.context && this.context.state !== 'closed') this.context.close().catch(() => {});
     this.context = null;
-    this.rhythmContext = null;
-    this.rhythmSource = null;
     this.analyser = null;
     this.beatAnalyser = null;
-    this.rhythmWorklet = null;
-    this.rhythmMute = null;
     this.frequency = null;
     this.beatFrequency = null;
     this.waveform = null;
     this.beatPrevious = null;
+  }
+
+  stopRhythmFeed() {
+    this.rhythmSource?.disconnect();
+    this.rhythmWorklet?.disconnect();
+    this.rhythmMute?.disconnect();
+    if (this.rhythmContext && this.rhythmContext.state !== 'closed') this.rhythmContext.close().catch(() => {});
+    this.rhythmContext = null;
+    this.rhythmSource = null;
+    this.rhythmWorklet = null;
+    this.rhythmMute = null;
   }
 
   rangeAverage(fromHz, toHz) {

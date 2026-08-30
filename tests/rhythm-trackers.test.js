@@ -12,6 +12,14 @@ test('shared impact post-effects scale continuously and differ by genre family',
   assert.ok(medium.amount > quiet.amount && strong.amount > medium.amount);
   assert.ok(strong.slice > strong.blur);
 
+  const bilibili = resolveImpactFx(
+    { mode: 'bilibili' },
+    { rhythmPulse: 1, rhythmNow: true, rhythmStrength: 1 }
+  );
+  assert.deepEqual(bilibili, {
+    amount: 0, bloom: 0, blur: 0, echo: 0, chroma: 0, slice: 0, exposure: 1, saturation: 1
+  });
+
   const futureBass = resolveImpactFx({ mode: 'future-bass' }, { rhythmPulse: 0.95 });
   assert.ok(futureBass.blur > strong.blur);
   assert.ok(futureBass.bloom > strong.bloom);
@@ -82,6 +90,28 @@ test('kawaii expression ignores isolated hits and opens only for sustained full-
   }
   assert.equal(state.excited, false);
   assert.ok(state.expression < 0.08);
+});
+
+test('kawaii expression responds to a sustained moderately energetic section', async () => {
+  const { KawaiiExpressionTracker } = await import('../renderer/kawaii-expression.mjs');
+  const tracker = new KawaiiExpressionTracker();
+  const moderate = {
+    bass: 0.58,
+    lowMid: 0.45,
+    mid: 0.42,
+    high: 0.25,
+    volume: 0.23,
+    relativeEnergy: 1.3,
+    drive: 0.58
+  };
+  let state;
+
+  for (let frame = 0; frame < 90; frame += 1) {
+    state = tracker.update(moderate, frame * 16.667, 1, true);
+  }
+
+  assert.equal(state.excited, true);
+  assert.ok(state.expression > 0.6);
 });
 
 test('tempo tracker locks through missed and double onsets', async () => {
@@ -285,6 +315,95 @@ test('AI beat confirms a weak hard-dance kick candidate without creating an empt
       peakActivation: 0.7,
       groove: 0.65,
       regularity: 0.6
+    }
+  });
+  assert.equal(result.rhythmNow, false);
+});
+
+test('a low-confidence model peak cannot bypass hard-dance local salience', async () => {
+  const { RhythmFusion } = await import('../renderer/rhythm-fusion.mjs');
+  const fusion = new RhythmFusion();
+  fusion.update({
+    now: 1000,
+    profileId: 'hard-dance',
+    model: { available: true, peakSerial: 0 },
+    candidateNow: true,
+    candidateAt: 970,
+    candidateImpact: 0.43,
+    rhythmEvidence: 0.29,
+    kickEvidence: 0.38,
+    bodyEvidence: 0.35,
+    presenceEvidence: 0.25,
+    airEvidence: 0.1
+  });
+  const result = fusion.update({
+    now: 1025,
+    profileId: 'hard-dance',
+    model: {
+      available: true,
+      peakSerial: 1,
+      peakAt: 1025,
+      peakActivation: 0.2,
+      groove: 0.58,
+      regularity: 0.5
+    }
+  });
+  assert.equal(result.rhythmNow, false);
+});
+
+test('a low-confidence model peak does not suppress a locally strong transient', async () => {
+  const { RhythmFusion } = await import('../renderer/rhythm-fusion.mjs');
+  const fusion = new RhythmFusion();
+  const result = fusion.update({
+    now: 1038,
+    profileId: 'hard-dance',
+    model: {
+      available: true,
+      peakSerial: 1,
+      peakAt: 1038,
+      peakActivation: 0.2,
+      groove: 0.2,
+      regularity: 0.1
+    },
+    candidateNow: true,
+    candidateAt: 1000,
+    candidateImpact: 0.72,
+    rhythmEvidence: 0.66,
+    kickEvidence: 0.68,
+    bodyEvidence: 0.7,
+    presenceEvidence: 0.42,
+    airEvidence: 0.08
+  });
+  assert.equal(result.rhythmNow, true);
+  assert.equal(result.source, 'dsp-soft');
+});
+
+test('a model peak outside the adaptive latency window does not claim an older transient', async () => {
+  const { RhythmFusion } = await import('../renderer/rhythm-fusion.mjs');
+  const fusion = new RhythmFusion();
+  fusion.update({
+    now: 1000,
+    profileId: 'hard-dance',
+    model: { available: true, peakSerial: 0 },
+    candidateNow: true,
+    candidateAt: 970,
+    candidateImpact: 0.5,
+    rhythmEvidence: 0.32,
+    kickEvidence: 0.42,
+    bodyEvidence: 0.4,
+    presenceEvidence: 0.28,
+    airEvidence: 0.08
+  });
+  const result = fusion.update({
+    now: 1135,
+    profileId: 'hard-dance',
+    model: {
+      available: true,
+      peakSerial: 1,
+      peakAt: 1135,
+      peakActivation: 0.72,
+      groove: 0.68,
+      regularity: 0.72
     }
   });
   assert.equal(result.rhythmNow, false);

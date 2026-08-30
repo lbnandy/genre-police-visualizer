@@ -8,18 +8,18 @@
 
 Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回放音频，尝试判断正在播放的音乐属于什么曲风，再切换可视化结构、背景、字体和动态表现。它不只是为不同曲风更换配色，而是尽量让不同类型的音乐拥有不同的视觉语言。
 
-当前为 `0.1.0` 测试版。设计现阶段以 EDM 为主，已经覆盖 20 多个主要曲风体系；其中一部分已经做了较细调整，其余内容仍会继续补充和修正。
+当前为 `0.2.0` 测试版。设计现阶段以 EDM 为主，已经覆盖 20 多个主要曲风体系；其中一部分已经做了较细调整，其余内容仍会继续补充和修正。
 
 ## 下载
 
 **[前往 Releases 下载 Windows 便携版](../../releases)**
 
 - 系统要求：Windows 10 或 Windows 11，64 位（x64）。
-- 下载 `Genre-Police-Visualizer-0.1.0-portable.exe` 后直接运行，无需安装。
+- 下载 `Genre-Police-Visualizer-0.2.0-portable.exe` 后直接运行，无需安装。
 - 不需要另外安装 Node.js、Python、PyTorch 或 AI 运行环境。
 - 建议同时下载 `SHA256SUMS.txt` 并核对文件校验值。
 
-`0.1.0` 尚未进行 Authenticode 代码签名，因此 Windows SmartScreen 可能显示“无法识别的发布者”。请只从本项目的 GitHub Releases 页面下载。
+`0.2.0` 尚未进行 Authenticode 代码签名，因此 Windows SmartScreen 可能显示“无法识别的发布者”。请只从本项目的 GitHub Releases 页面下载。
 
 ## 界面预览
 
@@ -31,6 +31,10 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 
 <p align="center">
   <a href="docs/screenshots/neurofunk-capsule.png"><img src="docs/screenshots/neurofunk-capsule.png" alt="Neurofunk 胶囊型界面" width="92%" /></a>
+</p>
+
+<p align="center">
+  <a href="docs/screenshots/synthwave-capsule.png"><img src="docs/screenshots/synthwave-capsule.png" alt="Synthwave 胶囊型界面" width="92%" /></a>
 </p>
 
 ### 海报型
@@ -45,14 +49,17 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 - **曲风视觉**：根据识别结果切换可视化结构、背景设计、字体、粒子和动态表现，而不只更换颜色。
 - **两种布局**：支持胶囊型与海报型；两种布局分别保存设置，并可使用曲风背景或与桌面壁纸融合的自适应背景。
 - **实时音频响应**：频谱、节奏、BPM、能量和冲击反馈由系统回放音频驱动；内置本地 BeatNet ONNX 模型辅助节拍判断。
-- **当前播放信息**：读取曲名、作者、专辑、封面、播放状态和进度，并提供上一首、播放/暂停、下一首控制。
+- **当前播放信息**：读取曲名、艺术家、专辑、封面、播放状态和进度，并提供上一首、播放/暂停、下一首控制。
+- **自定义曲风**：可按标签别名或艺术家补充本地识别规则，为自定义名称继承一种现有视觉效果，并可覆盖三种主题色。
 - **同步歌词**：支持歌词同步显示、单词或字符高亮，以及歌词翻译（如数据源可用）；可调整延迟或完全关闭歌词查询。
-- **桌面使用设置**：支持 70%–150% 等比缩放、标准/柔和动态、窗口位置记忆、媒体来源选择、鼠标穿透和无音乐时行为。
+- **桌面使用设置**：支持 50%–150% 等比缩放、标准/柔和动态、窗口位置记忆、媒体来源选择、鼠标穿透和无音乐时行为。
 - **多语言界面**：软件界面支持简体中文、English、日本語和한국어。
 
 ## 支持范围
 
 只要播放器向 Windows 发布系统媒体会话，Genre Police Visualizer 就可以读取它。Apple Music、Spotify、QQ 音乐、网易云音乐、酷狗、YouTube Music 和 Amazon Music 等播放器均可使用，但不同版本提供的封面、进度或曲风信息可能不完全一致。
+
+网易云音乐默认可能不会发布系统媒体会话；如果软件检测到网易云进程但没有媒体会话，会提示前往网易云音乐「设置 → 系统」，勾选「开启SMTC」。
 
 当前重点覆盖的曲风包括：
 
@@ -61,7 +68,7 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 - Pop、J-Pop、K-Pop、Rock、Metal、Hip-Hop、R&B
 - Jazz、Classical、Soundtrack、Country、Folk、Latin、Reggae 等常见大类
 
-曲风判断会综合播放器元数据、公开音乐目录、本地规则和用户修正。混合曲风、Remix、合集以及跨风格艺人仍可能判断不准，不能把显示结果视为绝对分类。
+曲风判断会综合播放器元数据、公开音乐目录、本地规则和用户修正。混合曲风、Remix、合集以及跨曲风艺术家仍可能判断不准，不能把显示结果视为绝对分类。
 
 ## 使用方法
 
@@ -76,7 +83,7 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 
 - 系统音频只在本机用于频谱和节奏分析，不会被录制、写入文件或上传。
 - 软件不包含遥测、广告 SDK、账号系统或自动崩溃上传。
-- 在线曲风查询和同步歌词可以分别关闭；开启时只会向说明中列出的服务发送匹配所需的曲名、作者、专辑和时长等信息，不会发送音频。
+- 在线曲风查询和同步歌词可以分别关闭；开启时只会向说明中列出的服务发送匹配所需的曲名、艺术家、专辑和时长等信息，不会发送音频。
 - 自适应背景只在本机读取窗口周围的低分辨率颜色统计，不保存屏幕截图。
 
 完整说明见 [隐私说明](docs/PRIVACY.md)。

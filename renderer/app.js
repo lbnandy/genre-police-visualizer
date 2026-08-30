@@ -23,8 +23,8 @@ const smoothstep = (edge0, edge1, value) => {
 };
 
 const UI_SCALE_BASE = 1.2;
-const UI_SCALES = [0.84, 0.96, 1.08, 1.2, 1.32, 1.44, 1.56, 1.68, 1.8];
-const DEFAULT_UI_SCALE = 1.44;
+const UI_SCALES = [0.6, 0.72, 0.84, 0.96, 1.08, 1.2, 1.32, 1.44, 1.56, 1.68, 1.8];
+const DEFAULT_UI_SCALE = 1.2;
 
 const canvas = document.querySelector('#visualizer');
 const appShell = document.querySelector('#app');
@@ -32,6 +32,7 @@ const themedBackdrop = document.querySelector('#poster-backdrop');
 const previousThemedBackdrop = document.querySelector('#themed-backdrop-previous');
 const hud = document.querySelector('#hud');
 const artwork = document.querySelector('#artwork');
+const monogram = document.querySelector('#monogram');
 const parentGenre = document.querySelector('#parent-genre');
 const genreLabel = document.querySelector('#genre');
 const genreNote = document.querySelector('#genre-note');
@@ -45,6 +46,8 @@ const settings = document.querySelector('#settings');
 const settingsScroll = document.querySelector('.settings-scroll');
 const settingsScrollbar = document.querySelector('#settings-scrollbar');
 const settingsScrollbarThumb = document.querySelector('#settings-scrollbar-thumb');
+const settingsTabs = [...document.querySelectorAll('.settings-tab')];
+const settingsPanes = [...document.querySelectorAll('.settings-pane')];
 const lastFmInput = document.querySelector('#lastfm-key');
 const discogsTokenInput = document.querySelector('#discogs-token');
 const appVersionLabel = document.querySelector('#app-version');
@@ -54,6 +57,14 @@ const genreCorrectionTrack = document.querySelector('#genre-correction-track');
 const genreCorrectionState = document.querySelector('#genre-correction-state');
 const genreCorrectionSave = document.querySelector('#genre-correction-save');
 const genreCorrectionClear = document.querySelector('#genre-correction-clear');
+const genreArtistPanel = document.querySelector('#genre-artist-panel');
+const genreArtistGenre = document.querySelector('#genre-artist-genre');
+const genreArtistGenreValue = document.querySelector('#genre-artist-genre-value');
+const genreArtistGenreMenu = document.querySelector('#genre-artist-genre-menu');
+const genreArtistName = document.querySelector('#genre-artist-name');
+const genreArtistAdd = document.querySelector('#genre-artist-add');
+const genreArtistState = document.querySelector('#genre-artist-state');
+const genreArtistList = document.querySelector('#genre-artist-list');
 const uiScaleButton = document.querySelector('#ui-scale-button');
 const uiScaleValue = document.querySelector('#ui-scale-value');
 const uiScaleMenu = document.querySelector('#ui-scale-menu');
@@ -64,10 +75,46 @@ const motionModeOptions = [...document.querySelectorAll('.motion-mode-option')];
 const motionModeGroup = document.querySelector('#motion-mode-group');
 const idleBehaviorOptions = [...document.querySelectorAll('.idle-behavior-option')];
 const idleBehaviorGroup = document.querySelector('#idle-behavior-group');
+const idleFrameLimitToggle = document.querySelector('#idle-frame-limit-toggle');
+const rhythmModelToggle = document.querySelector('#rhythm-model-toggle');
 const mediaSourceButton = document.querySelector('#media-source-button');
 const mediaSourceValue = document.querySelector('#media-source-value');
 const mediaSourceMenu = document.querySelector('#media-source-menu');
 const mediaSourceIgnoreList = document.querySelector('#media-source-ignore-list');
+const neteaseSmtcHint = document.querySelector('#netease-smtc-hint');
+const neteaseSmtcToast = document.querySelector('#netease-smtc-toast');
+const neteaseSmtcToastClose = document.querySelector('#netease-smtc-toast-close');
+const customGenreName = document.querySelector('#custom-genre-name');
+const customGenreVisual = document.querySelector('#custom-genre-visual');
+const customGenreVisualValue = document.querySelector('#custom-genre-visual-value');
+const customGenreVisualMenu = document.querySelector('#custom-genre-visual-menu');
+const customGenreColorsToggle = document.querySelector('#custom-genre-colors-toggle');
+const customGenreColorPalette = document.querySelector('#custom-genre-color-palette');
+const customGenreAccent = document.querySelector('#custom-genre-accent');
+const customGenreAccentValue = document.querySelector('#custom-genre-accent-value');
+const customGenreAccent2 = document.querySelector('#custom-genre-accent-2');
+const customGenreAccent2Value = document.querySelector('#custom-genre-accent-2-value');
+const customGenreHot = document.querySelector('#custom-genre-hot');
+const customGenreHotValue = document.querySelector('#custom-genre-hot-value');
+const customGenreColorEditor = document.querySelector('#custom-genre-color-editor');
+const customGenreColorEditorTitle = document.querySelector('#custom-genre-color-editor-title');
+const customGenreColorEditorClose = document.querySelector('#custom-genre-color-editor-close');
+const customGenreColorField = document.querySelector('#custom-genre-color-field');
+const customGenreColorFieldThumb = document.querySelector('#custom-genre-color-field-thumb');
+const customGenreColorHue = document.querySelector('#custom-genre-color-hue');
+const customGenreColorHex = document.querySelector('#custom-genre-color-hex');
+const customGenreColorsReset = document.querySelector('#custom-genre-colors-reset');
+const customGenreAliases = document.querySelector('#custom-genre-aliases');
+const customGenreArtists = document.querySelector('#custom-genre-artists');
+const customGenreSave = document.querySelector('#custom-genre-save');
+const customGenreCancel = document.querySelector('#custom-genre-cancel');
+const customGenreState = document.querySelector('#custom-genre-state');
+const customGenreList = document.querySelector('#custom-genre-list');
+const customGenrePanel = document.querySelector('#custom-genre-panel');
+const settingsSourcesPanel = document.querySelector('#settings-sources-panel');
+const genreDataExport = document.querySelector('#genre-data-export');
+const genreDataImport = document.querySelector('#genre-data-import');
+const genreDataState = document.querySelector('#genre-data-state');
 const capsuleBackgroundSetting = document.querySelector('#capsule-background-setting');
 const posterBackgroundSetting = document.querySelector('#poster-background-setting');
 const capsuleEnglishFontSetting = document.querySelector('#capsule-english-font-setting');
@@ -106,6 +153,7 @@ const lyricTranslationSetting = document.querySelector('#lyric-translation-setti
 const lyricDelaySetting = document.querySelector('#lyric-delay-setting');
 const onlineLookupToggle = document.querySelector('#online-lookup-toggle');
 const alwaysOnTopToggle = document.querySelector('#always-on-top-toggle');
+const mousePassthroughToggle = document.querySelector('#mouse-passthrough-toggle');
 const launchAtLoginToggle = document.querySelector('#launch-at-login-toggle');
 const credentialsSave = document.querySelector('#credentials-save');
 const credentialsState = document.querySelector('#credentials-state');
@@ -166,10 +214,20 @@ let capsuleThemedBackground = true;
 let posterThemedBackground = true;
 let motionMode = 'standard';
 let idleBehavior = 'keep';
+let idleFrameLimitEnabled = true;
+let rhythmModelEnabled = true;
 let preferredMediaSource = '';
 let ignoredMediaSources = [];
 let availableMediaSources = [];
 let currentMediaSource = '';
+let detectedMediaPlayers = { neteaseRunning: false, neteaseSmtcAvailable: false };
+let neteaseSmtcToastShown = false;
+let customGenres = [];
+let genreArtistRules = [];
+let editingCustomGenreId = '';
+let pendingCustomGenreDeleteId = '';
+let activeCustomGenreColorControl = null;
+let customGenreColorHsv = { h: 0, s: 0, v: 1 };
 let latestRhythmModelState = { type: 'unavailable' };
 const tr = (key, variables) => i18n?.translate(uiLanguage, key, variables) || key;
 const trMain = (key, variables) => i18n?.translate('en', key, variables) || key;
@@ -215,6 +273,7 @@ let mediaControlSerial = 0;
 let optimisticPlaybackIcon = null;
 let genreOptions = [];
 let settingsScrollbarDrag = null;
+let activeSettingsPane = 'appearance';
 let riffPluckAt = -Infinity;
 let riffPluckStrength = 0;
 let riffPluckDirection = 1;
@@ -224,6 +283,8 @@ let lyricAnimatedUnits = [];
 let lyricReflowAnimation = null;
 let lyricRevealAnimation = null;
 let activeLyricMotionUnit = null;
+let titlePanAnimation = null;
+let titlePanSignature = '';
 let lyricTextWidth = 1;
 let lyricTranslationWidth = 1;
 let lyricFadeWidth = 14;
@@ -233,6 +294,7 @@ let lyricTranslationEnabled = true;
 let lyricSweepEnabled = true;
 let onlineGenreLookupEnabled = true;
 let alwaysOnTopEnabled = false;
+let mousePassthroughEnabled = false;
 let launchAtLoginEnabled = false;
 let lyricDelayMs = 0;
 let playbackClock = {
@@ -711,6 +773,30 @@ function setIdleBehavior(value, { persist = false } = {}) {
   if (persist) window.genrePolice.setConfig({ idleBehavior }).catch(() => {});
 }
 
+function setIdleFrameLimitEnabled(enabled, { persist = false } = {}) {
+  idleFrameLimitEnabled = enabled !== false;
+  idleFrameLimitToggle.setAttribute('aria-checked', String(idleFrameLimitEnabled));
+  lastAnimationWorkAt = 0;
+  if (persist) window.genrePolice.setConfig({ idleFrameLimitEnabled }).catch(() => {});
+}
+
+function setRhythmModelEnabled(enabled, { persist = false } = {}) {
+  rhythmModelEnabled = enabled !== false;
+  rhythmModelToggle.setAttribute('aria-checked', String(rhythmModelEnabled));
+  rhythmModelToggle.title = rhythmModelEnabled
+    ? tr('settings.rhythmModelOn')
+    : tr('settings.rhythmModelOff');
+  audio.setRhythmModelEnabled(rhythmModelEnabled);
+  updateDiagnosticsUi();
+  if (persist) {
+    window.genrePolice.setConfig({ rhythmModelEnabled }).then((result) => {
+      if (typeof result?.rhythmModelEnabled === 'boolean') {
+        setRhythmModelEnabled(result.rhythmModelEnabled);
+      }
+    }).catch(() => setRhythmModelEnabled(!rhythmModelEnabled));
+  }
+}
+
 function mediaSourceName(source) {
   const value = String(source || '').trim();
   if (!value) return tr('settings.mediaSourceAuto');
@@ -772,7 +858,26 @@ function renderMediaSourceSettings() {
       mediaSourceIgnoreList.append(row);
     }
   }
+  const missingNeteaseSmtc = detectedMediaPlayers.neteaseRunning
+    && !detectedMediaPlayers.neteaseSmtcAvailable;
+  neteaseSmtcHint.hidden = !missingNeteaseSmtc;
+  updateNeteaseSmtcToast(missingNeteaseSmtc);
   updateDiagnosticsUi();
+}
+
+function dismissNeteaseSmtcToast() {
+  neteaseSmtcToast.hidden = true;
+}
+
+function updateNeteaseSmtcToast(missingNeteaseSmtc) {
+  if (!missingNeteaseSmtc) {
+    dismissNeteaseSmtcToast();
+    return;
+  }
+  if (neteaseSmtcToastShown) return;
+  neteaseSmtcToastShown = true;
+  if (!settings.hidden) return;
+  neteaseSmtcToast.hidden = false;
 }
 
 function setMediaSources(payload = {}) {
@@ -780,7 +885,430 @@ function setMediaSources(payload = {}) {
   if (typeof payload.currentSource === 'string') currentMediaSource = payload.currentSource;
   if (typeof payload.preferredSource === 'string') preferredMediaSource = payload.preferredSource;
   if (Array.isArray(payload.ignoredSources)) ignoredMediaSources = payload.ignoredSources.filter(Boolean);
+  if (payload.detectedPlayers && typeof payload.detectedPlayers === 'object') {
+    detectedMediaPlayers = {
+      neteaseRunning: payload.detectedPlayers.neteaseRunning === true,
+      neteaseSmtcAvailable: payload.detectedPlayers.neteaseSmtcAvailable === true
+    };
+  }
   renderMediaSourceSettings();
+  renderLocalizedHud();
+}
+
+function splitCustomGenreTerms(value) {
+  const seen = new Set();
+  return String(value || '')
+    .split(/[,，、;；\n]+/u)
+    .map((item) => item.trim().replace(/\s+/g, ' '))
+    .filter((item) => {
+      const key = item.toLocaleLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function customGenreOptionLabel(option) {
+  return option?.parent ? `${option.label} · ${option.parent}` : option?.label || '';
+}
+
+function genreArtistKey(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .toLocaleLowerCase()
+    .replace(/[\p{P}\p{S}\s]+/gu, ' ')
+    .trim();
+}
+
+function genreArtistOptions() {
+  return [...genreArtistGenreMenu.querySelectorAll('.genre-artist-genre-option')];
+}
+
+function renderGenreArtistOptions(selectedId = genreArtistGenre.value) {
+  const selected = genreOptions.find((genre) => genre.id === selectedId && genre.id !== 'unknown') || null;
+  genreArtistGenreMenu.replaceChildren();
+  for (const genre of genreOptions.filter((option) => option.id !== 'unknown')) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'genre-artist-genre-option';
+    option.dataset.genreId = genre.id;
+    option.textContent = customGenreOptionLabel(genre);
+    option.title = option.textContent;
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(genre.id === selected?.id));
+    genreArtistGenreMenu.append(option);
+  }
+  genreArtistGenre.value = selected?.id || '';
+  genreArtistGenreValue.textContent = selected
+    ? customGenreOptionLabel(selected)
+    : tr('settings.genreArtistChooseGenre');
+}
+
+function renderGenreArtistRules() {
+  renderGenreArtistOptions(genreArtistGenre.value);
+  genreArtistList.replaceChildren();
+  if (!genreArtistRules.length) {
+    const empty = document.createElement('small');
+    empty.className = 'custom-genre-empty';
+    empty.textContent = tr('settings.genreArtistEmpty');
+    genreArtistList.append(empty);
+  }
+  genreArtistRules.forEach((rule, index) => {
+    const row = document.createElement('div');
+    row.className = 'custom-genre-item genre-artist-item';
+    row.dataset.ruleIndex = String(index);
+    const copy = document.createElement('div');
+    const artist = document.createElement('strong');
+    artist.textContent = rule.artist;
+    const genre = genreOptions.find((option) => option.id === rule.genreId);
+    const summary = document.createElement('small');
+    summary.textContent = genre?.label || rule.genreId;
+    copy.append(artist, summary);
+    const actions = document.createElement('div');
+    actions.className = 'custom-genre-item-actions';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.dataset.action = 'delete';
+    remove.title = tr('actions.delete');
+    remove.setAttribute('aria-label', `${tr('actions.delete')} ${rule.artist}`);
+    remove.innerHTML = customGenreIcon('M4.5 5.5h11M8 5.5V3.8h4v1.7M6 5.5l.7 10h6.6l.7-10M8.5 8v5M11.5 8v5');
+    actions.append(remove);
+    row.append(copy, actions);
+    genreArtistList.append(row);
+  });
+  requestAnimationFrame(updateSettingsScrollbar);
+}
+
+async function persistGenreArtistRules(nextRules) {
+  const result = await window.genrePolice.setConfig({ genreArtistRules: nextRules });
+  if (!result?.ok) throw new Error('genre artist rule save failed');
+  genreArtistRules = Array.isArray(result.genreArtistRules) ? result.genreArtistRules : nextRules;
+  renderGenreArtistRules();
+}
+
+function customGenreColorsEnabled() {
+  return customGenreColorsToggle.getAttribute('aria-checked') === 'true';
+}
+
+function selectedCustomGenreThemeColors() {
+  const selected = genreOptions.find((genre) => genre.id === customGenreVisual.value);
+  return {
+    accent: selected?.accent || '#67f7ff',
+    accent2: selected?.accent2 || '#8d76ff',
+    hot: selected?.hot || '#ffffff'
+  };
+}
+
+function normalizeCustomColorHex(value) {
+  const match = String(value || '').trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!match) return '';
+  const hex = match[1].length === 3
+    ? [...match[1]].map((digit) => `${digit}${digit}`).join('')
+    : match[1];
+  return `#${hex.toLowerCase()}`;
+}
+
+function hexToHsv(value) {
+  const hex = normalizeCustomColorHex(value) || '#000000';
+  const red = Number.parseInt(hex.slice(1, 3), 16) / 255;
+  const green = Number.parseInt(hex.slice(3, 5), 16) / 255;
+  const blue = Number.parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  let hue = 0;
+  if (delta) {
+    if (max === red) hue = 60 * (((green - blue) / delta) % 6);
+    else if (max === green) hue = 60 * ((blue - red) / delta + 2);
+    else hue = 60 * ((red - green) / delta + 4);
+  }
+  return {
+    h: (hue + 360) % 360,
+    s: max ? delta / max : 0,
+    v: max
+  };
+}
+
+function hsvToHex({ h, s, v }) {
+  const hue = ((Number(h) % 360) + 360) % 360;
+  const saturation = clamp(Number(s));
+  const value = clamp(Number(v));
+  const chroma = value * saturation;
+  const section = hue / 60;
+  const x = chroma * (1 - Math.abs((section % 2) - 1));
+  const offset = value - chroma;
+  const channels = section < 1 ? [chroma, x, 0]
+    : section < 2 ? [x, chroma, 0]
+      : section < 3 ? [0, chroma, x]
+        : section < 4 ? [0, x, chroma]
+          : section < 5 ? [x, 0, chroma]
+            : [chroma, 0, x];
+  return `#${channels.map((channel) => Math.round((channel + offset) * 255)
+    .toString(16).padStart(2, '0')).join('')}`;
+}
+
+function customGenreColorOutput(control) {
+  if (control === customGenreAccent) return customGenreAccentValue;
+  if (control === customGenreAccent2) return customGenreAccent2Value;
+  return customGenreHotValue;
+}
+
+function setCustomGenreColorValue(control, output, value, { syncEditor = true } = {}) {
+  const color = normalizeCustomColorHex(value);
+  if (!color) return false;
+  control.value = color;
+  control.querySelector('.custom-genre-color-swatch')?.style.setProperty('--swatch-color', color);
+  control.setAttribute('aria-label', `${tr(control.dataset.labelKey)} ${color}`);
+  output.value = color;
+  output.textContent = color;
+  if (syncEditor && activeCustomGenreColorControl === control) {
+    customGenreColorHsv = hexToHsv(color);
+    syncCustomGenreColorEditor();
+  }
+  return true;
+}
+
+function setCustomGenreColorInputs(colors = selectedCustomGenreThemeColors()) {
+  const values = [
+    [customGenreAccent, customGenreAccentValue, colors.accent],
+    [customGenreAccent2, customGenreAccent2Value, colors.accent2],
+    [customGenreHot, customGenreHotValue, colors.hot]
+  ];
+  for (const [input, output, value] of values) setCustomGenreColorValue(input, output, value);
+}
+
+function updateCustomGenreColorLabels() {
+  for (const control of [customGenreAccent, customGenreAccent2, customGenreHot]) {
+    control.setAttribute('aria-label', `${tr(control.dataset.labelKey)} ${control.value}`);
+  }
+  if (activeCustomGenreColorControl) {
+    customGenreColorEditorTitle.textContent = tr(activeCustomGenreColorControl.dataset.labelKey);
+  }
+}
+
+function syncCustomGenreColorEditor() {
+  if (!activeCustomGenreColorControl) return;
+  const { h, s, v } = customGenreColorHsv;
+  customGenreColorEditor.style.setProperty('--picker-hue-color', `hsl(${h.toFixed(2)} 100% 50%)`);
+  customGenreColorFieldThumb.style.left = `clamp(4px, ${(s * 100).toFixed(2)}%, calc(100% - 4px))`;
+  customGenreColorFieldThumb.style.top = `clamp(4px, ${((1 - v) * 100).toFixed(2)}%, calc(100% - 4px))`;
+  customGenreColorField.setAttribute('aria-valuenow', String(Math.round(v * 100)));
+  customGenreColorField.setAttribute('aria-valuetext', `${Math.round(s * 100)}%, ${Math.round(v * 100)}%`);
+  customGenreColorHue.value = String(Math.round(h));
+  customGenreColorHex.value = activeCustomGenreColorControl.value;
+}
+
+function updateActiveCustomGenreColor() {
+  if (!activeCustomGenreColorControl) return;
+  setCustomGenreColorValue(
+    activeCustomGenreColorControl,
+    customGenreColorOutput(activeCustomGenreColorControl),
+    hsvToHex(customGenreColorHsv),
+    { syncEditor: false }
+  );
+  syncCustomGenreColorEditor();
+}
+
+function closeCustomGenreColorEditor({ focus = false } = {}) {
+  const previous = activeCustomGenreColorControl;
+  activeCustomGenreColorControl = null;
+  customGenreColorEditor.hidden = true;
+  for (const control of [customGenreAccent, customGenreAccent2, customGenreHot]) {
+    control.setAttribute('aria-expanded', 'false');
+  }
+  requestAnimationFrame(updateSettingsScrollbar);
+  if (focus) previous?.focus();
+}
+
+function openCustomGenreColorEditor(control) {
+  if (activeCustomGenreColorControl === control && !customGenreColorEditor.hidden) {
+    closeCustomGenreColorEditor({ focus: true });
+    return;
+  }
+  activeCustomGenreColorControl = control;
+  customGenreColorHsv = hexToHsv(control.value);
+  for (const item of [customGenreAccent, customGenreAccent2, customGenreHot]) {
+    item.setAttribute('aria-expanded', String(item === control));
+  }
+  customGenreColorEditorTitle.textContent = tr(control.dataset.labelKey);
+  customGenreColorEditor.hidden = false;
+  syncCustomGenreColorEditor();
+  requestAnimationFrame(() => {
+    updateSettingsScrollbar();
+    customGenreColorEditor.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
+
+function setCustomGenreColorsEnabled(enabled, { restoreDefaults = false } = {}) {
+  const active = Boolean(enabled);
+  if (!active) closeCustomGenreColorEditor();
+  if (restoreDefaults) setCustomGenreColorInputs();
+  customGenreColorsToggle.setAttribute('aria-checked', String(active));
+  customGenreColorPalette.hidden = !active;
+  requestAnimationFrame(updateSettingsScrollbar);
+}
+
+function customGenreColorOverrides() {
+  if (!customGenreColorsEnabled()) return null;
+  return {
+    accent: customGenreAccent.value,
+    accent2: customGenreAccent2.value,
+    hot: customGenreHot.value
+  };
+}
+
+function renderCustomGenreVisualOptions(selectedId = customGenreVisual.value) {
+  customGenreVisualMenu.replaceChildren();
+  const preferred = genreOptions.some((genre) => genre.id === selectedId)
+    ? selectedId
+    : genreOptions.some((genre) => genre.id === 'electronic')
+      ? 'electronic'
+      : genreOptions[0]?.id || '';
+  for (const genre of genreOptions) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'custom-genre-visual-option';
+    option.dataset.genreId = genre.id;
+    option.textContent = customGenreOptionLabel(genre);
+    option.title = option.textContent;
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(genre.id === preferred));
+    customGenreVisualMenu.append(option);
+  }
+  customGenreVisual.value = preferred;
+  customGenreVisualValue.textContent = customGenreOptionLabel(
+    genreOptions.find((genre) => genre.id === preferred)
+  );
+  if (!customGenreColorsEnabled()) setCustomGenreColorInputs();
+}
+
+function customGenreIcon(path) {
+  return `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="${path}" /></svg>`;
+}
+
+function renderCustomGenres() {
+  updateCustomGenreColorLabels();
+  renderCustomGenreVisualOptions(customGenreVisual.value);
+  customGenreList.replaceChildren();
+  if (!customGenres.length) {
+    const empty = document.createElement('small');
+    empty.className = 'custom-genre-empty';
+    empty.textContent = tr('settings.customGenreEmpty');
+    customGenreList.append(empty);
+  }
+  for (const rule of customGenres) {
+    const row = document.createElement('div');
+    row.className = 'custom-genre-item';
+    row.dataset.ruleId = rule.id;
+    const copy = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = rule.name;
+    const base = genreOptions.find((genre) => genre.id === rule.baseGenreId);
+    const summary = document.createElement('small');
+    summary.textContent = tr('settings.customGenreRuleSummary', {
+      visual: base?.label || rule.baseGenreId,
+      aliases: rule.aliases.length,
+      artists: rule.artists.length
+    });
+    const detail = document.createElement('div');
+    detail.className = 'custom-genre-item-detail';
+    detail.append(summary);
+    if (rule.colors) {
+      const palette = document.createElement('span');
+      palette.className = 'custom-genre-item-palette';
+      palette.setAttribute('aria-label', tr('settings.customGenreColors'));
+      for (const color of [rule.colors.accent, rule.colors.accent2, rule.colors.hot]) {
+        const swatch = document.createElement('i');
+        swatch.style.background = color;
+        palette.append(swatch);
+      }
+      detail.append(palette);
+    }
+    copy.append(name, detail);
+    const actions = document.createElement('div');
+    actions.className = 'custom-genre-item-actions';
+    if (pendingCustomGenreDeleteId === rule.id) {
+      actions.classList.add('is-confirming');
+      const confirmDelete = document.createElement('button');
+      confirmDelete.type = 'button';
+      confirmDelete.dataset.action = 'confirm-delete';
+      confirmDelete.textContent = tr('actions.delete');
+      confirmDelete.setAttribute('aria-label', `${tr('actions.delete')} ${rule.name}`);
+      const cancelDelete = document.createElement('button');
+      cancelDelete.type = 'button';
+      cancelDelete.dataset.action = 'cancel-delete';
+      cancelDelete.textContent = tr('actions.cancel');
+      actions.append(confirmDelete, cancelDelete);
+    } else {
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.dataset.action = 'edit';
+      edit.title = tr('actions.edit');
+      edit.setAttribute('aria-label', `${tr('actions.edit')} ${rule.name}`);
+      edit.innerHTML = customGenreIcon('M4 14.8 4.7 11 12.9 2.8a1.4 1.4 0 0 1 2 0l2.3 2.3a1.4 1.4 0 0 1 0 2L9 15.3 5.2 16zM11.7 4l4.3 4.3');
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.dataset.action = 'delete';
+      remove.title = tr('actions.delete');
+      remove.setAttribute('aria-label', `${tr('actions.delete')} ${rule.name}`);
+      remove.innerHTML = customGenreIcon('M4.5 5.5h11M8 5.5V3.8h4v1.7M6 5.5l.7 10h6.6l.7-10M8.5 8v5M11.5 8v5');
+      actions.append(edit, remove);
+    }
+    row.append(copy, actions);
+    customGenreList.append(row);
+  }
+  requestAnimationFrame(updateSettingsScrollbar);
+}
+
+function resetCustomGenreEditor({ clearState = false } = {}) {
+  editingCustomGenreId = '';
+  customGenreName.value = '';
+  customGenreAliases.value = '';
+  customGenreArtists.value = '';
+  renderCustomGenreVisualOptions('electronic');
+  setCustomGenreColorsEnabled(false, { restoreDefaults: true });
+  customGenreSave.textContent = tr('actions.addCustomGenre');
+  customGenreCancel.hidden = true;
+  if (clearState) customGenreState.textContent = '';
+}
+
+function editCustomGenre(rule) {
+  customGenrePanel.open = true;
+  editingCustomGenreId = rule.id;
+  customGenreName.value = rule.name;
+  customGenreAliases.value = rule.aliases.join(', ');
+  customGenreArtists.value = rule.artists.join(', ');
+  renderCustomGenreVisualOptions(rule.baseGenreId);
+  if (rule.colors) {
+    setCustomGenreColorInputs(rule.colors);
+    setCustomGenreColorsEnabled(true);
+  } else {
+    setCustomGenreColorsEnabled(false, { restoreDefaults: true });
+  }
+  customGenreSave.textContent = tr('actions.updateCustomGenre');
+  customGenreCancel.hidden = false;
+  customGenreState.textContent = '';
+  requestAnimationFrame(() => {
+    if (settingsScroll) {
+      const top = settingsScroll.scrollTop
+        + customGenrePanel.getBoundingClientRect().top
+        - settingsScroll.getBoundingClientRect().top
+        - 28;
+      settingsScroll.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }
+    customGenreName.focus({ preventScroll: true });
+    updateSettingsScrollbar();
+  });
+}
+
+async function persistCustomGenres(nextRules) {
+  const result = await window.genrePolice.setConfig({ customGenres: nextRules });
+  if (!result?.ok) throw new Error('custom genre save failed');
+  customGenres = Array.isArray(result.customGenres) ? result.customGenres : nextRules;
+  renderCustomGenres();
+  if (document.activeElement === genreCorrectionInput) {
+    renderGenreCorrectionSuggestions(genreCorrectionInput.value);
+  }
 }
 
 function mediaSourceOptions() {
@@ -792,6 +1320,8 @@ function setMediaSourceMenuOpen(open, { focus = false } = {}) {
   if (nextOpen) {
     setScaleMenuOpen(false);
     setLanguageMenuOpen(false);
+    setCustomGenreVisualMenuOpen(false);
+    setGenreArtistMenuOpen(false);
   }
   mediaSourceMenu.hidden = !nextOpen;
   mediaSourceButton.setAttribute('aria-expanded', String(nextOpen));
@@ -809,6 +1339,69 @@ function chooseMediaSource(source) {
   mediaSourceButton.focus();
 }
 
+function customGenreVisualOptions() {
+  return [...customGenreVisualMenu.querySelectorAll('.custom-genre-visual-option')];
+}
+
+function setGenreArtistMenuOpen(open, { focus = false } = {}) {
+  const nextOpen = Boolean(open);
+  if (nextOpen) {
+    setScaleMenuOpen(false);
+    setLanguageMenuOpen(false);
+    setMediaSourceMenuOpen(false);
+    setCustomGenreVisualMenuOpen(false);
+  }
+  genreArtistGenreMenu.hidden = !nextOpen;
+  genreArtistGenre.setAttribute('aria-expanded', String(nextOpen));
+  if (!nextOpen || !focus) return;
+  const options = genreArtistOptions();
+  const selected = options.find((option) => option.getAttribute('aria-selected') === 'true') || options[0];
+  selected?.focus();
+  selected?.scrollIntoView({ block: 'nearest' });
+}
+
+function chooseGenreArtistGenre(genreId) {
+  const selected = genreOptions.find((genre) => genre.id === genreId && genre.id !== 'unknown');
+  if (!selected) return;
+  genreArtistGenre.value = selected.id;
+  genreArtistGenreValue.textContent = customGenreOptionLabel(selected);
+  genreArtistOptions().forEach((option) => {
+    option.setAttribute('aria-selected', String(option.dataset.genreId === selected.id));
+  });
+  setGenreArtistMenuOpen(false);
+  genreArtistGenre.focus();
+}
+
+function setCustomGenreVisualMenuOpen(open, { focus = false } = {}) {
+  const nextOpen = Boolean(open);
+  if (nextOpen) {
+    setScaleMenuOpen(false);
+    setLanguageMenuOpen(false);
+    setMediaSourceMenuOpen(false);
+    setGenreArtistMenuOpen(false);
+  }
+  customGenreVisualMenu.hidden = !nextOpen;
+  customGenreVisual.setAttribute('aria-expanded', String(nextOpen));
+  if (!nextOpen || !focus) return;
+  const options = customGenreVisualOptions();
+  const selected = options.find((option) => option.getAttribute('aria-selected') === 'true') || options[0];
+  selected?.focus();
+  selected?.scrollIntoView({ block: 'nearest' });
+}
+
+function chooseCustomGenreVisual(genreId) {
+  const selected = genreOptions.find((genre) => genre.id === genreId);
+  if (!selected) return;
+  customGenreVisual.value = selected.id;
+  customGenreVisualValue.textContent = customGenreOptionLabel(selected);
+  customGenreVisualOptions().forEach((option) => {
+    option.setAttribute('aria-selected', String(option.dataset.genreId === selected.id));
+  });
+  if (!customGenreColorsEnabled()) setCustomGenreColorInputs();
+  setCustomGenreVisualMenuOpen(false);
+  customGenreVisual.focus();
+}
+
 function audioDiagnosticLabel() {
   if (audio.status === 'live') return tr('diagnostics.audioLive');
   if (audio.status === 'metadata-only') return tr('diagnostics.audioFallback');
@@ -817,6 +1410,9 @@ function audioDiagnosticLabel() {
 }
 
 function rhythmDiagnosticLabel() {
+  if (!rhythmModelEnabled || latestRhythmModelState?.type === 'disabled') {
+    return tr('diagnostics.rhythmDisabled');
+  }
   return ['ready', 'rhythm'].includes(latestRhythmModelState?.type)
     ? tr('diagnostics.rhythmReady')
     : tr('diagnostics.rhythmFallback');
@@ -827,7 +1423,24 @@ function updateDiagnosticsUi() {
   diagnosticsPlayer.title = currentMediaSource;
   diagnosticsAudio.textContent = audioDiagnosticLabel();
   diagnosticsRhythm.textContent = rhythmDiagnosticLabel();
-  diagnosticsGenre.textContent = currentMetadata?.genreSource || tr('diagnostics.none');
+  const evidence = currentMetadata?.genreEvidence || null;
+  let genreEvidenceLabel = currentMetadata?.genreSource || '';
+  if (evidence?.type === 'user-artist') {
+    genreEvidenceLabel = tr('diagnostics.genreUserArtist', { artist: evidence.artist });
+  } else if (evidence?.type === 'user-correction') {
+    genreEvidenceLabel = tr('diagnostics.genreUserCorrection');
+  } else if (evidence?.type === 'custom-genre') {
+    genreEvidenceLabel = tr('diagnostics.genreCustomRule', { rule: evidence.ruleName || '' });
+  } else {
+    const matched = String(evidence?.matched || currentMetadata?.genre?.matched || '')
+      .replace(/^[^:]+:/, '')
+      .trim();
+    if (matched && !genreEvidenceLabel.toLocaleLowerCase().includes(matched.toLocaleLowerCase())) {
+      genreEvidenceLabel = [genreEvidenceLabel, matched].filter(Boolean).join(' · ');
+    }
+  }
+  diagnosticsGenre.textContent = genreEvidenceLabel || tr('diagnostics.none');
+  diagnosticsGenre.title = genreEvidenceLabel;
   diagnosticsLyrics.textContent = currentMetadata?.lyrics?.source || tr('diagnostics.none');
 }
 
@@ -860,6 +1473,10 @@ function setLyricDelay(value, { persist = false } = {}) {
   lyricDelayInput.style.setProperty('--delay-end', `${Math.max(50, percentage).toFixed(2)}%`);
   lyricDelayReset.disabled = !lyricsEnabled || lyricDelayMs === 0;
   if (persist) window.genrePolice.setConfig({ lyricDelayMs }).catch(() => {});
+}
+
+function supportsLyricTranslationForUiLanguage() {
+  return uiLanguage === 'zh-CN';
 }
 
 function setLyricText(text, {
@@ -902,7 +1519,7 @@ function setLyricText(text, {
   lyricCurrentFillContent.append(fillFragment);
   const rawTranslation = String(translation || '').trim();
   const showTranslation = lyricTranslationEnabled
-    && uiLanguage === 'zh-CN'
+    && supportsLyricTranslationForUiLanguage()
     && Boolean(rawTranslation);
   const translationText = showTranslation ? rawTranslation : '';
   lyricTranslation.dataset.text = rawTranslation;
@@ -995,19 +1612,65 @@ function setLyricSweepProgress(value) {
 
 function updateTitleOverflow() {
   const text = titleLabel.querySelector('.title-scroll-text');
-  if (!text) return;
-  const distance = Math.max(0, text.scrollWidth - titleLabel.clientWidth);
-  titleLabel.classList.toggle('is-overflowing', distance > 3);
-  titleLabel.style.setProperty('--title-pan-distance', `${Math.ceil(distance)}px`);
-  titleLabel.style.setProperty('--title-pan-duration', `${Math.max(6.5, Math.min(16, 6.5 + distance / 24)).toFixed(2)}s`);
+  if (!text) {
+    titlePanAnimation?.cancel();
+    titlePanAnimation = null;
+    titlePanSignature = '';
+    return;
+  }
+  const titleStyle = getComputedStyle(titleLabel);
+  const horizontalPadding = (parseFloat(titleStyle.paddingLeft) || 0)
+    + (parseFloat(titleStyle.paddingRight) || 0);
+  const viewportWidth = Math.max(0, titleLabel.clientWidth - horizontalPadding);
+  const distance = Math.max(0, text.scrollWidth - viewportWidth);
+  const overflowing = distance > 3;
+  const roundedDistance = Math.ceil(distance);
+  const signature = `${text.textContent}::${Math.round(viewportWidth)}::${roundedDistance}`;
+  titleLabel.classList.toggle('is-overflowing', overflowing);
+  if (signature === titlePanSignature && Boolean(titlePanAnimation) === overflowing) return;
+
+  titlePanAnimation?.cancel();
+  titlePanAnimation = null;
+  titlePanSignature = signature;
+  text.style.transform = 'translateX(0)';
+  if (!overflowing) return;
+
+  const holdMs = 2000;
+  const travelMs = Math.max(2200, Math.min(9000, roundedDistance / 32 * 1000));
+  const duration = holdMs * 2 + travelMs * 2;
+  const leftHold = holdMs / duration;
+  const rightArrival = (holdMs + travelMs) / duration;
+  const rightHold = (holdMs * 2 + travelMs) / duration;
+  titlePanAnimation = text.animate([
+    { transform: 'translateX(0)', offset: 0 },
+    { transform: 'translateX(0)', offset: leftHold },
+    { transform: `translateX(-${roundedDistance}px)`, offset: rightArrival },
+    { transform: `translateX(-${roundedDistance}px)`, offset: rightHold },
+    { transform: 'translateX(0)', offset: 1 }
+  ], {
+    duration,
+    iterations: Infinity,
+    fill: 'both',
+    easing: 'linear'
+  });
 }
 
 function setTrackTitle(value) {
   const text = String(value || '');
+  const current = titleLabel.querySelector('.title-scroll-text');
+  if (current?.textContent === text) {
+    titleLabel.title = text;
+    requestAnimationFrame(updateTitleOverflow);
+    return text;
+  }
+  titlePanAnimation?.cancel();
+  titlePanAnimation = null;
+  titlePanSignature = '';
   const span = document.createElement('span');
   span.className = 'title-scroll-text';
   span.textContent = text;
   titleLabel.replaceChildren(span);
+  titleLabel.title = text;
   titleLabel.classList.remove('is-overflowing');
   requestAnimationFrame(updateTitleOverflow);
   document.fonts?.ready.then(() => requestAnimationFrame(updateTitleOverflow));
@@ -1106,6 +1769,7 @@ function applyTheme(theme) {
   document.body.dataset.family = currentTheme.family;
   document.body.dataset.mode = currentTheme.mode || 'electronic';
   document.body.dataset.genre = currentTheme.id;
+  monogram.textContent = mode === 'bilibili' ? 'VIDEO' : 'GP';
   setBackdropIdentity(themedBackdrop, currentTheme);
   visual.setTheme(currentTheme);
 }
@@ -1278,7 +1942,11 @@ function renderLocalizedHud(content = currentDisplayContent) {
   genreLabel.dataset.text = nextGenreText;
   scheduleGenreFit();
   const titleText = setTrackTitle(content.placeholderTitle ? trMain('hud.waitingTitle') : content.title);
-  artistLabel.textContent = content.placeholderArtist ? trMain('hud.waitingArtist') : content.artist;
+  artistLabel.textContent = content.placeholderArtist
+    ? detectedMediaPlayers.neteaseRunning && !detectedMediaPlayers.neteaseSmtcAvailable
+      ? tr('hud.neteaseSmtcHint')
+      : trMain('hud.waitingArtist')
+    : content.artist;
   const readingContext = `${content.title || ''} ${content.artist || ''}`;
   titleLabel.lang = readingLanguageFor(titleText, readingContext);
   artistLabel.lang = readingLanguageFor(artistLabel.textContent, readingContext);
@@ -1301,7 +1969,10 @@ function applyLanguage(value, { persist = false } = {}) {
     option.setAttribute('aria-selected', String(option.dataset.language === uiLanguage));
   });
   applyStaticTranslations();
+  lyricTranslationSetting.hidden = !supportsLyricTranslationForUiLanguage();
   renderMediaSourceSettings();
+  renderGenreArtistRules();
+  renderCustomGenres();
   updateDiagnosticsUi();
   updateLayoutToggleButton();
   setPlayPauseIcon(playPauseButton.classList.contains('is-playing'));
@@ -1321,6 +1992,12 @@ function applyLanguage(value, { persist = false } = {}) {
   alwaysOnTopToggle.title = alwaysOnTopEnabled
     ? tr('settings.alwaysOnTopOn')
     : tr('settings.alwaysOnTopOff');
+  mousePassthroughToggle.title = mousePassthroughEnabled
+    ? tr('settings.mousePassthroughOn')
+    : tr('settings.mousePassthroughOff');
+  rhythmModelToggle.title = rhythmModelEnabled
+    ? tr('settings.rhythmModelOn')
+    : tr('settings.rhythmModelOff');
   launchAtLoginToggle.title = launchAtLoginToggle.disabled
     ? tr('settings.launchAtLoginUnsupported')
     : launchAtLoginEnabled ? tr('settings.launchAtLoginOn') : tr('settings.launchAtLoginOff');
@@ -1332,6 +2009,7 @@ function applyLanguage(value, { persist = false } = {}) {
   });
   animateLyricLayoutChange(lyricLayoutStartTop);
   updateGenreCorrectionUi();
+  requestAnimationFrame(updateSettingsScrollbar);
   if (persist) window.genrePolice.setConfig({ language: uiLanguage }).catch(() => {});
 }
 
@@ -1398,6 +2076,8 @@ function setScaleMenuOpen(open, { focus = false } = {}) {
   if (nextOpen) {
     setLanguageMenuOpen(false);
     setMediaSourceMenuOpen(false);
+    setCustomGenreVisualMenuOpen(false);
+    setGenreArtistMenuOpen(false);
   }
   uiScaleMenu.hidden = !nextOpen;
   uiScaleButton.setAttribute('aria-expanded', String(nextOpen));
@@ -1411,6 +2091,8 @@ function setLanguageMenuOpen(open, { focus = false } = {}) {
   if (nextOpen) {
     setScaleMenuOpen(false);
     setMediaSourceMenuOpen(false);
+    setCustomGenreVisualMenuOpen(false);
+    setGenreArtistMenuOpen(false);
   }
   languageMenu.hidden = !nextOpen;
   languageButton.setAttribute('aria-expanded', String(nextOpen));
@@ -1467,6 +2149,9 @@ function closeSettings() {
   setScaleMenuOpen(false);
   setLanguageMenuOpen(false);
   setMediaSourceMenuOpen(false);
+  setCustomGenreVisualMenuOpen(false);
+  setGenreArtistMenuOpen(false);
+  closeCustomGenreColorEditor();
   closeGenreCorrectionSuggestions();
   settings.hidden = true;
   document.body.classList.remove('settings-open');
@@ -1475,11 +2160,51 @@ function closeSettings() {
   scheduleIdleDim();
 }
 
+function selectSettingsPane(value, { focusTab = false, resetScroll = true } = {}) {
+  const nextPane = settingsTabs.some((tab) => tab.dataset.settingsPane === value)
+    ? value
+    : 'appearance';
+  activeSettingsPane = nextPane;
+  settingsTabs.forEach((tab) => {
+    const active = tab.dataset.settingsPane === nextPane;
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+    if (active && focusTab) tab.focus();
+  });
+  settingsPanes.forEach((pane) => {
+    pane.hidden = pane.dataset.settingsPane !== nextPane;
+  });
+  setScaleMenuOpen(false);
+  setLanguageMenuOpen(false);
+  setMediaSourceMenuOpen(false);
+  setCustomGenreVisualMenuOpen(false);
+  setGenreArtistMenuOpen(false);
+  closeCustomGenreColorEditor();
+  closeGenreCorrectionSuggestions();
+  if (resetScroll && settingsScroll) settingsScroll.scrollTop = 0;
+  requestAnimationFrame(updateSettingsScrollbar);
+}
+
+function correctionGenreOptions() {
+  const builtIn = genreOptions.map((option) => ({ ...option, searchTerms: [] }));
+  const custom = customGenres.map((rule) => {
+    const base = genreOptions.find((option) => option.id === rule.baseGenreId);
+    return {
+      id: `custom:${rule.id}`,
+      label: rule.name,
+      parent: [tr('settings.customGenres'), base?.label].filter(Boolean).join(' · '),
+      searchTerms: rule.aliases || []
+    };
+  });
+  return [...custom, ...builtIn];
+}
+
 function currentCorrectionOption() {
+  const options = correctionGenreOptions();
   const selectedId = String(genreCorrectionInput.dataset.genreId || '');
-  if (selectedId) return genreOptions.find((option) => option.id === selectedId) || null;
+  if (selectedId) return options.find((option) => option.id === selectedId) || null;
   const value = genreCorrectionInput.value.trim().toLocaleLowerCase();
-  return genreOptions.find((option) => option.id.toLocaleLowerCase() === value
+  return options.find((option) => option.id.toLocaleLowerCase() === value
     || option.label.toLocaleLowerCase() === value) || null;
 }
 
@@ -1497,10 +2222,11 @@ function chooseGenreCorrectionOption(option) {
 
 function renderGenreCorrectionSuggestions(query = '') {
   const needle = String(query || '').trim().toLocaleLowerCase();
-  const ranked = genreOptions
+  const ranked = correctionGenreOptions()
     .filter((option) => !needle
       || option.label.toLocaleLowerCase().includes(needle)
-      || option.id.toLocaleLowerCase().includes(needle))
+      || option.id.toLocaleLowerCase().includes(needle)
+      || option.searchTerms.some((term) => term.toLocaleLowerCase().includes(needle)))
     .sort((left, right) => {
       const leftStarts = left.label.toLocaleLowerCase().startsWith(needle) ? 0 : 1;
       const rightStarts = right.label.toLocaleLowerCase().startsWith(needle) ? 0 : 1;
@@ -1572,10 +2298,12 @@ function finishSettingsScrollbarDrag(event) {
 function openSettings({ focusCorrection = false } = {}) {
   window.clearTimeout(idleSettleTimer);
   document.body.classList.remove('idle-settled');
+  dismissNeteaseSmtcToast();
   settings.hidden = false;
   document.body.classList.add('settings-open', 'pointer-active');
   settingsButton.setAttribute('aria-expanded', 'true');
   clearControlsTimer();
+  selectSettingsPane(focusCorrection ? 'genre' : activeSettingsPane, { resetScroll: focusCorrection });
   updateGenreCorrectionUi();
   updateDiagnosticsUi();
   requestAnimationFrame(updateSettingsScrollbar);
@@ -1591,8 +2319,13 @@ function openSettings({ focusCorrection = false } = {}) {
 }
 
 function setInteractionState(clickThrough) {
-  document.body.classList.toggle('interactive', !clickThrough);
-  if (clickThrough) {
+  mousePassthroughEnabled = clickThrough === true;
+  mousePassthroughToggle.setAttribute('aria-checked', String(mousePassthroughEnabled));
+  mousePassthroughToggle.title = mousePassthroughEnabled
+    ? tr('settings.mousePassthroughOn')
+    : tr('settings.mousePassthroughOff');
+  document.body.classList.toggle('interactive', !mousePassthroughEnabled);
+  if (mousePassthroughEnabled) {
     clearControlsTimer();
     setScaleMenuOpen(false);
     setLanguageMenuOpen(false);
@@ -1602,6 +2335,15 @@ function setInteractionState(clickThrough) {
   } else {
     showControls();
   }
+}
+
+function setMousePassthroughEnabled(enabled, { persist = false } = {}) {
+  const previous = mousePassthroughEnabled;
+  setInteractionState(enabled === true);
+  if (!persist) return;
+  window.genrePolice.setConfig({ clickThrough: mousePassthroughEnabled }).then((result) => {
+    if (typeof result?.clickThrough === 'boolean') setInteractionState(result.clickThrough);
+  }).catch(() => setInteractionState(previous));
 }
 
 function setArtwork(url) {
@@ -1777,7 +2519,11 @@ function syntheticDemoMetrics(metrics, time) {
 
 function animate(time) {
   const animationActive = Boolean(demoTheme || currentMetadata?.playing);
-  const minimumFrameInterval = document.hidden ? 250 : animationActive ? 0 : 1000 / 15;
+  const minimumFrameInterval = document.hidden
+    ? 250
+    : animationActive || !idleFrameLimitEnabled
+      ? 0
+      : 1000 / 30;
   if (lastAnimationWorkAt && time - lastAnimationWorkAt < minimumFrameInterval) {
     requestAnimationFrame(animate);
     return;
@@ -1794,10 +2540,11 @@ function animate(time) {
   visual.render(synthwaveResponse ? { ...metrics, synthwaveResponse } : metrics, time);
   const playbackActive = Boolean(demoTheme || currentMetadata?.playing);
   const asmrMode = currentTheme.mode === 'asmr';
+  const bilibiliMode = currentTheme.mode === 'bilibili';
   const tranceMode = currentTheme.mode === 'trance'
     && !['classical', 'soundtrack', 'synthwave'].includes(currentTheme.id);
   const asmrBreath = 0.5 + 0.5 * Math.sin(time * 0.00062);
-  const posterEnergyTarget = playbackActive
+  const posterEnergyTarget = playbackActive && !bilibiliMode
     ? synthwaveResponse?.starEnergy ?? clamp(
       clamp(((metrics.relativeEnergy || 1) - 0.72) / 1.06) * 0.52
         + clamp(metrics.volume || 0) * 0.2
@@ -1810,7 +2557,7 @@ function animate(time) {
   });
   posterImpact = smoothMotionEnvelope(
     posterImpact,
-    playbackActive ? synthwaveResponse?.starImpact ?? clamp(metrics.rhythmPulse || 0) : 0,
+    playbackActive && !bilibiliMode ? synthwaveResponse?.starImpact ?? clamp(metrics.rhythmPulse || 0) : 0,
     elapsedMs,
     { attackMs: 32, releaseMs: 190 }
   );
@@ -1900,7 +2647,7 @@ function animate(time) {
     appShell.style.setProperty('--poster-depth-opacity-a', depthOpacity(posterDepthA).toFixed(4));
     appShell.style.setProperty('--poster-depth-opacity-b', depthOpacity(posterDepthB).toFixed(4));
   }
-  if (tranceMode || synthwaveMode) {
+  if (tranceMode || synthwaveMode || bilibiliMode) {
     // The artwork is the vortex aperture. Letting the generic impact spring
     // scale it made the black-hole centre visibly pump out of sync with the
     // stable spiral geometry.
@@ -1919,13 +2666,15 @@ function animate(time) {
   if (tranceMode) {
     const artworkRotation = visual.tranceArmPhase || 0;
     coreArt.style.transform = `scale(1) rotate(${artworkRotation.toFixed(5)}rad)`;
+  } else if (bilibiliMode) {
+    coreArt.style.transform = `scale(${visual.bilibiliTvScaleX.toFixed(4)}, ${visual.bilibiliTvScaleY.toFixed(4)})`;
   } else if (synthwaveMode) {
     coreArt.style.transform = 'scale(1)';
   } else {
     coreArt.style.transform = `scale(${coreScale})`;
   }
   drawForegroundRiffStrings(metrics, time);
-  const rawTextPulse = playbackActive ? clamp(metrics.rhythmPulse || 0) : 0;
+  const rawTextPulse = playbackActive && !bilibiliMode ? clamp(metrics.rhythmPulse || 0) : 0;
   // The Trance canvas deliberately has continuous flow, so the title should
   // follow a continuous envelope as well. This also absorbs the brief audio
   // discontinuity produced when the player seeks to a new position.
@@ -1999,23 +2748,38 @@ function animate(time) {
     tanocFace.style.setProperty('--tanoc-bob', `${tanocBob.toFixed(3)}px`);
     tanocFace.style.setProperty('--tanoc-eye-shift', `${tanocEyeShift.toFixed(3)}px`);
   }
-  if (playbackActive && metrics.rhythmNow && !asmrMode) {
-    genreVelocity -= tranceMode
-      ? .003 + metrics.rhythmPulse * .009
-      : .006 + metrics.rhythmPulse * .018;
+  if (bilibiliMode) {
+    const bilibiliGenreTarget = playbackActive
+      ? 0.99
+        + visual.bilibiliVoiceActivity * 0.008
+        + visual.bilibiliSectionDrive * 0.028
+        + visual.bilibiliTransientDrive * 0.05
+      : 1;
+    genreVelocity += (bilibiliGenreTarget - genreScale) * 0.18 * frameScale;
+    genreVelocity *= 0.76 ** frameScale;
+    genreScale += genreVelocity * frameScale;
+    genreScale = Math.max(0.982, Math.min(1.078, genreScale));
+  } else {
+    if (playbackActive && metrics.rhythmNow && !asmrMode) {
+      genreVelocity -= tranceMode
+        ? .003 + metrics.rhythmPulse * .009
+        : .006 + metrics.rhythmPulse * .018;
+    }
+    const genreTarget = playbackActive
+      ? asmrMode
+        ? 0.998 + asmrBreath * 0.01
+        : 1 + textPulse * (tranceMode ? .052 : .048)
+      : 1;
+    genreVelocity += (genreTarget - genreScale) * 0.22 * frameScale;
+    genreVelocity *= 0.69 ** frameScale;
+    genreScale += genreVelocity * frameScale;
+    genreScale = Math.max(.93, Math.min(1.145, genreScale));
   }
-  const genreTarget = playbackActive
-    ? asmrMode
-      ? 0.998 + asmrBreath * 0.01
-      : 1 + textPulse * (tranceMode ? .052 : .048)
-    : 1;
-  genreVelocity += (genreTarget - genreScale) * 0.22 * frameScale;
-  genreVelocity *= 0.69 ** frameScale;
-  genreScale += genreVelocity * frameScale;
-  genreScale = Math.max(.93, Math.min(1.145, genreScale));
   genreLabel.style.setProperty('--genre-scale', genreScale.toFixed(4));
   const genreLiftTarget = playbackActive
-    ? asmrMode
+    ? bilibiliMode
+      ? 0
+      : asmrMode
       ? -0.35 - asmrBreath * 0.55
       : -textPulse * (tranceMode ? 4.4 : 4.2)
     : 0;
@@ -2026,10 +2790,10 @@ function animate(time) {
     genreLiftValue = genreLiftTarget;
   }
   genreLabel.style.setProperty('--genre-lift', `${genreLiftValue.toFixed(2)}px`);
-  const textBaseGlow = Number(currentTheme.textBaseGlow) || 18;
+  const textBaseGlow = bilibiliMode ? 0 : Number(currentTheme.textBaseGlow) || 18;
   const textSliceFx = clamp(currentTheme.textSliceFx ?? textFx, 0.05, 1.15);
   const textEchoFx = clamp(currentTheme.textEchoFx ?? textFx, 0.05, 1.15);
-  const textMotionGate = playbackActive ? 1 : 0;
+  const textMotionGate = playbackActive && !bilibiliMode ? 1 : 0;
   genreLabel.style.setProperty('--genre-flare', genreFlare.toFixed(3));
   genreLabel.style.setProperty('--genre-glow', `${(textBaseGlow + (genreFlare * 11 + impactFx.bloom * 18) * textFx).toFixed(2)}px`);
   genreLabel.style.setProperty('--genre-brightness', (1 + (genreFlare * .2 + impactFx.exposure - 1) * textFx).toFixed(3));
@@ -2155,6 +2919,20 @@ settingsButton.addEventListener('click', () => {
   }
   openSettings();
 });
+settingsTabs.forEach((tab, index) => {
+  tab.addEventListener('click', () => selectSettingsPane(tab.dataset.settingsPane));
+  tab.addEventListener('keydown', (event) => {
+    let nextIndex = index;
+    if (event.key === 'ArrowLeft') nextIndex = (index - 1 + settingsTabs.length) % settingsTabs.length;
+    else if (event.key === 'ArrowRight') nextIndex = (index + 1) % settingsTabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = settingsTabs.length - 1;
+    else return;
+    event.preventDefault();
+    const nextTab = settingsTabs[nextIndex];
+    selectSettingsPane(nextTab.dataset.settingsPane, { focusTab: true });
+  });
+});
 
 async function requestMediaControl(action, button) {
   if (button.getAttribute('aria-busy') === 'true') return;
@@ -2191,6 +2969,7 @@ async function requestMediaControl(action, button) {
 previousTrackButton.addEventListener('click', () => requestMediaControl('previous', previousTrackButton));
 playPauseButton.addEventListener('click', () => requestMediaControl('toggle', playPauseButton));
 nextTrackButton.addEventListener('click', () => requestMediaControl('next', nextTrackButton));
+neteaseSmtcToastClose.addEventListener('click', dismissNeteaseSmtcToast);
 lyricSweepToggle.addEventListener('click', () => {
   setLyricSweepEnabled(!lyricSweepEnabled, { persist: true });
 });
@@ -2217,6 +2996,9 @@ onlineLookupToggle.addEventListener('click', () => {
 });
 alwaysOnTopToggle.addEventListener('click', () => {
   setAlwaysOnTopEnabled(!alwaysOnTopEnabled, { persist: true });
+});
+mousePassthroughToggle.addEventListener('click', () => {
+  setMousePassthroughEnabled(!mousePassthroughEnabled, { persist: true });
 });
 launchAtLoginToggle.addEventListener('click', () => {
   setLaunchAtLoginEnabled(!launchAtLoginEnabled, {
@@ -2283,6 +3065,12 @@ motionModeOptions.forEach((option) => {
 idleBehaviorOptions.forEach((option) => {
   option.addEventListener('click', () => setIdleBehavior(option.dataset.idleBehavior, { persist: true }));
 });
+idleFrameLimitToggle.addEventListener('click', () => {
+  setIdleFrameLimitEnabled(!idleFrameLimitEnabled, { persist: true });
+});
+rhythmModelToggle.addEventListener('click', () => {
+  setRhythmModelEnabled(!rhythmModelEnabled, { persist: true });
+});
 function handleRadioSegmentKey(event, options, activate) {
   const movement = event.key === 'ArrowRight' || event.key === 'ArrowDown'
     ? 1
@@ -2342,6 +3130,161 @@ mediaSourceMenu.addEventListener('keydown', (event) => {
       : (currentIndex + movement + options.length) % options.length;
   options[nextIndex]?.focus();
 });
+customGenreVisual.addEventListener('click', () => {
+  const opening = customGenreVisualMenu.hidden;
+  setCustomGenreVisualMenuOpen(opening, { focus: opening });
+});
+customGenreVisual.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  event.preventDefault();
+  setCustomGenreVisualMenuOpen(true, { focus: true });
+});
+customGenreVisualMenu.addEventListener('click', (event) => {
+  const option = event.target.closest('.custom-genre-visual-option');
+  if (option) chooseCustomGenreVisual(option.dataset.genreId);
+});
+customGenreVisualMenu.addEventListener('keydown', (event) => {
+  const options = customGenreVisualOptions();
+  const currentIndex = Math.max(0, options.indexOf(document.activeElement));
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setCustomGenreVisualMenuOpen(false);
+    customGenreVisual.focus();
+    return;
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    chooseCustomGenreVisual(options[currentIndex]?.dataset.genreId);
+    return;
+  }
+  const movement = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+  if (!movement && event.key !== 'Home' && event.key !== 'End') return;
+  event.preventDefault();
+  const nextIndex = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? options.length - 1
+      : (currentIndex + movement + options.length) % options.length;
+  options[nextIndex]?.focus();
+  options[nextIndex]?.scrollIntoView({ block: 'nearest' });
+});
+genreArtistGenre.addEventListener('click', () => {
+  const opening = genreArtistGenreMenu.hidden;
+  setGenreArtistMenuOpen(opening, { focus: opening });
+});
+genreArtistGenre.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  event.preventDefault();
+  setGenreArtistMenuOpen(true, { focus: true });
+});
+genreArtistGenreMenu.addEventListener('click', (event) => {
+  const option = event.target.closest('.genre-artist-genre-option');
+  if (option) chooseGenreArtistGenre(option.dataset.genreId);
+});
+genreArtistGenreMenu.addEventListener('keydown', (event) => {
+  const options = genreArtistOptions();
+  const currentIndex = Math.max(0, options.indexOf(document.activeElement));
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setGenreArtistMenuOpen(false);
+    genreArtistGenre.focus();
+    return;
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    chooseGenreArtistGenre(options[currentIndex]?.dataset.genreId);
+    return;
+  }
+  const movement = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+  if (!movement && event.key !== 'Home' && event.key !== 'End') return;
+  event.preventDefault();
+  const nextIndex = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? options.length - 1
+      : (currentIndex + movement + options.length) % options.length;
+  options[nextIndex]?.focus();
+  options[nextIndex]?.scrollIntoView({ block: 'nearest' });
+});
+customGenreColorsToggle.addEventListener('click', () => {
+  const enabling = !customGenreColorsEnabled();
+  setCustomGenreColorsEnabled(enabling);
+});
+for (const control of [customGenreAccent, customGenreAccent2, customGenreHot]) {
+  control.addEventListener('click', () => openCustomGenreColorEditor(control));
+}
+customGenreColorEditorClose.addEventListener('click', () => closeCustomGenreColorEditor({ focus: true }));
+
+function updateCustomGenreSvFromPointer(event) {
+  const bounds = customGenreColorField.getBoundingClientRect();
+  customGenreColorHsv.s = clamp((event.clientX - bounds.left) / bounds.width);
+  customGenreColorHsv.v = 1 - clamp((event.clientY - bounds.top) / bounds.height);
+  updateActiveCustomGenreColor();
+}
+
+customGenreColorField.addEventListener('pointerdown', (event) => {
+  event.preventDefault();
+  customGenreColorField.setPointerCapture(event.pointerId);
+  updateCustomGenreSvFromPointer(event);
+});
+customGenreColorField.addEventListener('pointermove', (event) => {
+  if (customGenreColorField.hasPointerCapture(event.pointerId)) updateCustomGenreSvFromPointer(event);
+});
+customGenreColorField.addEventListener('keydown', (event) => {
+  const step = event.shiftKey ? 0.05 : 0.01;
+  if (event.key === 'ArrowLeft') customGenreColorHsv.s = clamp(customGenreColorHsv.s - step);
+  else if (event.key === 'ArrowRight') customGenreColorHsv.s = clamp(customGenreColorHsv.s + step);
+  else if (event.key === 'ArrowUp') customGenreColorHsv.v = clamp(customGenreColorHsv.v + step);
+  else if (event.key === 'ArrowDown') customGenreColorHsv.v = clamp(customGenreColorHsv.v - step);
+  else return;
+  event.preventDefault();
+  updateActiveCustomGenreColor();
+});
+customGenreColorHue.addEventListener('input', () => {
+  customGenreColorHsv.h = Number(customGenreColorHue.value);
+  updateActiveCustomGenreColor();
+});
+customGenreColorHex.addEventListener('input', () => {
+  if (!/^#[0-9a-f]{6}$/i.test(customGenreColorHex.value.trim())) return;
+  setCustomGenreColorValue(
+    activeCustomGenreColorControl,
+    customGenreColorOutput(activeCustomGenreColorControl),
+    customGenreColorHex.value
+  );
+});
+customGenreColorHex.addEventListener('blur', () => {
+  if (!activeCustomGenreColorControl) return;
+  const color = normalizeCustomColorHex(customGenreColorHex.value);
+  if (color) setCustomGenreColorValue(
+    activeCustomGenreColorControl,
+    customGenreColorOutput(activeCustomGenreColorControl),
+    color
+  );
+  else customGenreColorHex.value = activeCustomGenreColorControl.value;
+});
+customGenreColorHex.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    customGenreColorHex.value = activeCustomGenreColorControl?.value || '';
+    closeCustomGenreColorEditor({ focus: true });
+    return;
+  }
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  const color = normalizeCustomColorHex(customGenreColorHex.value);
+  if (color) {
+    setCustomGenreColorValue(
+      activeCustomGenreColorControl,
+      customGenreColorOutput(activeCustomGenreColorControl),
+      color
+    );
+    customGenreColorHex.select();
+  }
+});
+customGenreColorsReset.addEventListener('click', () => {
+  setCustomGenreColorsEnabled(false, { restoreDefaults: true });
+  customGenreColorsToggle.focus();
+});
 mediaSourceIgnoreList.addEventListener('click', (event) => {
   const button = event.target.closest('.media-source-ignore-toggle');
   if (!button) return;
@@ -2381,6 +3324,10 @@ document.addEventListener('pointerdown', (event) => {
   if (!event.target.closest('.ui-scale-picker')) setScaleMenuOpen(false);
   if (!event.target.closest('.language-picker')) setLanguageMenuOpen(false);
   if (!event.target.closest('.media-source-picker')) setMediaSourceMenuOpen(false);
+  if (!event.target.closest('.custom-genre-visual-picker')) setCustomGenreVisualMenuOpen(false);
+  if (!event.target.closest('.genre-artist-genre-picker')) setGenreArtistMenuOpen(false);
+  if (!event.target.closest('.custom-genre-color-editor')
+    && !event.target.closest('.custom-genre-color-value')) closeCustomGenreColorEditor();
   if (!event.target.closest('.genre-correction-picker')) closeGenreCorrectionSuggestions();
 });
 genreCorrectionInput.addEventListener('focus', () => renderGenreCorrectionSuggestions(genreCorrectionInput.value));
@@ -2402,10 +3349,16 @@ genreCorrectionSave.addEventListener('click', async () => {
     renderGenreCorrectionSuggestions(genreCorrectionInput.value);
     return;
   }
-  const result = await window.genrePolice.setGenreCorrection(option.id);
-  genreCorrectionState.textContent = result?.ok
-    ? tr('settings.genreCorrectionSaved', { genre: option.label })
-    : tr('settings.genreCorrectionFailed');
+  try {
+    const result = await window.genrePolice.setGenreCorrection(option.id);
+    genreCorrectionState.textContent = result?.ok
+      ? result.correction?.fallbackIdentity
+        ? tr('settings.genreCorrectionSavedByTitle', { genre: option.label })
+        : tr('settings.genreCorrectionSaved', { genre: option.label })
+      : tr('settings.genreCorrectionFailed');
+  } catch {
+    genreCorrectionState.textContent = tr('settings.genreCorrectionFailed');
+  }
 });
 genreCorrectionClear.addEventListener('click', async () => {
   const result = await window.genrePolice.clearGenreCorrection();
@@ -2413,6 +3366,165 @@ genreCorrectionClear.addEventListener('click', async () => {
     genreCorrectionInput.value = '';
     genreCorrectionInput.dataset.genreId = '';
     genreCorrectionState.textContent = tr('settings.genreCorrectionCleared');
+  }
+});
+genreArtistAdd.addEventListener('click', async () => {
+  const artist = genreArtistName.value.trim().replace(/\s+/g, ' ');
+  const genreId = genreArtistGenre.value;
+  if (!artist || !genreOptions.some((option) => option.id === genreId && option.id !== 'unknown')) {
+    genreArtistState.textContent = tr('settings.genreArtistInvalid');
+    return;
+  }
+  const key = genreArtistKey(artist);
+  const nextRules = [
+    ...genreArtistRules.filter((rule) => genreArtistKey(rule.artist) !== key),
+    { artist, genreId }
+  ];
+  genreArtistAdd.disabled = true;
+  try {
+    await persistGenreArtistRules(nextRules);
+    genreArtistName.value = '';
+    genreArtistState.textContent = tr('settings.genreArtistSaved');
+    genreArtistName.focus();
+  } catch {
+    genreArtistState.textContent = tr('settings.genreCorrectionFailed');
+  } finally {
+    genreArtistAdd.disabled = false;
+  }
+});
+genreArtistName.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  genreArtistAdd.click();
+});
+genreArtistList.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-action="delete"]');
+  const row = event.target.closest('.genre-artist-item');
+  if (!button || !row) return;
+  const index = Number(row.dataset.ruleIndex);
+  if (!Number.isInteger(index) || !genreArtistRules[index]) return;
+  button.disabled = true;
+  try {
+    await persistGenreArtistRules(genreArtistRules.filter((_, ruleIndex) => ruleIndex !== index));
+    genreArtistState.textContent = tr('settings.genreArtistDeleted');
+  } catch {
+    genreArtistState.textContent = tr('settings.genreCorrectionFailed');
+    button.disabled = false;
+  }
+});
+customGenreSave.addEventListener('click', async () => {
+  const name = customGenreName.value.trim().replace(/\s+/g, ' ');
+  const aliases = splitCustomGenreTerms(customGenreAliases.value);
+  const artists = splitCustomGenreTerms(customGenreArtists.value);
+  const baseGenreId = customGenreVisual.value;
+  const colors = customGenreColorOverrides();
+  if (!name || (!aliases.length && !artists.length) || !baseGenreId) {
+    customGenreState.textContent = tr('settings.customGenreInvalid');
+    return;
+  }
+  const id = editingCustomGenreId
+    || globalThis.crypto?.randomUUID?.()
+    || `custom-${Date.now().toString(36)}`;
+  const nextRule = { id, name, aliases, artists, baseGenreId, ...(colors ? { colors } : {}) };
+  const nextRules = editingCustomGenreId
+    ? customGenres.map((rule) => rule.id === editingCustomGenreId ? nextRule : rule)
+    : [...customGenres, nextRule];
+  customGenreSave.disabled = true;
+  try {
+    await persistCustomGenres(nextRules);
+    resetCustomGenreEditor();
+    customGenreState.textContent = tr('settings.customGenreSaved');
+  } catch {
+    customGenreState.textContent = tr('settings.genreCorrectionFailed');
+  } finally {
+    customGenreSave.disabled = false;
+  }
+});
+customGenreCancel.addEventListener('click', () => resetCustomGenreEditor({ clearState: true }));
+customGenreList.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-action]');
+  const row = event.target.closest('.custom-genre-item');
+  if (!button || !row) return;
+  const rule = customGenres.find((item) => item.id === row.dataset.ruleId);
+  if (!rule) return;
+  if (button.dataset.action === 'edit') {
+    pendingCustomGenreDeleteId = '';
+    editCustomGenre(rule);
+    return;
+  }
+  if (button.dataset.action === 'delete') {
+    pendingCustomGenreDeleteId = rule.id;
+    renderCustomGenres();
+    customGenreList.querySelector('[data-action="confirm-delete"]')?.focus();
+    return;
+  }
+  if (button.dataset.action === 'cancel-delete') {
+    pendingCustomGenreDeleteId = '';
+    renderCustomGenres();
+    return;
+  }
+  if (button.dataset.action !== 'confirm-delete') return;
+  button.disabled = true;
+  pendingCustomGenreDeleteId = '';
+  try {
+    await persistCustomGenres(customGenres.filter((item) => item.id !== rule.id));
+    if (editingCustomGenreId === rule.id) resetCustomGenreEditor();
+    customGenreState.textContent = tr('settings.customGenreDeleted');
+  } catch {
+    pendingCustomGenreDeleteId = rule.id;
+    renderCustomGenres();
+    customGenreState.textContent = tr('settings.genreCorrectionFailed');
+  }
+});
+genreDataExport.addEventListener('click', async () => {
+  genreDataExport.disabled = true;
+  genreDataImport.disabled = true;
+  genreDataState.textContent = tr('genreData.exporting');
+  try {
+    const result = await window.genrePolice.exportGenreData();
+    genreDataState.textContent = result?.canceled
+      ? ''
+      : result?.ok
+        ? tr('genreData.exported', {
+          corrections: result.correctionCount,
+          customGenres: result.customGenreCount,
+          genreArtistRules: result.genreArtistRuleCount
+        })
+        : tr('genreData.exportFailed');
+  } catch {
+    genreDataState.textContent = tr('genreData.exportFailed');
+  } finally {
+    genreDataExport.disabled = false;
+    genreDataImport.disabled = false;
+    requestAnimationFrame(updateSettingsScrollbar);
+  }
+});
+genreDataImport.addEventListener('click', async () => {
+  genreDataExport.disabled = true;
+  genreDataImport.disabled = true;
+  genreDataState.textContent = tr('genreData.importing');
+  try {
+    const result = await window.genrePolice.importGenreData();
+    if (result?.canceled) {
+      genreDataState.textContent = '';
+    } else if (result?.ok) {
+      customGenres = Array.isArray(result.customGenres) ? result.customGenres : customGenres;
+      genreArtistRules = Array.isArray(result.genreArtistRules) ? result.genreArtistRules : genreArtistRules;
+      resetCustomGenreEditor({ clearState: true });
+      renderGenreArtistRules();
+      renderCustomGenres();
+      genreDataState.textContent = tr('genreData.imported', result.summary || {});
+    } else {
+      const invalid = ['invalid-json', 'invalid-format', 'unsupported-version', 'too-large']
+        .includes(result?.error);
+      genreDataState.textContent = tr(invalid ? 'genreData.invalid' : 'genreData.importFailed');
+    }
+  } catch {
+    genreDataState.textContent = tr('genreData.importFailed');
+  } finally {
+    genreDataExport.disabled = false;
+    genreDataImport.disabled = false;
+    requestAnimationFrame(updateSettingsScrollbar);
   }
 });
 document.querySelector('#settings-close').addEventListener('click', closeSettings);
@@ -2432,6 +3544,9 @@ diagnosticsPanel.addEventListener('toggle', () => {
   if (diagnosticsPanel.open) updateDiagnosticsUi();
   requestAnimationFrame(updateSettingsScrollbar);
 });
+customGenrePanel.addEventListener('toggle', () => requestAnimationFrame(updateSettingsScrollbar));
+genreArtistPanel.addEventListener('toggle', () => requestAnimationFrame(updateSettingsScrollbar));
+settingsSourcesPanel.addEventListener('toggle', () => requestAnimationFrame(updateSettingsScrollbar));
 diagnosticsRecapture.addEventListener('click', async () => {
   diagnosticsState.textContent = tr('diagnostics.recapturing');
   await window.genrePolice.recaptureAudio();
@@ -2446,6 +3561,8 @@ diagnosticsExport.addEventListener('click', async () => {
     const result = await window.genrePolice.exportDiagnostics({
       audioStatus: audio.status,
       genreSource: currentMetadata?.genreSource || '',
+      genreEvidence: currentMetadata?.genreEvidence || null,
+      genreSources: currentMetadata?.genreSources || [],
       lyricSource: currentMetadata?.lyrics?.source || ''
     });
     diagnosticsState.textContent = result?.ok
@@ -2507,12 +3624,15 @@ window.genrePolice.getConfig().then((config) => {
   ignoredMediaSources = Array.isArray(config.ignoredMediaSources) ? config.ignoredMediaSources : [];
   availableMediaSources = Array.isArray(config.availableMediaSources) ? config.availableMediaSources : [];
   currentMediaSource = config.currentMediaSource || '';
+  detectedMediaPlayers = config.detectedPlayers || detectedMediaPlayers;
+  customGenres = Array.isArray(config.customGenres) ? config.customGenres : [];
+  genreArtistRules = Array.isArray(config.genreArtistRules) ? config.genreArtistRules : [];
   latestRhythmModelState = config.rhythmModelState || latestRhythmModelState;
-  applyLanguage(config.language);
   lastFmInput.value = config.lastFmApiKey || '';
   discogsTokenInput.value = config.discogsToken || '';
-  appVersionLabel.textContent = config.appVersion || '0.1.0';
+  appVersionLabel.textContent = config.appVersion || '0.2.0';
   genreOptions = Array.isArray(config.genreOptions) ? config.genreOptions : [];
+  applyLanguage(config.language);
   setLyricsEnabled(config.lyricsEnabled !== false);
   setLyricTranslationEnabled(config.lyricTranslationEnabled !== false);
   setCapsuleCondensedEnglish(config.capsuleCondensedEnglish === true);
@@ -2527,7 +3647,12 @@ window.genrePolice.getConfig().then((config) => {
   });
   setMotionMode(config.motionMode);
   setIdleBehavior(config.idleBehavior);
+  setIdleFrameLimitEnabled(config.idleFrameLimitEnabled !== false);
+  setRhythmModelEnabled(config.rhythmModelEnabled !== false);
   renderMediaSourceSettings();
+  resetCustomGenreEditor();
+  renderGenreArtistRules();
+  renderCustomGenres();
   setLyricDelay(config.lyricDelayMs);
   applyLayoutMode(config.layoutMode);
   applyUiScale(config.uiScale);

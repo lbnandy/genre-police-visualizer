@@ -1,6 +1,8 @@
 'use strict';
 
 const { canonicalArtist, normalize } = require('./genre-classifier');
+const { normalizeThemeColors } = require('./custom-genres');
+const { cleanDisplayTitle } = require('./title-normalizer');
 
 function createGenreCorrections(value) {
   const source = value && typeof value === 'object' ? value : {};
@@ -33,10 +35,23 @@ function cleanCorrectionArtist(value) {
     .trim();
 }
 
-function correctionKey(metadata = {}) {
+function correctionIdentity(metadata = {}) {
   const artist = canonicalArtist(cleanCorrectionArtist(metadata.artist || metadata.albumArtist || ''));
-  const title = normalize(metadata.title || '').replace(/\s+/g, ' ').trim();
-  return artist && title ? `${artist}::${title}` : '';
+  const title = normalize(cleanDisplayTitle(metadata.title || '')).replace(/\s+/g, ' ').trim();
+  if (!title) return { key: '', fallback: false };
+  if (artist) return { key: `${artist}::${title}`, fallback: false };
+  const source = normalize(metadata.source || '').replace(/\s+/g, ' ').trim();
+  const durationSeconds = Math.max(0, Math.round((Number(metadata.durationMs) || 0) / 1000));
+  const sourceKey = source || 'unknown-source';
+  const durationKey = durationSeconds ? String(durationSeconds) : 'unknown-duration';
+  return {
+    key: `fallback::${sourceKey}::${title}::${durationKey}`,
+    fallback: true
+  };
+}
+
+function correctionKey(metadata = {}) {
+  return correctionIdentity(metadata).key;
 }
 
 function getGenreCorrection(existing, metadata = {}) {
@@ -53,12 +68,21 @@ function setGenreCorrection(existing, metadata = {}, genre = {}, now = new Date(
   const genreId = String(genre.id || '').trim();
   const label = String(genre.label || genreId).trim();
   if (!key || !genreId || !label) return { state, changed: false, correction: null };
+  const customGenreId = String(genre.customGenreId || '').trim();
+  const baseGenreId = String(genre.baseGenreId || '').trim();
+  const colors = normalizeThemeColors(genre.colors);
   const correction = {
     genreId,
     label,
+    ...(customGenreId ? { customGenreId } : {}),
+    ...(baseGenreId ? { baseGenreId } : {}),
+    ...(colors ? { colors } : {}),
     title: String(metadata.title || '').trim(),
     artist: String(metadata.artist || metadata.albumArtist || '').trim(),
     album: String(metadata.album || '').trim(),
+    source: String(metadata.source || '').trim(),
+    durationMs: Math.max(0, Number(metadata.durationMs) || 0),
+    fallbackIdentity: correctionIdentity(metadata).fallback,
     updatedAt: now
   };
   state.tracks[key] = correction;
@@ -77,6 +101,7 @@ function clearGenreCorrection(existing, metadata = {}, now = new Date().toISOStr
 
 module.exports = {
   clearGenreCorrection,
+  correctionIdentity,
   correctionKey,
   createGenreCorrections,
   getGenreCorrection,

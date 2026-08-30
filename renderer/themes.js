@@ -6,6 +6,7 @@ export const fallbackTheme = {
 
 export const demoTracks = {
   asmr: ['ASMR', 'Soft Rain · Ear to Ear', 'Moonlit ASMR'],
+  bilibili: ['BILIBILI', 'Creator Video · Community Feed', 'Web Player'],
   'happy-hardcore': ['HAPPY HC', 'Rainbow Evidence', 'S3RL'],
   'uk-hardcore': ['UK HARDCORE', 'Electric Horizon', 'Gammer'],
   gabber: ['GABBER', 'Raise & Revolt', 'Genre Police Unit'],

@@ -584,6 +584,92 @@ test('disabling online genre lookup performs no catalog requests and keeps local
   }
 });
 
+test('uses Bilibili only as the final unknown fallback after its player suffix was cleaned', async () => {
+  const resolver = new GenreResolver({
+    getConfig: () => ({ onlineGenreLookupEnabled: false })
+  });
+  const result = await resolver.resolve({
+    title: 'A Video With No Music Metadata - 哔哩哔哩_bilibili',
+    artist: '',
+    album: ''
+  });
+  assert.equal(result.title, 'A Video With No Music Metadata');
+  assert.equal(result.genre.id, 'bilibili');
+  assert.equal(result.genre.parent, 'NON-MUSIC');
+  assert.equal(result.genreSource, 'Bilibili player suffix fallback');
+});
+
+test('keeps Bilibili fallback for later suffix-free titles from the same browser session', async () => {
+  const resolver = new GenreResolver({
+    getConfig: () => ({ onlineGenreLookupEnabled: false })
+  });
+  const initial = await resolver.resolve({
+    title: 'Creator Video - 哔哩哔哩_bilibili',
+    artist: '',
+    source: 'MSEdge',
+    sampledAtMs: 1000
+  });
+  const updated = await resolver.resolve({
+    title: 'Creator Video',
+    artist: '',
+    source: 'MSEdge',
+    sampledAtMs: 5000
+  });
+  const nextVideo = await resolver.resolve({
+    title: 'A Different Creator Video',
+    artist: '',
+    source: 'MSEdge',
+    sampledAtMs: 9000
+  });
+  const explicitOtherSite = await resolver.resolve({
+    title: 'A YouTube Video - YouTube',
+    artist: '',
+    source: 'MSEdge',
+    sampledAtMs: 12000
+  });
+  const afterOtherSite = await resolver.resolve({
+    title: 'Another Unlabelled Video',
+    artist: '',
+    source: 'MSEdge',
+    sampledAtMs: 15000
+  });
+  const previousTitleAfterOtherSite = await resolver.resolve({
+    title: 'Creator Video',
+    artist: '',
+    source: 'MSEdge',
+    sampledAtMs: 18000
+  });
+  const unrelated = await resolver.resolve({
+    title: 'Creator Video',
+    artist: '',
+    source: 'Chrome',
+    sampledAtMs: 5000
+  });
+  assert.equal(initial.genre.id, 'bilibili');
+  assert.equal(updated.genre.id, 'bilibili');
+  assert.equal(nextVideo.genre.id, 'bilibili');
+  assert.equal(explicitOtherSite.genre.id, 'unknown');
+  assert.equal(afterOtherSite.genre.id, 'unknown');
+  assert.equal(previousTitleAfterOtherSite.genre.id, 'unknown');
+  assert.equal(unrelated.genre.id, 'unknown');
+});
+
+test('Bilibili fallback never overrides a known genre, another site, or uncleaned title text', async () => {
+  const resolver = new GenreResolver({
+    getConfig: () => ({ onlineGenreLookupEnabled: false })
+  });
+  const known = await resolver.resolve({
+    title: 'House Session - 哔哩哔哩_bilibili',
+    artist: '',
+    genres: ['House']
+  });
+  const youtube = await resolver.resolve({ title: 'Unknown Video - YouTube', artist: '' });
+  const incidental = await resolver.resolve({ title: 'Bilibili Creator Interview', artist: '' });
+  assert.equal(known.genre.id, 'house');
+  assert.equal(youtube.genre.id, 'unknown');
+  assert.equal(incidental.genre.id, 'unknown');
+});
+
 test('a remembered user correction overrides a genre cached before it was saved', async () => {
   let correction = null;
   const resolver = new GenreResolver({ getCorrection: () => correction });

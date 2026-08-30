@@ -124,6 +124,18 @@
         </div>
       </section>
 
+      <div id="netease-smtc-toast" role="status" aria-live="polite" hidden>
+        <div class="netease-smtc-toast-copy">
+          <strong data-i18n="hud.neteaseSmtcNoticeTitle">网易云音乐无法识别当前播放内容</strong>
+          <span data-i18n="hud.neteaseSmtcHint">请打开网易云音乐「设置 → 系统」，勾选「开启SMTC」。</span>
+        </div>
+        <button id="netease-smtc-toast-close" type="button" title="关闭" aria-label="关闭" data-i18n-title="actions.close" data-i18n-aria="actions.close">
+          <svg class="control-icon material-symbol" viewBox="0 -960 960 960" aria-hidden="true">
+            <path class="icon-fill" d="M480-424 284-228q-11 11-28 11t-28-11q-11-11-11-28t11-28l196-196-196-196q-11-11-11-28t11-28q11-11 28-11t28 11l196 196 196-196q11-11 28-11t28 11q11 11 11 28t-11 28L536-480l196 196q11 11 11 28t-11 28q-11 11-28 11t-28-11L480-424Z" />
+          </svg>
+        </button>
+      </div>
+
       <div id="transport" aria-label="音乐控制" data-i18n-aria="controls.music">
         <button id="previous-track" class="ui-icon-button" title="上一首" aria-label="上一首" data-i18n-title="controls.previous" data-i18n-aria="controls.previous">
           <svg class="control-icon material-symbol" viewBox="0 -960 960 960" aria-hidden="true">
@@ -169,12 +181,18 @@
               <path class="icon-stroke window-stroke" d="m12.6 4.9-5.1 5.1 5.1 5.1" />
             </svg>
           </button>
-          <strong>
-            <span class="settings-brand">GENRE POLICE</span>
-            <span class="settings-section-name" data-i18n="settings.sectionName">设置</span>
-          </strong>
+          <strong class="settings-title" data-i18n="settings.title">GENRE POLICE SETTINGS</strong>
         </div>
+        <nav class="settings-tabs" role="tablist" aria-label="设置分类" data-i18n-aria="settings.categories">
+          <button id="settings-tab-appearance" class="settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settings-pane-appearance" data-settings-pane="appearance" data-i18n="settings.tabAppearance">界面</button>
+          <button id="settings-tab-lyrics" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-pane-lyrics" tabindex="-1" data-settings-pane="lyrics" data-i18n="settings.tabLyrics">歌词</button>
+          <button id="settings-tab-playback" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-pane-playback" tabindex="-1" data-settings-pane="playback" data-i18n="settings.tabPlayback">播放</button>
+          <button id="settings-tab-genre" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-pane-genre" tabindex="-1" data-settings-pane="genre" data-i18n="settings.tabGenre">曲风</button>
+          <button id="settings-tab-app" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-pane-app" tabindex="-1" data-settings-pane="app" data-i18n="settings.tabApp">应用</button>
+        </nav>
+        <div class="settings-body">
         <div class="settings-scroll">
+        <section id="settings-pane-appearance" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-appearance" data-settings-pane="appearance">
         <div class="settings-group-title" data-i18n="settings.groupAppearance">界面</div>
         <div class="settings-scale-row settings-language-row">
           <span id="language-label" class="settings-label" data-i18n="settings.language">界面语言</span>
@@ -196,7 +214,7 @@
         <div class="settings-layout-row">
           <div class="settings-toggle-copy">
             <span id="layout-mode-label" class="settings-label" data-i18n="settings.layout">界面布局</span>
-            <small data-i18n="settings.layoutHelp">胶囊横向紧凑；海报采用 DJ 活动海报式纵向排版。</small>
+            <small data-i18n="settings.layoutHelp">胶囊适合桌面常驻；海报适合竖向展示。</small>
           </div>
           <div id="layout-mode-group" class="layout-segment" role="radiogroup" aria-labelledby="layout-mode-label">
             <button class="layout-mode-option" type="button" role="radio" aria-checked="true" data-layout-mode="side" data-i18n="settings.layoutSide">胶囊</button>
@@ -206,7 +224,7 @@
         <div id="capsule-background-setting" class="settings-toggle-row">
           <div class="settings-toggle-copy">
             <span id="capsule-themed-background-label" class="settings-label" data-i18n="settings.capsuleThemedBackground">胶囊曲风背景</span>
-            <small data-i18n="settings.capsuleThemedBackgroundHelp">开启：曲风动态背景；关闭：桌面自适应背景。</small>
+            <small data-i18n="settings.capsuleThemedBackgroundHelp">使用随曲风变化的动态背景；关闭后适应桌面颜色。</small>
           </div>
           <button id="capsule-themed-background-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="capsule-themed-background-label">
             <span class="settings-switch-knob" aria-hidden="true"></span>
@@ -215,7 +233,7 @@
         <div id="poster-background-setting" class="settings-toggle-row" hidden>
           <div class="settings-toggle-copy">
             <span id="poster-themed-background-label" class="settings-label" data-i18n="settings.posterThemedBackground">海报曲风背景</span>
-            <small data-i18n="settings.posterThemedBackgroundHelp">开启：曲风动态海报；关闭：桌面自适应背景。</small>
+            <small data-i18n="settings.posterThemedBackgroundHelp">使用随曲风变化的动态海报；关闭后适应桌面颜色。</small>
           </div>
           <button id="poster-themed-background-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="poster-themed-background-label">
             <span class="settings-switch-knob" aria-hidden="true"></span>
@@ -243,12 +261,14 @@
           <span id="ui-scale-label" class="settings-label" data-i18n="settings.scale">界面大小</span>
           <div class="ui-scale-picker">
             <button id="ui-scale-button" type="button" aria-labelledby="ui-scale-label ui-scale-value" aria-haspopup="listbox" aria-expanded="false">
-              <span id="ui-scale-value">120%</span>
+              <span id="ui-scale-value">100%</span>
               <svg class="scale-chevron" viewBox="0 0 12 12" aria-hidden="true">
                 <path d="m3 4.5 3 3 3-3" />
               </svg>
             </button>
             <div id="ui-scale-menu" role="listbox" aria-labelledby="ui-scale-label" hidden>
+              <button class="ui-scale-option" type="button" role="option" data-scale="0.6">50%</button>
+              <button class="ui-scale-option" type="button" role="option" data-scale="0.72">60%</button>
               <button class="ui-scale-option" type="button" role="option" data-scale="0.84">70%</button>
               <button class="ui-scale-option" type="button" role="option" data-scale="0.96">80%</button>
               <button class="ui-scale-option" type="button" role="option" data-scale="1.08">90%</button>
@@ -264,13 +284,15 @@
         <div class="settings-layout-row">
           <div class="settings-toggle-copy">
             <span id="motion-mode-label" class="settings-label" data-i18n="settings.motionMode">动态效果</span>
-            <small data-i18n="settings.motionModeHelp">柔和会降低闪白、色移、故障切片、粒子和冲击幅度。</small>
+            <small data-i18n="settings.motionModeHelp">柔和模式会降低闪光、故障效果和冲击强度。</small>
           </div>
           <div id="motion-mode-group" class="layout-segment settings-two-segment" role="radiogroup" aria-labelledby="motion-mode-label">
             <button class="motion-mode-option" type="button" role="radio" aria-checked="false" data-motion-mode="gentle" data-i18n="settings.motionGentle">柔和</button>
             <button class="motion-mode-option" type="button" role="radio" aria-checked="true" data-motion-mode="standard" data-i18n="settings.motionStandard">标准</button>
           </div>
         </div>
+        </section>
+        <section id="settings-pane-lyrics" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-lyrics" data-settings-pane="lyrics" hidden>
         <div class="settings-group-title" data-i18n="settings.groupLyrics">歌词</div>
         <div class="settings-toggle-row">
           <div class="settings-toggle-copy">
@@ -293,7 +315,7 @@
         <div id="lyric-sweep-setting" class="settings-toggle-row settings-dependent-row">
           <div class="settings-toggle-copy">
             <span id="lyric-sweep-label" class="settings-label" data-i18n="settings.lyricSweep">逐字高亮</span>
-            <small data-i18n="settings.lyricSweepHelp">按词或字高亮；关闭后整句显示。时间由行级歌词估算。</small>
+            <small data-i18n="settings.lyricSweepHelp">按词或字推进高亮；关闭后整句显示。</small>
           </div>
           <button id="lyric-sweep-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="lyric-sweep-label">
             <span class="settings-switch-knob" aria-hidden="true"></span>
@@ -314,6 +336,8 @@
             <input id="lyric-delay" type="range" min="-2000" max="2000" step="50" value="0" aria-labelledby="lyric-delay-label lyric-delay-value" />
           </div>
         </div>
+        </section>
+        <section id="settings-pane-playback" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-playback" data-settings-pane="playback" hidden>
         <div class="settings-group-title" data-i18n="settings.groupPlayback">播放</div>
         <div class="settings-layout-row settings-idle-row">
           <div class="settings-toggle-copy">
@@ -325,6 +349,24 @@
             <button class="idle-behavior-option" type="button" role="radio" aria-checked="false" data-idle-behavior="dim" data-i18n="settings.idleDim">变暗</button>
             <button class="idle-behavior-option" type="button" role="radio" aria-checked="false" data-idle-behavior="hide" data-i18n="settings.idleHide">隐藏</button>
           </div>
+        </div>
+        <div class="settings-toggle-row">
+          <div class="settings-toggle-copy">
+            <span id="idle-frame-limit-label" class="settings-label" data-i18n="settings.idleFrameLimit">空闲时降低帧率</span>
+            <small data-i18n="settings.idleFrameLimitHelp">未播放音乐时将可视化降至 30 FPS，减少 CPU 和 GPU 占用。</small>
+          </div>
+          <button id="idle-frame-limit-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="idle-frame-limit-label">
+            <span class="settings-switch-knob" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="settings-toggle-row">
+          <div class="settings-toggle-copy">
+            <span id="rhythm-model-label" class="settings-label" data-i18n="settings.rhythmModel">本地节拍增强</span>
+            <small data-i18n="settings.rhythmModelHelp">使用本地 BeatNet 模型辅助判断节拍；关闭后仍保留普通音频分析。</small>
+          </div>
+          <button id="rhythm-model-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="rhythm-model-label">
+            <span class="settings-switch-knob" aria-hidden="true"></span>
+          </button>
         </div>
         <div class="media-source-settings">
           <span id="media-source-label" class="settings-label" data-i18n="settings.mediaSource">播放器</span>
@@ -338,17 +380,26 @@
             <div id="media-source-menu" role="listbox" aria-labelledby="media-source-label" hidden></div>
           </div>
           <small id="media-source-help" data-i18n="settings.mediaSourceHelp">可固定一个 Windows 媒体会话；自动模式会跟随最近播放的来源。</small>
+          <div id="netease-smtc-hint" class="settings-notice" role="status" hidden>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="10" cy="10" r="8" />
+              <path d="M10 8.5v5M10 6.2v.2" />
+            </svg>
+            <span data-i18n="settings.neteaseSmtcHint">检测到网易云音乐，但尚未开启系统媒体控制。请前往网易云音乐「设置 → 系统」，勾选「开启SMTC」。</span>
+          </div>
           <div class="media-source-ignore-head">
             <span data-i18n="settings.ignoredPlayers">忽略的播放器</span>
             <small data-i18n="settings.ignoredPlayersHelp">被忽略的来源不会被自动选择。</small>
           </div>
           <div id="media-source-ignore-list" class="media-source-ignore-list"></div>
         </div>
+        </section>
+        <section id="settings-pane-genre" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-genre" data-settings-pane="genre" hidden>
         <div class="settings-group-title" data-i18n="settings.groupGenre">曲风识别</div>
         <div class="settings-toggle-row">
           <div class="settings-toggle-copy">
             <span id="online-lookup-label" class="settings-label" data-i18n="settings.onlineLookup">在线曲风查询</span>
-            <small data-i18n="settings.onlineLookupHelp">关闭后不发送曲名、作者或专辑，仅使用本地信息和已记住的修正。</small>
+            <small data-i18n="settings.onlineLookupHelp">关闭后不发送曲名、艺术家或专辑，仅使用本地信息和已保存的修正。</small>
           </div>
           <button id="online-lookup-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="online-lookup-label">
             <span class="settings-switch-knob" aria-hidden="true"></span>
@@ -365,11 +416,170 @@
               <input id="genre-correction-input" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="genre-correction-suggestions" placeholder="输入或选择曲风" data-i18n-placeholder="settings.genreCorrectionPlaceholder" />
               <div id="genre-correction-suggestions" role="listbox" hidden></div>
             </div>
-            <button id="genre-correction-save" type="button" data-i18n="actions.remember">记住</button>
+            <button id="genre-correction-save" type="button" data-i18n="actions.remember">保存</button>
             <button id="genre-correction-clear" type="button" data-i18n="actions.clear">清除</button>
           </div>
-          <small data-i18n="settings.genreCorrectionHelp">按作者和完整曲名保存在本机，下次播放时优先使用。</small>
+          <small data-i18n="settings.genreCorrectionHelp">保存在本机；同一曲目下次播放时会优先使用这项修正。</small>
         </div>
+        <details id="genre-artist-panel" class="settings-disclosure">
+          <summary>
+            <span class="settings-disclosure-copy">
+              <span class="settings-label" data-i18n="settings.genreArtistRules">补充艺术家</span>
+              <small data-i18n="settings.genreArtistRulesHelp">当其他信息不足时，用艺术家名称补充已有曲风的判断。</small>
+            </span>
+            <svg class="settings-disclosure-chevron" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="m3 4.5 3 3 3-3" />
+            </svg>
+          </summary>
+          <div class="genre-artist-settings">
+            <div class="genre-artist-form">
+              <div class="genre-artist-field">
+                <span id="genre-artist-genre-label" class="genre-artist-field-label" data-i18n="settings.genreArtistGenre">曲风</span>
+                <div class="genre-artist-genre-picker">
+                  <button id="genre-artist-genre" type="button" aria-labelledby="genre-artist-genre-label genre-artist-genre-value" aria-haspopup="listbox" aria-expanded="false">
+                    <span id="genre-artist-genre-value" data-i18n="settings.genreArtistChooseGenre">选择曲风</span>
+                    <svg class="scale-chevron" viewBox="0 0 12 12" aria-hidden="true">
+                      <path d="m3 4.5 3 3 3-3" />
+                    </svg>
+                  </button>
+                  <div id="genre-artist-genre-menu" role="listbox" aria-labelledby="genre-artist-genre-label" hidden></div>
+                </div>
+              </div>
+              <label>
+                <span class="genre-artist-field-label" data-i18n="settings.genreArtistName">艺术家</span>
+                <input id="genre-artist-name" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="输入艺术家名称" data-i18n-placeholder="settings.genreArtistNamePlaceholder" />
+              </label>
+              <button id="genre-artist-add" class="settings-action-button" type="button" data-i18n="actions.addGenreArtist">添加</button>
+            </div>
+            <small id="genre-artist-state" role="status"></small>
+            <div id="genre-artist-list" class="genre-artist-list"></div>
+          </div>
+        </details>
+        <details id="custom-genre-panel" class="settings-disclosure">
+          <summary>
+            <span class="settings-disclosure-copy">
+              <span class="settings-label" data-i18n="settings.customGenres">自定义曲风</span>
+              <small data-i18n="settings.customGenresHelp">用标签或艺术家匹配未收录曲风，并继承一种现有视觉效果或自定义配色。</small>
+            </span>
+            <svg class="settings-disclosure-chevron" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="m3 4.5 3 3 3-3" />
+            </svg>
+          </summary>
+        <div class="custom-genre-settings">
+          <div class="custom-genre-form">
+            <div class="custom-genre-field-grid">
+              <label>
+                <span class="custom-genre-field-label" data-i18n="settings.customGenreName">显示名称</span>
+                <input id="custom-genre-name" type="text" maxlength="38" autocomplete="off" spellcheck="false" placeholder="例如：Liquid Riddim" data-i18n-placeholder="settings.customGenreNamePlaceholder" />
+              </label>
+              <div class="custom-genre-field">
+                <span id="custom-genre-visual-label" class="custom-genre-field-label" data-i18n="settings.customGenreVisual">视觉效果</span>
+                <div class="custom-genre-visual-picker">
+                  <button id="custom-genre-visual" type="button" aria-labelledby="custom-genre-visual-label custom-genre-visual-value" aria-haspopup="listbox" aria-expanded="false">
+                    <span id="custom-genre-visual-value"></span>
+                    <svg class="scale-chevron" viewBox="0 0 12 12" aria-hidden="true">
+                      <path d="m3 4.5 3 3 3-3" />
+                    </svg>
+                  </button>
+                  <div id="custom-genre-visual-menu" role="listbox" aria-labelledby="custom-genre-visual-label" hidden></div>
+                </div>
+              </div>
+            </div>
+            <div class="custom-genre-color-settings">
+              <div class="custom-genre-color-head">
+                <div>
+                  <span id="custom-genre-colors-label" class="custom-genre-field-label" data-i18n="settings.customGenreColors">自定义主题色</span>
+                  <small data-i18n="settings.customGenreColorsHelp">覆盖所选视觉效果的三种基础颜色。</small>
+                </div>
+                <button id="custom-genre-colors-toggle" class="settings-switch" type="button" role="switch" aria-checked="false" aria-labelledby="custom-genre-colors-label" aria-controls="custom-genre-color-palette">
+                  <span class="settings-switch-knob" aria-hidden="true"></span>
+                </button>
+              </div>
+              <div id="custom-genre-color-palette" class="custom-genre-color-palette" hidden>
+                <div class="custom-genre-color-control">
+                  <span data-i18n="settings.customGenrePrimaryColor">主色</span>
+                  <button id="custom-genre-accent" class="custom-genre-color-value" type="button" value="#67f7ff" data-label-key="settings.customGenrePrimaryColor" aria-haspopup="dialog" aria-expanded="false">
+                    <span class="custom-genre-color-swatch" style="--swatch-color: #67f7ff" aria-hidden="true"></span>
+                    <output id="custom-genre-accent-value" for="custom-genre-accent">#67f7ff</output>
+                  </button>
+                </div>
+                <div class="custom-genre-color-control">
+                  <span data-i18n="settings.customGenreSecondaryColor">辅助色</span>
+                  <button id="custom-genre-accent-2" class="custom-genre-color-value" type="button" value="#8d76ff" data-label-key="settings.customGenreSecondaryColor" aria-haspopup="dialog" aria-expanded="false">
+                    <span class="custom-genre-color-swatch" style="--swatch-color: #8d76ff" aria-hidden="true"></span>
+                    <output id="custom-genre-accent-2-value" for="custom-genre-accent-2">#8d76ff</output>
+                  </button>
+                </div>
+                <div class="custom-genre-color-control">
+                  <span data-i18n="settings.customGenreHotColor">高亮色</span>
+                  <button id="custom-genre-hot" class="custom-genre-color-value" type="button" value="#ffffff" data-label-key="settings.customGenreHotColor" aria-haspopup="dialog" aria-expanded="false">
+                    <span class="custom-genre-color-swatch" style="--swatch-color: #ffffff" aria-hidden="true"></span>
+                    <output id="custom-genre-hot-value" for="custom-genre-hot">#ffffff</output>
+                  </button>
+                </div>
+                <div id="custom-genre-color-editor" class="custom-genre-color-editor" role="dialog" aria-labelledby="custom-genre-color-editor-title" hidden>
+                  <div class="custom-genre-color-editor-head">
+                    <span id="custom-genre-color-editor-title">主色</span>
+                    <button id="custom-genre-color-editor-close" type="button" data-i18n-aria="actions.close" aria-label="关闭">
+                      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
+                    </button>
+                  </div>
+                  <div id="custom-genre-color-field" class="custom-genre-color-field" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" data-i18n-aria="settings.customColorField" aria-label="饱和度和亮度">
+                    <span id="custom-genre-color-field-thumb" aria-hidden="true"></span>
+                  </div>
+                  <label class="custom-genre-hue-row">
+                    <span data-i18n="settings.customColorHue">色相</span>
+                    <input id="custom-genre-color-hue" type="range" min="0" max="359" step="1" value="180" />
+                  </label>
+                  <label class="custom-genre-hex-row">
+                    <span>HEX</span>
+                    <input id="custom-genre-color-hex" type="text" maxlength="7" autocomplete="off" spellcheck="false" value="#67f7ff" />
+                  </label>
+                </div>
+                <button id="custom-genre-colors-reset" type="button" data-i18n="actions.restoreThemeColors">恢复默认</button>
+              </div>
+            </div>
+            <label>
+              <span class="custom-genre-field-label" data-i18n="settings.customGenreAliases">识别别名</span>
+              <input id="custom-genre-aliases" type="text" autocomplete="off" spellcheck="false" placeholder="多个别名用逗号分隔" data-i18n-placeholder="settings.customGenreAliasesPlaceholder" />
+            </label>
+            <label>
+              <span class="custom-genre-field-label" data-i18n="settings.customGenreArtists">艺术家（可选）</span>
+              <input id="custom-genre-artists" type="text" autocomplete="off" spellcheck="false" placeholder="多个艺术家用逗号分隔" data-i18n-placeholder="settings.customGenreArtistsPlaceholder" />
+            </label>
+            <div class="custom-genre-actions">
+              <button id="custom-genre-save" class="settings-action-button" type="button" data-i18n="actions.addCustomGenre">添加</button>
+              <button id="custom-genre-cancel" type="button" data-i18n="actions.cancel" hidden>取消</button>
+              <span id="custom-genre-state" role="status"></span>
+            </div>
+          </div>
+          <div id="custom-genre-list" class="custom-genre-list"></div>
+        </div>
+        </details>
+        <div class="genre-data-settings">
+          <div class="genre-data-head">
+            <div class="genre-data-copy">
+              <span class="settings-label" data-i18n="settings.genreData">曲风数据</span>
+              <small data-i18n="settings.genreDataHelp">备份或迁移手动修正、补充艺术家和自定义曲风；导入会合并现有数据。</small>
+            </div>
+            <div class="genre-data-actions">
+              <button id="genre-data-export" class="settings-action-button" type="button" data-i18n="actions.exportGenreData">导出数据</button>
+              <button id="genre-data-import" class="settings-action-button" type="button" data-i18n="actions.importGenreData">导入数据</button>
+            </div>
+          </div>
+          <small id="genre-data-state" role="status"></small>
+        </div>
+        <details id="settings-sources-panel" class="settings-disclosure settings-sources-disclosure">
+          <summary>
+            <span class="settings-disclosure-copy">
+              <span class="settings-label" data-i18n="settings.advancedSources">高级数据源</span>
+              <small data-i18n="settings.advancedSourcesHelp">可选。使用自己的密钥提高冷门子曲风匹配率。</small>
+            </span>
+            <svg class="settings-disclosure-chevron" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="m3 4.5 3 3 3-3" />
+            </svg>
+          </summary>
+          <div class="settings-disclosure-content">
         <div class="lastfm-settings">
           <label for="lastfm-key" data-i18n="settings.lastfmLabel">Last.fm API Key（可选）</label>
           <div class="settings-row">
@@ -388,6 +598,10 @@
           <button id="credentials-save" class="settings-action-button" type="button" data-i18n="actions.applyKeys">应用密钥</button>
           <span id="credentials-state" role="status"></span>
         </div>
+          </div>
+        </details>
+        </section>
+        <section id="settings-pane-app" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-app" data-settings-pane="app" hidden>
         <div class="settings-group-title" data-i18n="settings.groupApp">应用</div>
         <div class="settings-toggle-row">
           <div class="settings-toggle-copy">
@@ -400,6 +614,15 @@
         </div>
         <div class="settings-toggle-row">
           <div class="settings-toggle-copy">
+            <span id="mouse-passthrough-label" class="settings-label" data-i18n="settings.mousePassthrough">鼠标穿透</span>
+            <small data-i18n="settings.mousePassthroughHelp">让鼠标操作穿过可视化；按 Ctrl+Shift+G 或使用托盘菜单可关闭。</small>
+          </div>
+          <button id="mouse-passthrough-toggle" class="settings-switch" type="button" role="switch" aria-checked="false" aria-labelledby="mouse-passthrough-label">
+            <span class="settings-switch-knob" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="settings-toggle-row">
+          <div class="settings-toggle-copy">
             <span id="launch-at-login-label" class="settings-label" data-i18n="settings.launchAtLogin">开机自启</span>
             <small data-i18n="settings.launchAtLoginHelp">登录 Windows 后自动启动。移动便携版后需重新开启。</small>
           </div>
@@ -407,13 +630,20 @@
             <span class="settings-switch-knob" aria-hidden="true"></span>
           </button>
         </div>
-        <details id="diagnostics-panel" class="settings-diagnostics">
-          <summary data-i18n="settings.diagnostics">状态与诊断</summary>
+        <details id="diagnostics-panel" class="settings-diagnostics settings-disclosure">
+          <summary>
+            <span class="settings-disclosure-copy">
+              <span class="settings-label" data-i18n="settings.diagnostics">状态与诊断</span>
+            </span>
+            <svg class="settings-disclosure-chevron" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="m3 4.5 3 3 3-3" />
+            </svg>
+          </summary>
           <div class="diagnostics-content">
             <div class="diagnostics-row"><span data-i18n="settings.diagnosticsPlayer">播放器</span><strong id="diagnostics-player">—</strong></div>
             <div class="diagnostics-row"><span data-i18n="settings.diagnosticsAudio">音频捕获</span><strong id="diagnostics-audio">—</strong></div>
             <div class="diagnostics-row"><span data-i18n="settings.diagnosticsRhythm">本地节拍模型</span><strong id="diagnostics-rhythm">—</strong></div>
-            <div class="diagnostics-row"><span data-i18n="settings.diagnosticsGenre">曲风来源</span><strong id="diagnostics-genre">—</strong></div>
+            <div class="diagnostics-row"><span data-i18n="settings.diagnosticsGenre">识别依据</span><strong id="diagnostics-genre">—</strong></div>
             <div class="diagnostics-row"><span data-i18n="settings.diagnosticsLyrics">歌词来源</span><strong id="diagnostics-lyrics">—</strong></div>
             <div class="diagnostics-actions">
               <button id="diagnostics-recapture" class="settings-action-button" type="button" data-i18n="actions.recaptureAudio">重新捕获音频</button>
@@ -431,11 +661,13 @@
         </div>
         <div class="settings-version">
           <span data-i18n="settings.version">版本</span>
-          <strong id="app-version">0.1.0</strong>
+          <strong id="app-version">0.2.0</strong>
         </div>
+        </section>
         </div>
         <div id="settings-scrollbar" aria-hidden="true" hidden>
           <span id="settings-scrollbar-thumb"></span>
+        </div>
         </div>
       </aside>
     </main>

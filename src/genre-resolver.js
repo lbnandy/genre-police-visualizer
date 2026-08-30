@@ -1,12 +1,21 @@
 'use strict';
 
 const { classifyGenre, normalize, canonicalArtist } = require('./genre-classifier');
+const { matchCustomGenre } = require('./custom-genres');
+const { matchGenreArtistRule } = require('./genre-artist-rules');
 const { themeFor } = require('./themes');
 const { canonicalizeGenreLabel, localizedGenreInfo } = require('./genre-localization');
-const { cleanDisplayTitle, lookupTitle } = require('./title-normalizer');
+const { cleanDisplayTitle, lookupTitle, playerTitleInfo } = require('./title-normalizer');
 
 const GENERIC_GENRES = new Set([
   'dance', 'electronic', 'electronica', 'alternative', 'pop', 'rock', 'soundtrack'
+]);
+
+const BROAD_GENRE_IDS = new Set([
+  'alternative', 'bass-music', 'breakbeat', 'dance-pop', 'drum-bass',
+  'dubstep', 'garage', 'hard-dance', 'hardcore', 'hardstyle', 'hip-hop',
+  'house', 'j-pop', 'metal', 'pop', 'rnb', 'rock', 'techno', 'trance',
+  'trap-edm'
 ]);
 
 // MusicBrainz is deliberately rate-limited and can traverse recording,
@@ -14,6 +23,7 @@ const GENERIC_GENRES = new Set([
 // resolver-level budget; the normally fast catalog sources use their own HTTP
 // safety timeouts and should not lose valid results to an arbitrary 2 s cap.
 const MUSICBRAINZ_LOOKUP_BUDGET_MS = 2000;
+const BILIBILI_SOURCE_HINT_TTL_MS = 20 * 60 * 1000;
 
 const NON_GENRE_TAG = /^(?:music|all|other|misc|unknown|favorites?|favourites?|seen live|live|awesome|love|best|spotify|male vocalists?|female vocalists?|instrumental|under \d+ listeners?|\d{2,4}s?)$/i;
 
@@ -24,6 +34,13 @@ function isGenericGenre(value) {
 function sameGenreFamily(leftGenre, rightGenre) {
   if (!leftGenre?.id || !rightGenre?.id) return false;
   return themeFor(leftGenre.id).family === themeFor(rightGenre.id).family;
+}
+
+function shouldApplyGenreArtistRule(currentGenre, targetGenreId) {
+  if (!targetGenreId || currentGenre?.id === targetGenreId) return false;
+  if (!currentGenre?.id || ['unknown', 'electronic'].includes(currentGenre.id)) return true;
+  if (!BROAD_GENRE_IDS.has(currentGenre.id)) return false;
+  return sameGenreFamily(currentGenre, { id: targetGenreId });
 }
 
 function shouldAcceptAlbumGenre(curatedGenre, albumGenre) {
@@ -71,16 +88,42 @@ function rawGenreTheme(label) {
   };
 }
 
-function genreFromUserCorrection(correction) {
+function genreFromUserCorrection(correction, customGenres = []) {
   const genreId = String(correction?.genreId || '').trim();
   if (!genreId) return null;
-  const theme = themeFor(genreId);
-  if (theme.label === 'UNKNOWN' && genreId !== 'unknown') return null;
+  const customRule = correction?.customGenreId
+    ? (Array.isArray(customGenres) ? customGenres : [])
+      .find((rule) => rule.id === correction.customGenreId)
+    : null;
+  const baseGenreId = String(customRule?.baseGenreId || correction?.baseGenreId || genreId).trim();
+  const theme = themeFor(baseGenreId);
+  if (theme.label === 'UNKNOWN' && baseGenreId !== 'unknown') return null;
+  const colors = customRule?.colors || correction?.colors || null;
+  const customLabel = customRule?.name || (correction?.customGenreId ? correction?.label : '');
   return {
-    id: genreId,
     ...theme,
+    ...(colors || {}),
+    ...(colors ? { genreInk: '', genreInk2: '', genreInkEdge: '' } : {}),
+    id: baseGenreId,
+    label: customLabel ? String(customLabel).toLocaleUpperCase() : theme.label,
     matched: `user:${genreId}`,
     confidence: 1
+  };
+}
+
+function genreFromCustomRule(match) {
+  if (!match?.rule?.baseGenreId || !match.rule.name) return null;
+  const theme = themeFor(match.rule.baseGenreId);
+  if (theme.label === 'UNKNOWN' && match.rule.baseGenreId !== 'unknown') return null;
+  const colors = match.rule.colors || null;
+  return {
+    ...theme,
+    ...(colors || {}),
+    ...(colors ? { genreInk: '', genreInk2: '', genreInkEdge: '' } : {}),
+    id: match.rule.baseGenreId,
+    label: match.rule.name.toLocaleUpperCase(),
+    matched: `custom:${match.rule.id}:${match.matchedBy}`,
+    confidence: 0.99
   };
 }
 
@@ -549,10 +592,50 @@ class GenreResolver {
     this.getCorrection = getCorrection;
     this.getNetworkCountry = getNetworkCountry;
     this.cache = new Map();
+    this.bilibiliSourceHints = new Map();
+    this.bilibiliTitleHints = new Map();
+  }
+
+  isBilibiliFallbackCandidate(rawMetadata = {}) {
+    const titleInfo = playerTitleInfo(rawMetadata.title);
+    const sourceKey = normalize(rawMetadata.source);
+    const titleKey = `${sourceKey}::${normalize(titleInfo.title)}`;
+    const sampledAtMs = Number(rawMetadata.sampledAtMs) || Date.now();
+    const currentTitleHasBilibiliSuffix = titleInfo.removedSources.includes('bilibili');
+    const currentTitleHasOtherPlayerSuffix = titleInfo.removedSources.some((source) => source !== 'bilibili');
+
+    if (currentTitleHasOtherPlayerSuffix) {
+      if (sourceKey) this.bilibiliSourceHints.delete(sourceKey);
+      for (const rememberedTitleKey of this.bilibiliTitleHints.keys()) {
+        if (rememberedTitleKey.startsWith(`${sourceKey}::`)) {
+          this.bilibiliTitleHints.delete(rememberedTitleKey);
+        }
+      }
+      return false;
+    }
+
+    if (currentTitleHasBilibiliSuffix && normalize(titleInfo.title)) {
+      const expiresAt = sampledAtMs + BILIBILI_SOURCE_HINT_TTL_MS;
+      this.bilibiliTitleHints.set(titleKey, expiresAt);
+      if (sourceKey) this.bilibiliSourceHints.set(sourceKey, expiresAt);
+    }
+
+    const rememberedTitleUntil = this.bilibiliTitleHints.get(titleKey) || 0;
+    const rememberedSourceUntil = sourceKey ? this.bilibiliSourceHints.get(sourceKey) || 0 : 0;
+    if (rememberedTitleUntil && rememberedTitleUntil < sampledAtMs) {
+      this.bilibiliTitleHints.delete(titleKey);
+    }
+    if (rememberedSourceUntil && rememberedSourceUntil < sampledAtMs) {
+      this.bilibiliSourceHints.delete(sourceKey);
+    }
+    return currentTitleHasBilibiliSuffix
+      || rememberedTitleUntil >= sampledAtMs
+      || rememberedSourceUntil >= sampledAtMs;
   }
 
   async resolve(rawMetadata) {
     const title = cleanTitle(rawMetadata.title);
+    const bilibiliFallbackEligible = this.isBilibiliFallbackCandidate(rawMetadata);
     const catalogTitle = lookupTitle(title);
     const rawArtist = rawMetadata.artist || rawMetadata.albumArtist;
     let artist = cleanArtist(rawArtist, title);
@@ -561,9 +644,16 @@ class GenreResolver {
     const curatedGenre = classifyGenre({ artist, tags: [], title: '' });
     const hasCuratedGenre = String(curatedGenre.matched || '').startsWith('artist:');
     const playerCollection = rawMetadata.album || embeddedCollection(rawArtist);
-    const correction = this.getCorrection({ title, artist, album: playerCollection });
-    const correctedGenre = genreFromUserCorrection(correction);
-    const key = `${normalize(artist)}::${normalize(title)}::${normalize(playerCollection)}`;
+    const correction = this.getCorrection({
+      title,
+      artist,
+      album: playerCollection,
+      source: rawMetadata.source,
+      durationMs: rawMetadata.durationMs
+    });
+    const correctedGenre = genreFromUserCorrection(correction, this.getConfig().customGenres);
+    const key = `${normalize(artist)}::${normalize(title)}::${normalize(playerCollection)}`
+      + (bilibiliFallbackEligible ? '::bilibili-suffix' : '');
     const directTags = Array.isArray(rawMetadata.genres) ? rawMetadata.genres.filter(Boolean) : [];
     // A user correction is authoritative and must be checked before the
     // resolver cache. Otherwise a result cached before the user pressed
@@ -579,7 +669,39 @@ class GenreResolver {
         genre: correctedGenre,
         genreSource: 'user correction',
         genreSources: ['user correction'],
-        userGenreCorrection: { genreId: correctedGenre.id, label: correctedGenre.label }
+        genreEvidence: { type: 'user-correction', genreId: correctedGenre.id },
+        userGenreCorrection: {
+          genreId: correction.genreId || correctedGenre.id,
+          label: correctedGenre.label
+        }
+      };
+      this.cache.set(key, result);
+      return { ...result, ...rawMetadata, title: result.title, artist: result.artist, album: result.album, artwork: result.artwork };
+    }
+
+    const customGenreMatch = matchCustomGenre(this.getConfig().customGenres, {
+      tags: directTags,
+      artist
+    });
+    const directCustomGenre = genreFromCustomRule(customGenreMatch);
+    if (directCustomGenre) {
+      const result = {
+        title,
+        artist: artist || 'Unknown artist',
+        album: playerCollection,
+        artwork: rawMetadata.artwork || '',
+        isrc: '',
+        rawGenres: directTags,
+        genre: directCustomGenre,
+        genreSource: 'custom genre rule',
+        genreSources: ['custom genre rule'],
+        genreEvidence: {
+          type: 'custom-genre',
+          ruleName: customGenreMatch.rule.name,
+          matchedBy: customGenreMatch.matchedBy
+        },
+        customGenreRule: { id: customGenreMatch.rule.id, name: customGenreMatch.rule.name },
+        userGenreCorrection: null
       };
       this.cache.set(key, result);
       return { ...result, ...rawMetadata, title: result.title, artist: result.artist, album: result.album, artwork: result.artwork };
@@ -609,6 +731,7 @@ class GenreResolver {
         genre: contentGenre,
         genreSource: 'title/artist ASMR signal',
         genreSources: ['title/artist ASMR signal'],
+        genreEvidence: { type: 'classifier', matched: contentGenre.matched },
         userGenreCorrection: null
       };
       this.cache.set(key, result);
@@ -698,8 +821,10 @@ class GenreResolver {
       sources.unshift(musicBrainzCandidate.source || 'MusicBrainz recording genres');
     }
 
-    let genre = classifyGenre({ tags, artist, title });
-    if (['electronic', 'unknown'].includes(genre.id) && deezer?.label) {
+    const catalogCustomMatch = matchCustomGenre(this.getConfig().customGenres, { tags, artist });
+    let genre = genreFromCustomRule(catalogCustomMatch) || classifyGenre({ tags, artist, title });
+    if (catalogCustomMatch) sources.unshift('custom genre rule');
+    if (!catalogCustomMatch && ['electronic', 'unknown'].includes(genre.id) && deezer?.label) {
       const labelCompatible = !hasCuratedGenre || sameGenreFamily(curatedGenre, deezerLabelGenre);
       if (labelCompatible && deezerLabelGenre && !['electronic', 'unknown'].includes(deezerLabelGenre.id)) {
         genre = { ...deezerLabelGenre, confidence: 0.56, matched: `label:${deezer.label}` };
@@ -714,6 +839,31 @@ class GenreResolver {
         genre = rawGenreTheme(rawLabel);
       }
     }
+    const genreArtistRule = matchGenreArtistRule(this.getConfig().genreArtistRules, artist);
+    let genreEvidence = null;
+    if (!catalogCustomMatch && genreArtistRule && shouldApplyGenreArtistRule(genre, genreArtistRule.genreId)) {
+      genre = {
+        id: genreArtistRule.genreId,
+        ...themeFor(genreArtistRule.genreId),
+        matched: `user-artist:${genreArtistRule.artist}`,
+        confidence: 0.74
+      };
+      genreEvidence = {
+        type: 'user-artist',
+        artist: genreArtistRule.artist,
+        genreId: genreArtistRule.genreId
+      };
+      sources.unshift('user artist supplement');
+    }
+    if (genre.id === 'unknown' && bilibiliFallbackEligible) {
+      genre = {
+        id: 'bilibili',
+        ...themeFor('bilibili'),
+        matched: 'source:bilibili-suffix',
+        confidence: 0.52
+      };
+      sources.unshift('Bilibili player suffix fallback');
+    }
     const result = {
       title,
       artist: artist || 'Unknown artist',
@@ -724,6 +874,15 @@ class GenreResolver {
       genre,
       genreSource: sources[0] || 'local classifier',
       genreSources: [...new Set(sources)],
+      genreEvidence: genreEvidence || {
+        type: catalogCustomMatch ? 'custom-genre' : 'classifier',
+        ...(catalogCustomMatch
+          ? { ruleName: catalogCustomMatch.rule.name, matchedBy: catalogCustomMatch.matchedBy }
+          : { matched: genre.matched || '' })
+      },
+      customGenreRule: catalogCustomMatch
+        ? { id: catalogCustomMatch.rule.id, name: catalogCustomMatch.rule.name }
+        : null,
       userGenreCorrection: null
     };
     this.cache.set(key, result);
@@ -744,6 +903,7 @@ class GenreResolver {
 
 module.exports = {
   GenreResolver,
+  genreFromCustomRule,
   cleanArtist,
   embeddedCollection,
   splitArtistContext,
@@ -756,6 +916,7 @@ module.exports = {
   scoreDiscogsRelease,
   scoreMusicBrainzRecording,
   sameGenreFamily,
+  shouldApplyGenreArtistRule,
   shouldAcceptAlbumGenre,
   rankedLastFmTags,
   rankedMusicBrainzTags,

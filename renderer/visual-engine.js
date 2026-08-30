@@ -34,7 +34,9 @@ function smoothstep(edge0, edge1, value) {
 export class VisualEngine {
   constructor(canvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+    // A desynchronized canvas can bypass Chromium's normal alpha compositor on
+    // transparent Windows windows, exposing its full backing rectangle as black.
+    this.ctx = canvas.getContext('2d', { alpha: true });
     this.fxCanvas = document.createElement('canvas');
     this.fxCtx = this.fxCanvas.getContext('2d', { alpha: true, desynchronized: true });
     this.tintCanvas = document.createElement('canvas');
@@ -90,6 +92,41 @@ export class VisualEngine {
     this.synthCapsuleHorizonY = 0;
     this.synthCapsuleHorizonMeasuredAt = 0;
     this.asmrReference = 0.035;
+    this.bilibiliVoiceActivity = 0;
+    this.bilibiliSectionDrive = 0;
+    this.bilibiliTransientDrive = 0;
+    this.bilibiliMotionDrive = 0;
+    this.bilibiliTvScaleX = 1;
+    this.bilibiliTvScaleY = 1;
+    this.bilibiliMotionLastAt = 0;
+    this.bilibiliDanmakuLastAt = 0;
+    const bilibiliDanmakuCount = 22;
+    const bilibiliDanmakuLanes = 9;
+    this.bilibiliDanmaku = Array.from({ length: bilibiliDanmakuCount }, (_, index) => {
+      const sample = (offset) => {
+        const value = Math.sin((index * 7 + offset + 1) * 127.1) * 43758.5453;
+        return value - Math.floor(value);
+      };
+      const lane = index % bilibiliDanmakuLanes;
+      const laneSlot = Math.floor(index / bilibiliDanmakuLanes);
+      const laneSlots = Math.ceil((bilibiliDanmakuCount - lane) / bilibiliDanmakuLanes);
+      const laneSample = (offset) => {
+        const value = Math.sin((lane * 11 + offset + 1) * 127.1) * 43758.5453;
+        return value - Math.floor(value);
+      };
+      return {
+        lane,
+        y: (lane + 0.5 + (sample(0) - 0.5) * 0.28) / bilibiliDanmakuLanes,
+        width: 30 + Math.round(sample(1) * 62),
+        height: 2.2 + sample(2) * 1.8,
+        speed: 0.014 + laneSample(3) * 0.018,
+        phase: sample(4),
+        progress: (laneSlot / laneSlots + sample(4) * 0.06) % 1,
+        color: Math.floor(sample(5) * 3),
+        alpha: 0.078 + sample(6) * 0.07,
+        spawnAt: 0.2 + sample(7) * 0.72
+      };
+    });
     this.resize();
     new ResizeObserver(() => this.resize()).observe(canvas);
   }
@@ -858,6 +895,102 @@ export class VisualEngine {
     ctx.closePath();
   }
 
+  updateBilibiliResponse(metrics, time) {
+    const deltaMs = this.bilibiliMotionLastAt
+      ? clamp(time - this.bilibiliMotionLastAt, 4, 64)
+      : 16.667;
+    this.bilibiliMotionLastAt = time;
+    const follow = (current, target, attackMs, releaseMs) => {
+      const tau = target > current ? attackMs : releaseMs;
+      return current + (target - current) * (1 - Math.exp(-deltaMs / tau));
+    };
+
+    // Speech carries a syllabic envelope and many short consonant peaks. Track
+    // the sustained mid-band body, then apply a long release so plosives and
+    // edits do not read as musical hits.
+    const speechBody = clamp(
+      (metrics.volume || 0) * 0.46
+        + (metrics.lowMid || 0) * 0.23
+        + (metrics.mid || 0) * 0.27
+        + (metrics.high || 0) * 0.04
+    );
+    const activityTarget = smoothstep(0.022, 0.31, speechBody);
+    const relativeEnergy = Number.isFinite(metrics.relativeEnergy) ? metrics.relativeEnergy : 1;
+    const sectionTarget = smoothstep(0.72, 1.36, relativeEnergy);
+    const transient = Math.max(
+      metrics.impact || 0,
+      metrics.rhythmPulse || 0,
+      metrics.rhythmStrength || 0
+    );
+    const transientTarget = smoothstep(0.42, 0.9, transient);
+
+    this.bilibiliVoiceActivity = follow(this.bilibiliVoiceActivity, activityTarget, 260, 920);
+    this.bilibiliSectionDrive = follow(this.bilibiliSectionDrive, sectionTarget, 780, 1450);
+    this.bilibiliTransientDrive = follow(this.bilibiliTransientDrive, transientTarget, 90, 480);
+    const motionTarget = clamp(
+      this.bilibiliVoiceActivity * 0.22
+        + this.bilibiliSectionDrive * 0.48
+        + this.bilibiliTransientDrive * 0.3
+    );
+    this.bilibiliMotionDrive = follow(this.bilibiliMotionDrive, motionTarget, 220, 700);
+    const sectionOffset = this.bilibiliSectionDrive - 0.34;
+    this.bilibiliTvScaleX = 1 + sectionOffset * 0.03 + this.bilibiliTransientDrive * 0.045;
+    this.bilibiliTvScaleY = 1 + sectionOffset * 0.012 - this.bilibiliTransientDrive * 0.022;
+  }
+
+  drawBilibiliStock(metrics, time) {
+    if (document.body.dataset.backgroundStyle !== 'themed') return;
+    const ctx = this.ctx;
+    const posterLayout = document.body.dataset.layout === 'poster';
+    const bounds = posterLayout
+      ? { left: 16, top: 16, right: this.width - 16, bottom: this.height - 16, radius: 24 }
+      : { left: 54, top: 48, right: this.width - 108, bottom: this.height - 48, radius: 152 };
+    const width = bounds.right - bounds.left;
+    const height = bounds.bottom - bounds.top;
+    // The stock itself remains evenly lit. Only the two broad colour bands get
+    // an almost imperceptible ambient drift; audio never changes brightness.
+    const bandAmplitude = 1.6
+      + this.bilibiliSectionDrive * 4.2
+      + this.bilibiliTransientDrive * 4.8;
+    const bandDrift = Math.sin(time * 0.00034) * bandAmplitude;
+    const pinkBandOffset = width * 0.06;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    const stock = ctx.createLinearGradient(bounds.left, bounds.top, bounds.right, bounds.bottom);
+    stock.addColorStop(0, '#fffafb');
+    stock.addColorStop(0.48, '#f8f8f8');
+    stock.addColorStop(1, '#eaf8fd');
+    ctx.fillStyle = stock;
+    ctx.beginPath();
+    ctx.roundRect(bounds.left, bounds.top, width, height, bounds.radius);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.roundRect(bounds.left, bounds.top, width, height, bounds.radius);
+    ctx.clip();
+
+    ctx.fillStyle = 'rgba(251, 114, 153, 0.22)';
+    ctx.beginPath();
+    ctx.moveTo(bounds.left + width * 0.13 + pinkBandOffset + bandDrift, bounds.top);
+    ctx.lineTo(bounds.left + width * 0.30 + pinkBandOffset + bandDrift, bounds.top);
+    ctx.lineTo(bounds.left + width * 0.20 + pinkBandOffset + bandDrift, bounds.bottom);
+    ctx.lineTo(bounds.left + width * 0.03 + pinkBandOffset + bandDrift, bounds.bottom);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(35, 173, 229, 0.25)';
+    ctx.beginPath();
+    ctx.moveTo(bounds.left + width * 0.74 - bandDrift, bounds.top);
+    ctx.lineTo(bounds.left + width * 0.91 - bandDrift, bounds.top);
+    ctx.lineTo(bounds.left + width * 0.81 - bandDrift, bounds.bottom);
+    ctx.lineTo(bounds.left + width * 0.64 - bandDrift, bounds.bottom);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   drawAtmosphere(x, y, theme, metrics, time) {
     const ctx = this.ctx;
     const pulse = metrics.rhythmPulse || 0;
@@ -877,6 +1010,58 @@ export class VisualEngine {
       ctx.beginPath();
       ctx.arc(x, y, 128 + (1 - breath) * 6, -time * 0.000018 + Math.PI * 0.7, -time * 0.000018 + Math.PI * 1.55);
       ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (theme.mode === 'bilibili') {
+      const activity = this.bilibiliVoiceActivity;
+      const motionDrive = this.bilibiliMotionDrive;
+      const population = clamp(
+        0.08
+          + activity * 0.12
+          + this.bilibiliSectionDrive * 0.58
+          + this.bilibiliTransientDrive * 0.5
+      );
+      const posterLayout = document.body.dataset.layout === 'poster';
+      const bounds = posterLayout
+        ? { left: 16, top: 16, right: this.width - 16, bottom: this.height - 16, radius: 24 }
+        : { left: 54, top: 48, right: this.width - 108, bottom: this.height - 48, radius: 152 };
+      const width = bounds.right - bounds.left;
+      const height = bounds.bottom - bounds.top;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.beginPath();
+      ctx.roundRect(bounds.left + 4, bounds.top + 4, width - 8, height - 8, Math.max(2, bounds.radius - 4));
+      ctx.clip();
+      const deltaMs = this.bilibiliDanmakuLastAt
+        ? clamp(time - this.bilibiliDanmakuLastAt, 0, 64)
+        : 16.667;
+      this.bilibiliDanmakuLastAt = time;
+      for (const item of this.bilibiliDanmaku) {
+        // Every item shares one travel distance and every lane shares one speed.
+        // Their initial lane slots therefore remain separated over time. The
+        // extra 18px at each end keeps a bar hidden until it has fully entered
+        // and delays its reset until the widest possible bar has fully exited.
+        const cycleWidth = width + 92 + 36;
+        const entryX = bounds.right + 18;
+        const speed = item.speed + (motionDrive ** 1.35) * 0.07;
+        const previousProgress = item.progress;
+        item.progress = (item.progress + deltaMs * speed / cycleWidth) % 1;
+        const looped = item.progress < previousProgress;
+        if (typeof item.active !== 'boolean' || looped) {
+          item.active = item.spawnAt <= population;
+        } else if (!item.active && item.progress < 0.06 && item.spawnAt <= population) {
+          item.active = true;
+        }
+        if (!item.active) continue;
+        const distance = item.progress * cycleWidth;
+        const itemX = entryX - distance;
+        const itemY = bounds.top + 10 + item.y * (height - 20);
+        const color = item.color === 0 ? theme.accent : item.color === 1 ? theme.accent2 : '#9bdff2';
+        ctx.fillStyle = rgba(color, item.alpha);
+        ctx.beginPath();
+        ctx.roundRect(itemX, itemY, item.width, item.height, item.height * 0.5);
+        ctx.fill();
+      }
       ctx.restore();
       return;
     }
@@ -1089,6 +1274,181 @@ export class VisualEngine {
     ctx.drawImage(this.synthForegroundCanvas, 0, 0, this.width, this.height);
     ctx.restore();
 
+    // Low polygon ridges break up the empty horizon without competing with the
+    // sun. Two offset depth layers keep the landscape readable in both layouts,
+    // while the generous central gap preserves the artwork and vanishing point.
+    const mountainGap = sunRadius * 0.58;
+    const farMountainHeight = posterLayout ? 40 : 30;
+    const nearMountainHeight = posterLayout ? 58 : 42;
+    const drawMountainRange = ({ startX, endX, height, profile, near, facetDirection }) => {
+      if (endX - startX < 24) return;
+      const ridge = profile.map(([progress, elevation]) => ({
+        x: startX + (endX - startX) * progress,
+        y: horizonY - height * elevation
+      }));
+      const fill = ctx.createLinearGradient(0, horizonY - height, 0, horizonY);
+      if (near) {
+        fill.addColorStop(0, rgba('#3a2467', 0.86));
+        fill.addColorStop(0.58, rgba('#201953', 0.91));
+        fill.addColorStop(1, rgba('#10143b', 0.95));
+      } else {
+        fill.addColorStop(0, rgba('#56317f', 0.52));
+        fill.addColorStop(0.62, rgba('#33246a', 0.66));
+        fill.addColorStop(1, rgba('#181a4b', 0.78));
+      }
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(startX, horizonY);
+      ridge.forEach((point) => ctx.lineTo(point.x, point.y));
+      ctx.lineTo(endX, horizonY);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.shadowColor = 'rgba(2, 1, 14, 0.48)';
+      ctx.shadowBlur = near ? 6 : 4;
+      ctx.shadowOffsetY = near ? 2 : 1;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+
+      // Each local summit is split into a sun-facing plane and a deep reverse
+      // plane. This creates the graphic low-poly depth of classic Outrun art
+      // without adding a soft, floating drop shadow around the whole ridge.
+      const peakFacets = [];
+      for (let index = 1; index < ridge.length - 1; index += 1) {
+        const peak = ridge[index];
+        if (peak.y >= ridge[index - 1].y || peak.y >= ridge[index + 1].y) continue;
+        const baseX = clamp(
+          peak.x + facetDirection * height * (near ? 0.34 : 0.27),
+          startX + 2,
+          endX - 2
+        );
+        const base = { x: baseX, y: horizonY };
+        const lightFace = facetDirection > 0
+          ? [peak, ridge[index + 1], base]
+          : [ridge[index - 1], peak, base];
+        const shadowFace = facetDirection > 0
+          ? [ridge[index - 1], peak, base]
+          : [peak, ridge[index + 1], base];
+        peakFacets.push({ peak, base, lightFace, shadowFace });
+      }
+
+      const traceFacet = (points) => {
+        ctx.beginPath();
+        points.forEach((point, index) => {
+          if (!index) ctx.moveTo(point.x, point.y);
+          else ctx.lineTo(point.x, point.y);
+        });
+        ctx.closePath();
+      };
+      peakFacets.forEach(({ lightFace, shadowFace }) => {
+        ctx.globalCompositeOperation = 'source-over';
+        traceFacet(shadowFace);
+        ctx.fillStyle = near
+          ? rgba('#07102d', 0.34)
+          : rgba('#151035', 0.22);
+        ctx.fill();
+
+        ctx.globalCompositeOperation = 'screen';
+        traceFacet(lightFace);
+        ctx.fillStyle = near
+          ? rgba(theme.accent, 0.14 + lineEnergy * 0.05)
+          : rgba(theme.accent2, 0.09 + lineEnergy * 0.03);
+        ctx.fill();
+      });
+
+      // A short contact shadow lets the mountains sit on the grid plane. The
+      // road and luminous horizon are drawn later, so their neon lines remain
+      // crisp over this dark footing instead of being blurred away.
+      ctx.globalCompositeOperation = 'source-over';
+      const footing = ctx.createLinearGradient(0, horizonY - 2, 0, horizonY + (near ? 8 : 5));
+      footing.addColorStop(0, 'rgba(2, 2, 14, 0.22)');
+      footing.addColorStop(0.45, 'rgba(2, 2, 14, 0.1)');
+      footing.addColorStop(1, 'rgba(2, 2, 14, 0)');
+      ctx.fillStyle = footing;
+      ctx.fillRect(startX, horizonY - 2, endX - startX, near ? 10 : 7);
+
+      ctx.globalCompositeOperation = 'screen';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = near
+        ? rgba(theme.accent, 0.24 + lineEnergy * 0.08)
+        : rgba(theme.accent2, 0.14 + lineEnergy * 0.05);
+      ctx.lineWidth = near ? 0.9 : 0.65;
+      ctx.shadowColor = near ? theme.accent : theme.accent2;
+      ctx.shadowBlur = (near ? 3.5 : 2) + lineEnergy * 3;
+      ctx.beginPath();
+      ridge.forEach((point, index) => {
+        if (!index) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = near ? 0.2 : 0.11;
+      ctx.strokeStyle = near ? theme.accent2 : '#947eea';
+      ctx.lineWidth = near ? 0.62 : 0.5;
+      ctx.beginPath();
+      peakFacets.forEach(({ peak, base }) => {
+        ctx.moveTo(peak.x, peak.y + 1);
+        ctx.lineTo(base.x, base.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    const mountainProfiles = {
+      farLeft: [[0, 0.08], [0.13, 0.36], [0.25, 0.22], [0.39, 0.58], [0.53, 0.3], [0.68, 0.72], [0.82, 0.4], [0.92, 0.17], [1, 0.025]],
+      farRight: [[0, 0.025], [0.08, 0.16], [0.18, 0.4], [0.31, 0.68], [0.46, 0.35], [0.62, 0.56], [0.79, 0.27], [1, 0.08]],
+      nearLeft: [[0, 0.06], [0.12, 0.29], [0.24, 0.18], [0.38, 0.63], [0.51, 0.36], [0.66, 0.82], [0.79, 0.45], [0.91, 0.3], [0.97, 0.13], [1, 0.025]],
+      nearRight: [[0, 0.025], [0.06, 0.13], [0.15, 0.36], [0.29, 0.76], [0.44, 0.42], [0.61, 0.66], [0.8, 0.31], [1, 0.06]]
+    };
+    drawMountainRange({
+      startX: bounds.left,
+      endX: x - mountainGap * 0.72,
+      height: farMountainHeight,
+      profile: mountainProfiles.farLeft,
+      near: false,
+      facetDirection: 1
+    });
+    drawMountainRange({
+      startX: x + mountainGap * 0.72,
+      endX: bounds.right,
+      height: farMountainHeight,
+      profile: mountainProfiles.farRight,
+      near: false,
+      facetDirection: -1
+    });
+    drawMountainRange({
+      startX: bounds.left,
+      endX: x - mountainGap * 0.96,
+      height: nearMountainHeight,
+      profile: mountainProfiles.nearLeft,
+      near: true,
+      facetDirection: 1
+    });
+    drawMountainRange({
+      startX: x + mountainGap * 0.96,
+      endX: bounds.right,
+      height: nearMountainHeight,
+      profile: mountainProfiles.nearRight,
+      near: true,
+      facetDirection: -1
+    });
+
+    // A shallow atmospheric veil pushes the range behind the road. It is
+    // strongest at the mountain feet and dissolves before reaching the peaks.
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const mountainHaze = ctx.createLinearGradient(0, horizonY - 34, 0, horizonY + 10);
+    mountainHaze.addColorStop(0, rgba(theme.accent2, 0));
+    mountainHaze.addColorStop(0.48, rgba(theme.accent2, 0.055 + lineEnergy * 0.025));
+    mountainHaze.addColorStop(0.78, rgba('#ff65bd', 0.2 + lineEnergy * 0.06));
+    mountainHaze.addColorStop(1, rgba('#8a78ff', 0));
+    ctx.fillStyle = mountainHaze;
+    ctx.filter = 'blur(4px)';
+    ctx.fillRect(bounds.left, horizonY - 34, bounds.right - bounds.left, 44);
+    ctx.restore();
+
     // The road keeps its fixed geometry. Only forward travel and light output
     // react to section energy and impacts, so it never pumps or changes scale.
     const phase = this.synthGridPhase;
@@ -1277,24 +1637,32 @@ export class VisualEngine {
     ctx.globalCompositeOperation = 'lighter';
     const horizonGlow = ctx.createLinearGradient(0, horizonY - 42, 0, horizonY + 44);
     horizonGlow.addColorStop(0, rgba(theme.accent, 0));
-    horizonGlow.addColorStop(0.22, rgba(theme.accent, 0.065 + lineEnergy * 0.05));
-    horizonGlow.addColorStop(0.42, rgba(theme.hot, 0.19 + lineEnergy * 0.12 + impact * 0.07));
-    horizonGlow.addColorStop(0.5, rgba('#ffc6df', 0.38 + lineEnergy * 0.16 + impact * 0.1));
-    horizonGlow.addColorStop(0.58, rgba(theme.accent2, 0.18 + lineEnergy * 0.11 + impact * 0.07));
-    horizonGlow.addColorStop(0.78, rgba(theme.accent2, 0.065 + lineEnergy * 0.05));
+    horizonGlow.addColorStop(0.2, rgba(theme.accent, 0.085 + lineEnergy * 0.055));
+    horizonGlow.addColorStop(0.4, rgba(theme.accent, 0.25 + lineEnergy * 0.13 + impact * 0.07));
+    horizonGlow.addColorStop(0.5, rgba('#ffe1ef', 0.52 + lineEnergy * 0.15 + impact * 0.09));
+    horizonGlow.addColorStop(0.6, rgba(theme.accent2, 0.24 + lineEnergy * 0.12 + impact * 0.07));
+    horizonGlow.addColorStop(0.8, rgba(theme.accent2, 0.085 + lineEnergy * 0.055));
     horizonGlow.addColorStop(1, rgba(theme.accent2, 0));
     ctx.fillStyle = horizonGlow;
     ctx.fillRect(bounds.left, horizonY - 42, bounds.right - bounds.left, 86);
-    ctx.shadowColor = rgba(theme.hot, 0.82);
-    ctx.shadowBlur = 36 + lineEnergy * 18 + impact * 12;
-    ctx.strokeStyle = rgba(theme.hot, 0.44 + lineEnergy * 0.15 + impact * 0.1);
-    ctx.lineWidth = 1.6;
+    ctx.shadowColor = rgba('#ff5fc9', 0.78);
+    ctx.shadowBlur = 34 + lineEnergy * 14 + impact * 8;
+    ctx.strokeStyle = rgba('#ff63ca', 0.18 + lineEnergy * 0.06 + impact * 0.03);
+    ctx.lineWidth = 6;
     ctx.beginPath();
     ctx.moveTo(bounds.left, horizonY);
     ctx.lineTo(bounds.right, horizonY);
     ctx.stroke();
-    ctx.shadowBlur = 9 + lineEnergy * 5 + impact * 4;
-    ctx.strokeStyle = rgba('#ffd2e5', 0.5 + lineEnergy * 0.16);
+    ctx.shadowColor = rgba('#ff8bd7', 0.9);
+    ctx.shadowBlur = 46 + lineEnergy * 20 + impact * 12;
+    ctx.strokeStyle = rgba('#ff7fd1', 0.56 + lineEnergy * 0.14 + impact * 0.09);
+    ctx.lineWidth = 1.75;
+    ctx.beginPath();
+    ctx.moveTo(bounds.left, horizonY);
+    ctx.lineTo(bounds.right, horizonY);
+    ctx.stroke();
+    ctx.shadowBlur = 12 + lineEnergy * 6 + impact * 4;
+    ctx.strokeStyle = rgba('#ffe5f3', 0.62 + lineEnergy * 0.14);
     ctx.lineWidth = 0.5;
     ctx.stroke();
     ctx.restore();
@@ -1526,6 +1894,10 @@ export class VisualEngine {
 
   drawGenreVolume(x, y, theme, metrics, time) {
     if (theme.id === 'synthwave') {
+      this.lastSpectrum = null;
+      return;
+    }
+    if (theme.mode === 'bilibili') {
       this.lastSpectrum = null;
       return;
     }
@@ -2458,6 +2830,7 @@ export class VisualEngine {
     // every non-lighting motion. Individual impacts are reserved for relighting
     // only, so the vortex does not jerk forward on every detected beat.
     const impactDrive = Math.pow(pulse, 0.72);
+    const particleImpactLift = Math.pow(impactDrive, 0.68);
     const flowSpeed = (psychedelic ? 0.00006 : progressive ? 0.000032 : 0.000042)
       + Math.pow(sectionDrive, 1.55) * (psychedelic ? 0.00062 : progressive ? 0.00048 : 0.00055);
     // Keep an unbounded phase. Wrapping a phase and then scaling it by a
@@ -2830,8 +3203,8 @@ export class VisualEngine {
       cacheSize
     );
     if (impactDrive > 0.015) {
-      ctx.filter = `brightness(${1.12 + impactDrive * 0.62})`;
-      ctx.globalAlpha = Math.pow(impactDrive, 0.74) * 0.76 * armBrightnessScale;
+      ctx.filter = `brightness(${1.16 + particleImpactLift * 0.94})`;
+      ctx.globalAlpha = particleImpactLift * 0.9 * armBrightnessScale;
       ctx.drawImage(
         this.tranceFixedParticleCache,
         -cacheSize / 2,
@@ -3007,7 +3380,7 @@ export class VisualEngine {
       const alpha = clamp(
         0.055
           + Math.pow(sectionDrive, 1.42) * 0.36
-          + Math.pow(impactDrive, 0.72) * 0.82
+          + particleImpactLift * 0.9
       )
         * (0.62 + inwardGlow * 0.74) * twinkle * tailFeather;
       if (alpha <= 0.002) continue;
@@ -3025,6 +3398,7 @@ export class VisualEngine {
     // and sizes while reducing that to six compositing calls.
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
+    ctx.filter = `brightness(${1 + particleImpactLift * 0.42})`;
     dustGroups.forEach((group, colorIndex) => {
       if (!group.length) return;
       const color = armColors[colorIndex];
@@ -3032,7 +3406,7 @@ export class VisualEngine {
       ctx.shadowColor = color;
       ctx.shadowBlur = 2.2
         + Math.pow(sectionDrive, 1.35) * 8
-        + Math.pow(impactDrive, 0.72) * 25;
+        + particleImpactLift * 25;
       ctx.strokeStyle = rgba(color, averageAlpha * 0.82);
       ctx.lineWidth = 0.92;
       ctx.beginPath();
@@ -3469,7 +3843,9 @@ export class VisualEngine {
     // The Trance signature owns the entire vortex. Keep its geometry at a
     // fixed scale; audio may alter its light and angular speed, but never make
     // the whole spiral pump in and out.
-    const signatureScale = integratedTranceFx
+    const signatureScale = mode === 'bilibili'
+      ? 1
+      : integratedTranceFx
       ? 1
       : integratedPhonkFx
         ? 1 + metrics.bass * 0.004 + pulse * 0.007
@@ -3495,7 +3871,7 @@ export class VisualEngine {
 
     // Most modes use a quiet circular bezel. Hard Dance replaces it below
     // with a spectrum-derived pressure chamber so it does not fight the shell.
-    if (!['hardcore', 'hardstyle', 'trance', 'garage', 'latin'].includes(mode)
+    if (!['bilibili', 'hardcore', 'hardstyle', 'trance', 'garage', 'latin'].includes(mode)
       && !integratedRnbFx
       && !integratedHipHopFx
       && !integratedPhonkFx
@@ -3754,6 +4130,85 @@ export class VisualEngine {
         ctx.arc(moteX, moteY, 0.72 + shimmer * 0.9, 0, TAU);
         ctx.fill();
       }
+    } else if (mode === 'bilibili') {
+      const frameWidth = 174;
+      const frameHeight = 112;
+      const frameLeft = -frameWidth * 0.5;
+      const frameTop = -frameHeight * 0.5;
+      const activity = this.bilibiliVoiceActivity;
+      const section = this.bilibiliSectionDrive;
+      const transient = this.bilibiliTransientDrive;
+      const response = clamp(activity * 0.12 + section * 0.2 + transient * 0.34);
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.scale(this.bilibiliTvScaleX, this.bilibiliTvScaleY);
+
+      const antennaTop = frameTop - 25;
+      const antennaBaseY = frameTop + 1;
+      ctx.strokeStyle = '#40505e';
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.moveTo(-14, antennaBaseY);
+      ctx.lineTo(-38, antennaTop);
+      ctx.moveTo(14, antennaBaseY);
+      ctx.lineTo(40, antennaTop - 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.roundRect(frameLeft, frameTop, frameWidth, frameHeight, 22);
+      const panel = ctx.createLinearGradient(frameLeft, frameTop, -frameLeft, -frameTop);
+      panel.addColorStop(0, '#ffffff');
+      panel.addColorStop(0.58, '#f4f4f4');
+      panel.addColorStop(1, '#e7f7fc');
+      ctx.fillStyle = panel;
+      ctx.shadowColor = 'rgba(35, 173, 229, .24)';
+      ctx.shadowBlur = 12 + response * 3;
+      ctx.fill();
+
+      const frameStroke = ctx.createLinearGradient(frameLeft, 0, -frameLeft, 0);
+      frameStroke.addColorStop(0, theme.accent);
+      frameStroke.addColorStop(1, theme.accent2);
+      ctx.strokeStyle = frameStroke;
+      ctx.lineWidth = 3.05 + response * 0.3;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.roundRect(frameLeft, frameTop, frameWidth, frameHeight, 22);
+      ctx.stroke();
+
+      const progressY = frameTop + frameHeight - 14;
+      const progressWidth = 112;
+      const playhead = clamp(0.1 + activity * 0.06 + section * 0.62 + transient * 0.26);
+      ctx.strokeStyle = 'rgba(64, 80, 94, .16)';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(-progressWidth * 0.5, progressY);
+      ctx.lineTo(progressWidth * 0.5, progressY);
+      ctx.stroke();
+      const progressGradient = ctx.createLinearGradient(-progressWidth * 0.5, 0, progressWidth * 0.5, 0);
+      progressGradient.addColorStop(0, theme.accent);
+      progressGradient.addColorStop(1, theme.accent2);
+      ctx.strokeStyle = progressGradient;
+      ctx.lineWidth = 2.4 + response * 0.24;
+      ctx.shadowColor = rgba(theme.accent2, 0.45);
+      ctx.shadowBlur = 4 + response * 2;
+      ctx.beginPath();
+      ctx.moveTo(-progressWidth * 0.5, progressY);
+      ctx.lineTo(-progressWidth * 0.5 + progressWidth * playhead, progressY);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(-progressWidth * 0.5 + progressWidth * playhead, progressY, 2.3 + response * 0.22, 0, TAU);
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = theme.accent;
+      ctx.beginPath();
+      ctx.arc(-65, progressY, 2.1 + response * 0.1, 0, TAU);
+      ctx.fill();
+      ctx.restore();
     } else if (mode === 'hardcore') {
       const cheerful = theme.id === 'happy-hardcore';
       const uk = theme.id === 'uk-hardcore';
@@ -7042,6 +7497,7 @@ export class VisualEngine {
     const pulse = metrics.rhythmPulse || 0;
     const mode = theme.mode || 'electronic';
     if (mode === 'asmr' || theme.id === 'synthwave') return;
+    if (mode === 'bilibili') return;
     const vortexTrance = mode === 'trance'
       && !['classical', 'soundtrack', 'synthwave'].includes(theme.id);
     const edmTrapImpact = mode === 'trap'
@@ -7071,6 +7527,7 @@ export class VisualEngine {
         ? { reach: 30, duration: 235, alpha: 0.43, width: 1.2, shapeResponse: 0.48, spring: 7.9, oscillation: 9.4, deform: 0.068, particles: 4, shard: true }
         : { reach: 25, duration: 300, alpha: 0.34, width: 1.3, shapeResponse: 0.7, spring: 6.2, oscillation: 7.1, deform: 0.052, particles: 3 },
       rnb: { reach: 22, duration: 500, alpha: 0.24, width: 1.05, shapeResponse: 0.9, spring: 4.4, oscillation: 5.4, deform: 0.035, particles: 1 },
+      bilibili: { reach: 24, duration: 410, alpha: 0.3, width: 0.92, shapeResponse: 0.82, spring: 5.8, oscillation: 6.8, deform: 0.038, particles: 2, impactSmooth: true },
       electronic: { reach: 29, duration: 310, alpha: 0.36, width: 0.9, shapeResponse: 0.55, spring: 6.8, oscillation: 8.2, deform: 0.055, particles: 2 }
     }[mode] || { reach: 29, duration: 310, alpha: 0.36, width: 0.9, shapeResponse: 0.55, spring: 6.8, oscillation: 8.2, deform: 0.055, particles: 2 };
 
@@ -8302,6 +8759,11 @@ export class VisualEngine {
     }
 
     const synthwaveMode = renderTheme.id === 'synthwave';
+    const bilibiliMode = mode === 'bilibili';
+    if (bilibiliMode) {
+      this.updateBilibiliResponse(energyMetrics, time);
+      this.drawBilibiliStock(energyMetrics, time);
+    }
     if (synthwaveMode) {
       this.drawSynthwaveHorizonScene(x, y, renderTheme, energyMetrics, time);
     }
@@ -8310,13 +8772,13 @@ export class VisualEngine {
       && !['classical', 'soundtrack', 'synthwave'].includes(renderTheme.id);
     const gentleHardcore = mode === 'hardcore' && ['happy-hardcore', 'uk-hardcore'].includes(renderTheme.id);
     const violentMode = (mode === 'hardcore' && !gentleHardcore) || mode === 'hardstyle' || mode === 'metal';
-    if (metrics.rhythmNow) {
+    if (metrics.rhythmNow && !bilibiliMode) {
       this.motionStartedAt = time;
       this.motionStrength = metrics.impact || 0;
       this.motionDirection *= -1;
     }
     const motionElapsed = time - this.motionStartedAt;
-    if (!integratedTranceFx && !synthwaveMode && motionElapsed >= 0 && motionElapsed < 280) {
+    if (!integratedTranceFx && !synthwaveMode && !bilibiliMode && motionElapsed >= 0 && motionElapsed < 280) {
       const response = Math.exp(-motionElapsed / 82) * Math.sin(motionElapsed / 24);
       const motionScale = this.motionStrength * (violentMode ? 5.2 : 2.8);
       ctx.translate(this.motionDirection * response * motionScale, -Math.abs(response) * motionScale * 0.32);
@@ -8339,12 +8801,14 @@ export class VisualEngine {
       this.emitTranceOuterParticles(x, y, renderTheme, energyMetrics, time);
     }
     if (this.trackContext.genrePolice) this.drawGenrePoliceOverlay(x, y, renderTheme, energyMetrics, time);
-    if (!synthwaveMode) this.updateParticles(renderTheme, metrics);
+    if (!synthwaveMode && !bilibiliMode) this.updateParticles(renderTheme, metrics);
     ctx.restore();
     // The vortex already feeds pulse into every light stream, particle and
     // photon band. Re-copying and blurring the entire canvas added a second,
     // visually redundant full-frame pass and was the largest seek-time hitch.
-    if (!integratedTranceFx && !synthwaveMode) this.applyImpactPostFx(x, y, renderTheme, energyMetrics);
-    if (!synthwaveMode) this.featherCanvasEdges(x, y);
+    if (!integratedTranceFx && !synthwaveMode && !bilibiliMode) {
+      this.applyImpactPostFx(x, y, renderTheme, energyMetrics);
+    }
+    if (!synthwaveMode && !bilibiliMode) this.featherCanvasEdges(x, y);
   }
 }

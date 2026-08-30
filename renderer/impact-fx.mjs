@@ -6,6 +6,7 @@ const smoothstep = (value) => {
 
 const PROFILES = Object.freeze({
   asmr: { bloom: 0, blur: 0, echo: 0, chroma: 0, slice: 0, exposure: 0, saturation: 0 },
+  bilibili: { bloom: 0, blur: 0, echo: 0, chroma: 0, slice: 0, exposure: 0, saturation: 0 },
   'hard-dance': { bloom: 0.56, blur: 0.16, echo: 0.34, chroma: 1, slice: 0.9, exposure: 0.2, saturation: 0.26 },
   hardstyle: { bloom: 0.5, blur: 0.13, echo: 0.3, chroma: 0.72, slice: 0.64, exposure: 0.18, saturation: 0.22 },
   'bright-hardcore': { bloom: 0.52, blur: 0.25, echo: 0.27, chroma: 0.32, slice: 0.24, exposure: 0.17, saturation: 0.22 },
@@ -42,6 +43,7 @@ export function impactFxProfile(theme = {}) {
   const mode = String(theme.mode || 'electronic').toLowerCase();
   const id = String(theme.id || '').toLowerCase();
   if (mode === 'asmr') return PROFILES.asmr;
+  if (mode === 'bilibili') return PROFILES.bilibili;
   if (['happy-hardcore', 'uk-hardcore'].includes(id)) return PROFILES['bright-hardcore'];
   if (mode === 'hardcore') return PROFILES['hard-dance'];
   if (mode === 'hardstyle') return PROFILES.hardstyle;
@@ -85,7 +87,7 @@ export function impactFxProfile(theme = {}) {
 }
 
 export function resolveImpactFx(theme = {}, metrics = {}) {
-  if (String(theme.mode || '').toLowerCase() === 'asmr') {
+  if (['asmr', 'bilibili'].includes(String(theme.mode || '').toLowerCase())) {
     return { amount: 0, bloom: 0, blur: 0, echo: 0, chroma: 0, slice: 0, exposure: 1, saturation: 1 };
   }
   const pulse = clamp(metrics.rhythmPulse);
