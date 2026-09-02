@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   HARDCORE_TANOC_MEMBERS,
   isHardcoreTanocArtist
@@ -25,4 +27,13 @@ test('does not confuse guest artists or similar substrings with crew members', (
   assert.equal(isHardcoreTanocArtist('C-Show'), false);
   assert.equal(isHardcoreTanocArtist('AronChupa'), false);
   assert.equal(isHardcoreTanocArtist('Lauryn Hill'), false);
+});
+
+test('keeps broad Hardcore and regular Hardstyle on the normal TANOC face', () => {
+  const renderer = fs.readFileSync(path.resolve(__dirname, '../renderer/app.js'), 'utf8');
+  const hardGenres = renderer.match(/const HARD_TANOC_GENRES = new Set\(\[([\s\S]*?)\]\);/)?.[1] || '';
+  assert.match(hardGenres, /'rawstyle'/);
+  assert.match(hardGenres, /'gabber'/);
+  assert.doesNotMatch(hardGenres, /'hardcore'/);
+  assert.doesNotMatch(hardGenres, /'hardstyle'/);
 });

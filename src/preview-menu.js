@@ -14,12 +14,15 @@ function buildPreviewTree(themes = {}, previewIds = []) {
   }
 
   const active = new Set(selectable);
+  const treeParentLabel = (id) => normalizedLabel(
+    themes[id]?.treeParent || themes[id]?.parent
+  );
   for (const startingId of selectable) {
     let currentId = startingId;
     const visited = new Set();
     while (currentId && !visited.has(currentId)) {
       visited.add(currentId);
-      const parentId = labelToId.get(normalizedLabel(themes[currentId]?.parent));
+      const parentId = labelToId.get(treeParentLabel(currentId));
       if (!parentId || parentId === currentId) break;
       active.add(parentId);
       currentId = parentId;
@@ -34,7 +37,7 @@ function buildPreviewTree(themes = {}, previewIds = []) {
   };
 
   for (const id of active) {
-    const parentLabel = normalizedLabel(themes[id]?.parent) || 'OTHER';
+    const parentLabel = treeParentLabel(id) || 'OTHER';
     const parentId = labelToId.get(parentLabel);
     if (parentId && parentId !== id && active.has(parentId)) append(children, parentId, id);
     else append(roots, parentLabel, id);

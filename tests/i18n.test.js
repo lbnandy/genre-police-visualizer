@@ -62,3 +62,7 @@ test('translation interpolates values and falls back safely', () => {
   assert.equal(translate('xx', 'controls.play'), '播放');
   assert.equal(translate('en', 'missing.key'), 'missing.key');
 });
+
+test('the English idle headline stays short enough for the capsule', () => {
+  assert.equal(translate('en', 'hud.awaitingSignal'), 'NO SIGNAL');
+});

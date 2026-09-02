@@ -14,6 +14,7 @@ const GENERIC_GENRES = new Set([
 const BROAD_GENRE_IDS = new Set([
   'alternative', 'bass-music', 'breakbeat', 'dance-pop', 'drum-bass',
   'dubstep', 'garage', 'hard-dance', 'hardcore', 'hardstyle', 'hip-hop',
+  'instrumental-hip-hop',
   'house', 'j-pop', 'metal', 'pop', 'rnb', 'rock', 'techno', 'trance',
   'trap-edm'
 ]);
@@ -634,6 +635,7 @@ class GenreResolver {
   }
 
   async resolve(rawMetadata) {
+    const artistGenreReferenceEnabled = this.getConfig().artistGenreReferenceEnabled !== false;
     const title = cleanTitle(rawMetadata.title);
     const bilibiliFallbackEligible = this.isBilibiliFallbackCandidate(rawMetadata);
     const catalogTitle = lookupTitle(title);
@@ -641,7 +643,12 @@ class GenreResolver {
     let artist = cleanArtist(rawArtist, title);
     const lookupArtist = canonicalArtist(artist) || artist;
     const appleStorefront = preferredAppleStorefront(rawMetadata, this.getNetworkCountry());
-    const curatedGenre = classifyGenre({ artist, tags: [], title: '' });
+    const curatedGenre = classifyGenre({
+      artist,
+      tags: [],
+      title: '',
+      useArtistMapping: artistGenreReferenceEnabled
+    });
     const hasCuratedGenre = String(curatedGenre.matched || '').startsWith('artist:');
     const playerCollection = rawMetadata.album || embeddedCollection(rawArtist);
     const correction = this.getCorrection({
@@ -719,7 +726,12 @@ class GenreResolver {
       };
     }
 
-    const contentGenre = classifyGenre({ tags: directTags, artist, title });
+    const contentGenre = classifyGenre({
+      tags: directTags,
+      artist,
+      title,
+      useArtistMapping: artistGenreReferenceEnabled
+    });
     if (contentGenre.id === 'asmr') {
       const result = {
         title,
@@ -822,7 +834,12 @@ class GenreResolver {
     }
 
     const catalogCustomMatch = matchCustomGenre(this.getConfig().customGenres, { tags, artist });
-    let genre = genreFromCustomRule(catalogCustomMatch) || classifyGenre({ tags, artist, title });
+    let genre = genreFromCustomRule(catalogCustomMatch) || classifyGenre({
+      tags,
+      artist,
+      title,
+      useArtistMapping: artistGenreReferenceEnabled
+    });
     if (catalogCustomMatch) sources.unshift('custom genre rule');
     if (!catalogCustomMatch && ['electronic', 'unknown'].includes(genre.id) && deezer?.label) {
       const labelCompatible = !hasCuratedGenre || sameGenreFamily(curatedGenre, deezerLabelGenre);
@@ -839,7 +856,9 @@ class GenreResolver {
         genre = rawGenreTheme(rawLabel);
       }
     }
-    const genreArtistRule = matchGenreArtistRule(this.getConfig().genreArtistRules, artist);
+    const genreArtistRule = artistGenreReferenceEnabled
+      ? matchGenreArtistRule(this.getConfig().genreArtistRules, artist)
+      : null;
     let genreEvidence = null;
     if (!catalogCustomMatch && genreArtistRule && shouldApplyGenreArtistRule(genre, genreArtistRule.genreId)) {
       genre = {

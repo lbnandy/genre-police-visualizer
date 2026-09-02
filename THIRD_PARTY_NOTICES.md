@@ -24,6 +24,12 @@ The bundled BeatNet model weights and adaptation notice are licensed under Creat
 
 The application uses Microsoft ONNX Runtime for local CPU inference. ONNX Runtime is distributed under the MIT License; its package license and native runtime files are included with the packaged application.
 
+## Local genre model
+
+The bundled `discogs-effnet-bsdynamic-1.onnx` model and its metadata were created by the Music Technology Group at Universitat Pompeu Fabra and are distributed separately from the application source under the Essentia Models license for non-commercial use. The upstream license file is included at `assets/models/ESSENTIA-MODELS-LICENSE.txt`.
+
+Model source: <https://essentia.upf.edu/models/feature-extractors/discogs-effnet/>
+
 ## Electron runtime
 
 Electron and its MIT-licensed JavaScript tooling are redistributed under their upstream licenses. Chromium, Node.js, FFmpeg, and other components included by Electron retain their upstream licenses and notices. Electron's generated distribution contains its runtime license files.

@@ -70,3 +70,28 @@ test('a broad family result can be refined within the same family', async () => 
   assert.equal(result.genre.id, 'progressive-house');
   assert.equal(result.genreSource, 'user artist supplement');
 });
+
+test('artist genre references can be disabled without disabling direct metadata', async () => {
+  const resolver = new GenreResolver({
+    getConfig: () => ({
+      onlineGenreLookupEnabled: false,
+      artistGenreReferenceEnabled: false,
+      genreArtistRules: [{ artist: 'Angerfist', genreId: 'trance' }]
+    })
+  });
+
+  const broad = await resolver.resolve({
+    title: 'Unlabeled Track',
+    artist: 'Angerfist',
+    genres: ['Electronic']
+  });
+  assert.equal(broad.genre.id, 'electronic');
+  assert.notEqual(broad.genreSource, 'user artist supplement');
+
+  const direct = await resolver.resolve({
+    title: 'Tagged Track',
+    artist: 'Angerfist',
+    genres: ['Hardcore']
+  });
+  assert.equal(direct.genre.id, 'hardcore');
+});

@@ -2,6 +2,28 @@
 
 All notable changes to Genre Police Visualizer are documented here.
 
+## Unreleased
+
+## 0.3.0 - 2026-09-02
+
+- Added a fullscreen mode with stacked and side-by-side compositions, layout-aware entry from capsule or poster mode, in-place settings, text controls, transport controls, snapshots, recording, and exit controls.
+- Added real-time video recording of the visualization and system playback audio, with MP4 output, automatic WebM fallback, streamed file writing, and a recording-only stop state across layouts.
+- Added transparent PNG snapshots and settings that control whether snapshot and recording shortcuts are shown; both shortcuts are enabled by default.
+- Added a non-blocking GitHub Releases update reminder with daily automatic throttling, per-version dismissal, and manual checks in App settings.
+- Added optional on-device Discogs-EffNet genre assistance with adaptive first-result timing, corroborated correction, optional sustained-change detection, and no audio upload.
+- Added conservative artist-aware genre priors, bounded high-confidence local result memory, and an independent switch for built-in and supplemental artist references.
+- Added a quick genre-candidate panel that combines metadata with cumulative and recent local-AI evidence, supports a track-scoped visual choice, and can remember a correction.
+- Added desktop-layer mode that remains visible after Show Desktop, made it mutually exclusive with the existing always-on-top option, made transparent regions outside the visible surface pass pointer input through automatically, and kept the main window accessible from the taskbar.
+- Added Gentle, Standard, and Strong visual-response presets and an optional live FPS diagnostic; reduced rendering overhead in complex themes with adaptive dynamic-canvas resolution under sustained performance pressure.
+- Added 23 selectable genre visuals with Ambient, Downtempo, Chillout, Instrumental Hip-Hop, Lo-fi Hip-Hop, IDM, Glitch, Blues, and new R&B, Soul, Jazz, and Classical branches.
+- Reviewed the taxonomy and visual distinctions across Hardcore and Hardstyle, Dubstep, House, Drum & Bass, Techno and Trance, J-Pop, UK Garage, Jazz, Classical, R&B, Soul, and Synthwave.
+- Reorganized settings into Interface, Playback, Lyrics, Genre, and App sections, with context-sensitive fullscreen controls and revised localized copy in Simplified Chinese, English, Japanese, and Korean.
+- Standardized interface icons and control sizing, refined centered capsule notices and genre-choice dialogs, and shortened overflowing genre headings without changing their canonical taxonomy names.
+- Unified text-hidden fullscreen presentation across both structures and refined fullscreen placement, lyric width, condensed-English behavior, and soft glyph-only title shadows.
+- Fixed clipped genre-title and lyric glows, Hip-Hop accent bars being obscured by the spectrum, and several overly busy circular theme treatments.
+- Fixed play/pause transport so a session paused from Genre Police can be resumed even when the player temporarily stops being the freshest Windows media session.
+- Kept broad local-AI `Electronic` results provisional, stopped inference after authoritative results when dynamic detection is off, and kept unresolved tracks in the identifying state until evidence is sufficient.
+
 ## 0.2.0 - 2026-08-30
 
 - Added custom genres with user-defined labels, tag aliases, artists, inherited visual styles, and optional three-color theme overrides.

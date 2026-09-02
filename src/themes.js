@@ -12,13 +12,18 @@ const THEMES = {
     genreInk: '#fb7299', genreInk2: '#fb7299', genreInkEdge: '#fb7299',
     mode: 'bilibili', energy: 0.58, textFx: 0, textBaseGlow: 0
   },
+  edm: {
+    family: 'electronic', parent: 'ELECTRONIC', label: 'EDM',
+    font: '"Orbitron"', accent: '#00e5ff', accent2: '#8c55ff', hot: '#ffffff',
+    mode: 'electronic', energy: 1.02
+  },
   'hard-dance': {
-    family: 'hardcore', parent: 'ELECTRONIC DANCE', label: 'HARD DANCE',
+    family: 'hardcore', parent: 'EDM', label: 'HARD DANCE',
     font: '"Black Ops One"', accent: '#ff284f', accent2: '#20dfff', hot: '#ffffff',
     mode: 'hardcore', energy: 1.16, fontWeight: 600
   },
   'happy-hardcore': {
-    family: 'hardcore', parent: 'HARDCORE', label: 'HAPPY HC',
+    family: 'hardcore', parent: 'HARDCORE', label: 'HAPPY HARDCORE',
     font: '"Righteous"', accent: '#ff2bd6', accent2: '#00f6ff', hot: '#fff56b',
     mode: 'hardcore', energy: 1.08, textFx: 0.72, textBaseGlow: 14
   },
@@ -38,17 +43,17 @@ const THEMES = {
     mode: 'hardcore', energy: 1.2, fontWeight: 600
   },
   'uptempo-hardcore': {
-    family: 'hardcore', parent: 'HARDCORE', label: 'UPTEMPO',
+    family: 'hardcore', parent: 'HARDCORE', label: 'UPTEMPO HARDCORE',
     font: '"Black Ops One"', accent: '#ff003c', accent2: '#b6ff00', hot: '#ffffff',
     mode: 'hardcore', energy: 1.34, fontWeight: 600
   },
   puzzycore: {
-    family: 'hardcore', parent: 'UPTEMPO', label: 'PUZZYCORE',
+    family: 'hardcore', parent: 'UPTEMPO HARDCORE', label: 'PUZZYCORE',
     font: '"Bungee"', accent: '#ff1493', accent2: '#ff78d1', hot: '#fff2fb',
     mode: 'hardcore', energy: 1.4, textFx: 1.08, textBaseGlow: 19
   },
   'industrial-hardcore': {
-    family: 'hardcore', parent: 'HARDCORE', label: 'INDUSTRIAL HC',
+    family: 'hardcore', parent: 'HARDCORE', label: 'INDUSTRIAL HARDCORE', hudLabel: 'INDUSTRIAL',
     font: '"Black Ops One"', accent: '#ff4b2b', accent2: '#9fa6ad', hot: '#ffe9c8',
     mode: 'hardcore', energy: 1.18, fontWeight: 600
   },
@@ -63,7 +68,7 @@ const THEMES = {
     mode: 'hardstyle', energy: 1.26
   },
   'euphoric-hardstyle': {
-    family: 'hardstyle', parent: 'HARDSTYLE', label: 'EUPHORIC',
+    family: 'hardstyle', parent: 'HARDSTYLE', label: 'EUPHORIC HARDSTYLE', hudLabel: 'EUPHORIC',
     font: '"Teko"', accent: '#ff9d00', accent2: '#00ddff', hot: '#ffffff',
     mode: 'hardstyle', energy: 1.12
   },
@@ -78,7 +83,7 @@ const THEMES = {
     mode: 'house', energy: 1.18
   },
   'big-room-house': {
-    family: 'house', parent: 'HOUSE', label: 'BIG ROOM',
+    family: 'house', parent: 'HOUSE', label: 'BIG ROOM HOUSE',
     font: '"Bebas Neue"', accent: '#ffb000', accent2: '#00d9ff', hot: '#ffffff',
     mode: 'house', energy: 1.14
   },
@@ -138,7 +143,7 @@ const THEMES = {
     mode: 'house', energy: 0.96
   },
   'progressive-house': {
-    family: 'house', parent: 'HOUSE', label: 'PROGRESSIVE',
+    family: 'house', parent: 'HOUSE', label: 'PROGRESSIVE HOUSE', hudLabel: 'PROGRESSIVE',
     font: '"Space Grotesk"', accent: '#705cff', accent2: '#00e1ff', hot: '#ff8bea',
     mode: 'house', energy: 0.9
   },
@@ -168,17 +173,17 @@ const THEMES = {
     mode: 'house', energy: 0.88
   },
   house: {
-    family: 'house', parent: 'ELECTRONIC DANCE', label: 'HOUSE',
+    family: 'house', parent: 'EDM', label: 'HOUSE',
     font: '"Space Grotesk"', accent: '#00efc8', accent2: '#875cff', hot: '#ffffff',
     mode: 'house', energy: 0.92
   },
   'bass-music': {
-    family: 'bass-music', parent: 'ELECTRONIC DANCE', label: 'BASS MUSIC',
+    family: 'bass-music', parent: 'EDM', label: 'BASS MUSIC',
     font: '"Oxanium"', accent: '#68ff8d', accent2: '#7860ff', hot: '#f4ffff',
     mode: 'dubstep', energy: 1.08
   },
   'future-bass': {
-    family: 'future-bass', parent: 'ELECTRONIC DANCE', label: 'FUTURE BASS',
+    family: 'future-bass', parent: 'EDM', label: 'FUTURE BASS',
     font: '"Righteous"', accent: '#ff65c3', accent2: '#55dfff', hot: '#fff39a',
     mode: 'future-bass', energy: 0.98
   },
@@ -261,7 +266,7 @@ const THEMES = {
     mode: 'trap', energy: 1.06
   },
   moombahton: {
-    family: 'trap', parent: 'ELECTRONIC DANCE', label: 'MOOMBAHTON',
+    family: 'trap', parent: 'EDM', label: 'MOOMBAHTON',
     font: '"Audiowide"', accent: '#ff5b21', accent2: '#ff3fa8', hot: '#ffe45c',
     mode: 'trap', energy: 1.03
   },
@@ -302,7 +307,7 @@ const THEMES = {
     mode: 'drum-bass', energy: 1.12
   },
   techno: {
-    family: 'techno', parent: 'ELECTRONIC', label: 'TECHNO',
+    family: 'techno', parent: 'EDM', label: 'TECHNO',
     font: '"Chakra Petch"', accent: '#ff315c', accent2: '#00d9ff', hot: '#ffffff',
     mode: 'techno', energy: 1.02
   },
@@ -332,7 +337,7 @@ const THEMES = {
     mode: 'techno', energy: 0.84
   },
   trance: {
-    family: 'trance', parent: 'ELECTRONIC', label: 'TRANCE',
+    family: 'trance', parent: 'EDM', label: 'TRANCE',
     font: '"Orbitron"', accent: '#4c7dff', accent2: '#f35cff', hot: '#9ffbff',
     mode: 'trance', energy: 0.94
   },
@@ -362,7 +367,7 @@ const THEMES = {
     mode: 'trance', energy: 1.14
   },
   'uk-garage': {
-    family: 'garage', parent: 'ELECTRONIC DANCE', label: 'UK GARAGE',
+    family: 'garage', parent: 'EDM', label: 'UK GARAGE',
     font: '"Space Grotesk"', accent: '#28f0c9', accent2: '#8b5cff', hot: '#ecff72',
     genreInk: '#eafff8', genreInk2: '#edff83', genreInkEdge: '#8b68ff',
     mode: 'garage', energy: 0.98, fontWeight: 720, letterSpacing: '-0.9px'
@@ -392,7 +397,7 @@ const THEMES = {
     mode: 'garage', energy: 1.13
   },
   breakbeat: {
-    family: 'breakbeat', parent: 'ELECTRONIC DANCE', label: 'BREAKBEAT',
+    family: 'breakbeat', parent: 'EDM', label: 'BREAKBEAT',
     font: '"Russo One"', accent: '#ffb000', accent2: '#00d9ff', hot: '#ffffff',
     mode: 'breakbeat', energy: 1.03
   },
@@ -407,12 +412,12 @@ const THEMES = {
     mode: 'breakbeat', energy: 1.2
   },
   'nu-disco': {
-    family: 'house', parent: 'DISCO / FUNK', label: 'NU-DISCO',
+    family: 'house', parent: 'DISCO', label: 'NU-DISCO',
     font: '"Audiowide"', accent: '#ff4fc3', accent2: '#ffb000', hot: '#75fff1',
     mode: 'house', energy: 0.92
   },
   'electro-swing': {
-    family: 'breakbeat', parent: 'ELECTRONIC DANCE', label: 'ELECTRO SWING',
+    family: 'breakbeat', parent: 'EDM', label: 'ELECTRO SWING',
     font: '"Space Grotesk"', accent: '#efb34d', accent2: '#ff425d', hot: '#fff5d5',
     mode: 'breakbeat', energy: 0.98
   },
@@ -432,7 +437,7 @@ const THEMES = {
     mode: 'pop', energy: 0.84
   },
   pop: {
-    family: 'pop', parent: 'MAINSTREAM', label: 'POP',
+    family: 'pop', parent: 'POPULAR MUSIC', treeParent: 'POP', label: 'POP',
     font: '"Audiowide"', accent: '#ff4fa3', accent2: '#5edbff', hot: '#ffe6f3',
     mode: 'pop', energy: 0.92
   },
@@ -457,7 +462,7 @@ const THEMES = {
     mode: 'j-pop', energy: 1.02
   },
   'k-pop': {
-    family: 'pop', parent: 'KOREAN POP', label: 'K-POP',
+    family: 'pop', parent: 'POP', label: 'K-POP',
     font: '"Righteous"', accent: '#ff43c8', accent2: '#655cff', hot: '#8cfff2',
     genreInk: '#fff0fb', genreInk2: '#a8fff5', genreInkEdge: '#8c72ff',
     mode: 'pop', energy: 1.06, textFx: 0.7, textBaseGlow: 14
@@ -469,25 +474,25 @@ const THEMES = {
     mode: 'rock', energy: 1.0, textFx: 0.56, textBaseGlow: 12
   },
   alternative: {
-    family: 'rock', parent: 'ROCK', label: 'ALTERNATIVE',
+    family: 'rock', parent: 'ROCK', label: 'ALTERNATIVE ROCK',
     font: '"Russo One"', accent: '#ff9f43', accent2: '#45d6b5', hot: '#f7f0dd',
     mode: 'rock', energy: 0.92
   },
   rock: {
-    family: 'rock', parent: 'GUITAR MUSIC', label: 'ROCK',
+    family: 'rock', parent: 'ROCK / METAL', treeParent: 'ROCK & METAL', label: 'ROCK',
     font: '"Russo One"', accent: '#ff553d', accent2: '#789cac', hot: '#bbc8ce',
     genreInk: '#bdcbd1', genreInk2: '#e0e5e7', genreInkEdge: '#7896a4',
     mode: 'rock', energy: 1.06, textFx: 0.48, textBaseGlow: 8
   },
   'hip-hop': {
-    family: 'hip-hop', parent: 'URBAN', label: 'HIP-HOP',
+    family: 'hip-hop', parent: 'POPULAR MUSIC', treeParent: 'HIP-HOP', label: 'HIP-HOP',
     font: '"Bungee"', accent: '#ffb100', accent2: '#8456ff', hot: '#fff0bf',
     genreInk: '#ffe09a', genreInk2: '#fff6dc', genreInkEdge: '#8d65ff',
     mode: 'hip-hop', energy: 0.98, fontWeight: 400, letterSpacing: '-0.72px',
     textFx: 0.54, textBaseGlow: 10
   },
   'experimental-hip-hop': {
-    family: 'hip-hop', parent: 'HIP-HOP', label: 'EXPERIMENTAL RAP',
+    family: 'hip-hop', parent: 'HIP-HOP', label: 'EXPERIMENTAL HIP-HOP', hudLabel: 'EXPERIMENTAL',
     font: '"Oxanium"', accent: '#ff9f43', accent2: '#7b61ff', hot: '#c8fff4',
     genreInk: '#ffe4ad', genreInk2: '#d9d0ff', genreInkEdge: '#57e0cf',
     mode: 'hip-hop', energy: 1.02, fontWeight: 700, letterSpacing: '-0.72px',
@@ -506,55 +511,137 @@ const THEMES = {
     mode: 'phonk', energy: 1.18, textFx: 0.78, textBaseGlow: 14
   },
   rnb: {
-    family: 'rnb', parent: 'R&B / SOUL', label: 'R&B',
+    family: 'rnb', parent: 'FUNK / SOUL', label: 'R&B',
     font: '"Space Grotesk"', accent: '#c96cff', accent2: '#ff709f', hot: '#ffe0c2',
     genreInk: '#f2c8ff', genreInk2: '#ffd1d8', genreInkEdge: '#9e78ff',
     mode: 'rnb', energy: 0.88, fontWeight: 680, letterSpacing: '-0.35px',
     textFx: 0.54, textBaseGlow: 11
   },
+  'contemporary-rnb': {
+    family: 'rnb', parent: 'R&B', label: 'CONTEMPORARY R&B',
+    font: '"Space Grotesk"', accent: '#e56fb7', accent2: '#6e9dff', hot: '#ffe3cc',
+    genreInk: '#ffd2eb', genreInk2: '#d8e3ff', genreInkEdge: '#9f79ff',
+    mode: 'rnb', energy: 0.9, fontWeight: 680, letterSpacing: '-0.55px'
+  },
+  'alternative-rnb': {
+    family: 'rnb', parent: 'R&B', label: 'ALT R&B',
+    font: '"Oxanium"', accent: '#8e6cff', accent2: '#4bd1c2', hot: '#f0c7df',
+    genreInk: '#d8ceff', genreInk2: '#bdeee5', genreInkEdge: '#725fd1',
+    mode: 'rnb', energy: 0.82, fontWeight: 700, letterSpacing: '-0.45px'
+  },
+  soul: {
+    family: 'rnb', parent: 'FUNK / SOUL', label: 'SOUL',
+    font: '"Righteous"', accent: '#e58a47', accent2: '#9d405d', hot: '#fff0c7',
+    genreInk: '#ffd5a7', genreInk2: '#f0b5c5', genreInkEdge: '#b65764',
+    mode: 'rnb', energy: 0.78
+  },
+  'neo-soul': {
+    family: 'rnb', parent: 'SOUL', label: 'NEO SOUL',
+    font: '"Space Grotesk"', accent: '#d49b52', accent2: '#5ba98e', hot: '#f8e8c5',
+    genreInk: '#f3d5a5', genreInk2: '#bde0cf', genreInkEdge: '#8b7950',
+    mode: 'rnb', energy: 0.72, fontWeight: 680, letterSpacing: '-0.45px'
+  },
+  'new-jack-swing': {
+    family: 'rnb', parent: 'R&B', label: 'NEW JACK SWING',
+    font: '"Righteous"', accent: '#ff4f9b', accent2: '#39d8dc', hot: '#ffe35a',
+    genreInk: '#ffb5d3', genreInk2: '#a9f4ef', genreInkEdge: '#ffbd42',
+    mode: 'rnb', energy: 1.02
+  },
+  gospel: {
+    family: 'rnb', parent: 'FUNK / SOUL', label: 'GOSPEL',
+    font: '"Space Grotesk"', accent: '#e8b95d', accent2: '#68aee8', hot: '#fff7dc',
+    genreInk: '#ffebb9', genreInk2: '#c8e5ff', genreInkEdge: '#b78c43',
+    mode: 'rnb', energy: 0.82, fontWeight: 700
+  },
+  funk: {
+    family: 'rnb', parent: 'FUNK / SOUL', label: 'FUNK',
+    font: '"Righteous"', accent: '#c8e84f', accent2: '#f36b47', hot: '#fff2a8',
+    genreInk: '#efffb1', genreInk2: '#ffc5a9', genreInkEdge: '#89a73e',
+    mode: 'rnb', energy: 0.98
+  },
   'disco-funk': {
-    family: 'pop', parent: 'DANCE MUSIC', label: 'DISCO / FUNK',
+    family: 'pop', parent: 'FUNK / SOUL', label: 'DISCO',
     font: '"Audiowide"', accent: '#ff4fbd', accent2: '#ffb000', hot: '#7dfff2',
     mode: 'house', energy: 0.94
   },
   'singer-songwriter': {
-    family: 'rnb', parent: 'SONGWRITER', label: 'SINGER-SONGWRITER',
+    family: 'rnb', parent: 'FOLK / COUNTRY', treeParent: 'FOLK / COUNTRY', label: 'SINGER-SONGWRITER',
     font: '"Space Grotesk"', accent: '#f1ae62', accent2: '#6faeff', hot: '#fff4df',
     mode: 'rnb', energy: 0.72
   },
   country: {
-    family: 'rock', parent: 'ROOTS MUSIC', label: 'COUNTRY',
+    family: 'rock', parent: 'FOLK / COUNTRY', treeParent: 'FOLK / COUNTRY', label: 'COUNTRY',
     font: '"Space Grotesk"', accent: '#ff9a3c', accent2: '#4fb8ff', hot: '#fff3d7',
     mode: 'rock', energy: 0.82
   },
   folk: {
-    family: 'rnb', parent: 'ROOTS MUSIC', label: 'FOLK',
+    family: 'rnb', parent: 'FOLK / COUNTRY', treeParent: 'FOLK / COUNTRY', label: 'FOLK',
     font: '"Space Grotesk"', accent: '#e6b85c', accent2: '#63c38b', hot: '#fff5dc',
     mode: 'rnb', energy: 0.72
   },
+  bebop: {
+    family: 'jazz', parent: 'JAZZ', label: 'BEBOP',
+    font: '"Space Grotesk"', accent: '#ffbf4f', accent2: '#b76cff', hot: '#fff4d6',
+    mode: 'rnb', energy: 0.9
+  },
+  'swing-jazz': {
+    family: 'jazz', parent: 'JAZZ', label: 'SWING',
+    font: '"Righteous"', accent: '#f0b64a', accent2: '#46c9bd', hot: '#fff1c7',
+    mode: 'rnb', energy: 0.86
+  },
+  'bossa-nova': {
+    family: 'jazz', parent: 'LATIN', label: 'BOSSA NOVA',
+    font: '"Space Grotesk"', accent: '#56d6bd', accent2: '#ff8f70', hot: '#fff3c9',
+    mode: 'rnb', energy: 0.7
+  },
+  'jazz-fusion': {
+    family: 'jazz', parent: 'JAZZ', label: 'JAZZ FUSION',
+    font: '"Chakra Petch"', accent: '#bc73ff', accent2: '#d7ed50', hot: '#fff2cf',
+    mode: 'rnb', energy: 0.98
+  },
   jazz: {
-    family: 'rnb', parent: 'JAZZ', label: 'JAZZ',
+    family: 'jazz', parent: 'JAZZ / IMPROVISED', treeParent: 'JAZZ', label: 'JAZZ',
     font: '"Space Grotesk"', accent: '#bd75ff', accent2: '#f4ba55', hot: '#fff0ce',
     mode: 'rnb', energy: 0.76
   },
+  baroque: {
+    family: 'classical', parent: 'CLASSICAL', label: 'BAROQUE',
+    font: '"Space Grotesk"', accent: '#d9b45f', accent2: '#76a8dd', hot: '#fff4d8',
+    mode: 'trance', energy: 0.68
+  },
+  'romantic-classical': {
+    family: 'classical', parent: 'CLASSICAL', label: 'ROMANTIC',
+    font: '"Space Grotesk"', accent: '#cf7f9f', accent2: '#769fe8', hot: '#fff0dc',
+    mode: 'trance', energy: 0.74
+  },
+  opera: {
+    family: 'classical', parent: 'CLASSICAL', label: 'OPERA',
+    font: '"Space Grotesk"', accent: '#d85f70', accent2: '#d7ae55', hot: '#fff3df',
+    mode: 'trance', energy: 0.78
+  },
+  'modern-classical': {
+    family: 'classical', parent: 'CLASSICAL', label: 'MODERN CLASSICAL',
+    font: '"Chakra Petch"', accent: '#77b9db', accent2: '#a98bd7', hot: '#eef8f4',
+    mode: 'trance', energy: 0.62
+  },
   classical: {
-    family: 'trance', parent: 'ORCHESTRAL', label: 'CLASSICAL',
+    family: 'classical', parent: 'CLASSICAL MUSIC', treeParent: 'CLASSICAL', label: 'CLASSICAL',
     font: '"Space Grotesk"', accent: '#7aa7ff', accent2: '#d8b96a', hot: '#f4ead7',
     mode: 'trance', energy: 0.64
   },
   soundtrack: {
-    family: 'trance', parent: 'SCORE', label: 'SOUNDTRACK',
+    family: 'trance', parent: 'STAGE & SCREEN', treeParent: 'STAGE & SCREEN', label: 'SOUNDTRACK',
     font: '"Orbitron"', accent: '#866cff', accent2: '#e2b65a', hot: '#eaf5ff',
     mode: 'trance', energy: 0.8
   },
   latin: {
-    family: 'latin', parent: 'LATIN MUSIC', label: 'LATIN',
+    family: 'latin', parent: 'LATIN MUSIC', treeParent: 'LATIN', label: 'LATIN',
     font: '"Righteous"', accent: '#ff5d35', accent2: '#24d5b4', hot: '#ffd45c',
     genreInk: '#fff3c7', genreInk2: '#ffd56a', genreInkEdge: '#ff7650',
     mode: 'latin', energy: 1.0
   },
   reggae: {
-    family: 'rnb', parent: 'CARIBBEAN', label: 'REGGAE',
+    family: 'rnb', parent: 'CARIBBEAN', treeParent: 'REGGAE', label: 'REGGAE',
     font: '"Russo One"', accent: '#32d75b', accent2: '#ffd43b', hot: '#ff4a3d',
     mode: 'rnb', energy: 0.86
   },
@@ -579,7 +666,7 @@ const THEMES = {
     mode: 'metal', energy: 1.16
   },
   'progressive-metal': {
-    family: 'metal', parent: 'METAL', label: 'PROG METAL',
+    family: 'metal', parent: 'METAL', label: 'PROGRESSIVE METAL', hudLabel: 'PROGRESSIVE',
     font: '"Oxanium"', accent: '#9b61ff', accent2: '#00d8c8', hot: '#ffffff',
     mode: 'metal', energy: 1.08
   },
@@ -599,12 +686,67 @@ const THEMES = {
     mode: 'metal', energy: 1.12
   },
   metal: {
-    family: 'metal', parent: 'HEAVY MUSIC', label: 'METAL',
+    family: 'metal', parent: 'ROCK / METAL', treeParent: 'ROCK & METAL', label: 'METAL',
     font: '"Teko"', accent: '#ef233c', accent2: '#aab2b9', hot: '#ffffff',
     mode: 'metal', energy: 1.16
   },
+  ambient: {
+    family: 'ambient', parent: 'ELECTRONIC', label: 'AMBIENT',
+    font: '"Space Grotesk"', accent: '#79d8d0', accent2: '#788be8', hot: '#e8fff8',
+    genreInk: '#c8f5ea', genreInk2: '#cbd4ff', genreInkEdge: '#6aa8ba',
+    mode: 'ambient', energy: 0.58, fontWeight: 650, letterSpacing: '-0.35px',
+    textFx: 0.34, textBaseGlow: 8
+  },
+  downtempo: {
+    family: 'downtempo', parent: 'ELECTRONIC', label: 'DOWNTEMPO',
+    font: '"Space Grotesk"', accent: '#db8f68', accent2: '#4eb9b2', hot: '#f4e4b8',
+    genreInk: '#f2c5ad', genreInk2: '#bce7dd', genreInkEdge: '#aa766d',
+    mode: 'ambient', energy: 0.7, fontWeight: 680, letterSpacing: '-0.45px',
+    textFx: 0.4, textBaseGlow: 9
+  },
+  chillout: {
+    family: 'downtempo', parent: 'DOWNTEMPO', label: 'CHILLOUT',
+    font: '"Righteous"', accent: '#62d9c2', accent2: '#ef8fa5', hot: '#fff0c7',
+    genreInk: '#c9faee', genreInk2: '#ffd2dc', genreInkEdge: '#72aeb1',
+    mode: 'ambient', energy: 0.64, textFx: 0.36, textBaseGlow: 8
+  },
+  'instrumental-hip-hop': {
+    family: 'hip-hop', parent: 'HIP-HOP', label: 'INSTRUMENTAL HIP-HOP',
+    font: '"Bungee"', accent: '#d9a441', accent2: '#4f91a8', hot: '#f5e7bd',
+    genreInk: '#f0cf86', genreInk2: '#b9dce4', genreInkEdge: '#8a744e',
+    mode: 'hip-hop', energy: 0.82, fontWeight: 400, letterSpacing: '-0.82px',
+    textFx: 0.42, textBaseGlow: 8
+  },
+  'lo-fi-hip-hop': {
+    family: 'hip-hop', parent: 'INSTRUMENTAL HIP-HOP', label: 'LO-FI HIP-HOP',
+    font: '"Space Grotesk"', accent: '#8faf8d', accent2: '#c97f91', hot: '#d7dfc8',
+    genreInk: '#d3e1c7', genreInk2: '#e7bcc7', genreInkEdge: '#778d83',
+    mode: 'hip-hop', energy: 0.68, fontWeight: 680, letterSpacing: '-0.5px',
+    textFx: 0.32, textBaseGlow: 7
+  },
+  idm: {
+    family: 'experimental-electronic', parent: 'ELECTRONIC', label: 'IDM',
+    font: '"Oxanium"', accent: '#58e1c1', accent2: '#8d70ff', hot: '#effff7',
+    genreInk: '#baffed', genreInk2: '#d3c9ff', genreInkEdge: '#5aa5a6',
+    mode: 'experimental', energy: 0.9, fontWeight: 700, letterSpacing: '-0.35px',
+    textFx: 0.52, textBaseGlow: 10
+  },
+  glitch: {
+    family: 'experimental-electronic', parent: 'ELECTRONIC', label: 'GLITCH',
+    font: '"Chakra Petch"', accent: '#42ddeb', accent2: '#f064a4', hot: '#dfff69',
+    genreInk: '#b8f8ff', genreInk2: '#ffb4d5', genreInkEdge: '#9fb84e',
+    mode: 'experimental', energy: 0.98, fontWeight: 700, letterSpacing: '-0.25px',
+    textFx: 0.64, textBaseGlow: 11
+  },
+  blues: {
+    family: 'blues', parent: 'ROOTS MUSIC', treeParent: 'BLUES', label: 'BLUES',
+    font: '"Space Grotesk"', accent: '#408bd6', accent2: '#d69a48', hot: '#e8f2ff',
+    genreInk: '#b9dcff', genreInk2: '#f0d3a5', genreInkEdge: '#4c72a0',
+    mode: 'rnb', energy: 0.76, fontWeight: 700, letterSpacing: '-0.25px',
+    textFx: 0.46, textBaseGlow: 9
+  },
   electronic: {
-    family: 'electronic', parent: 'GENRE POLICE', label: 'ELECTRONIC',
+    family: 'electronic', parent: 'GENRE POLICE', treeParent: 'ELECTRONIC', label: 'ELECTRONIC',
     font: '"Orbitron"', accent: '#00e5ff', accent2: '#8c55ff', hot: '#ffffff',
     mode: 'electronic', energy: 1.0
   },
@@ -615,24 +757,11 @@ const THEMES = {
   }
 };
 
-const DEMO_THEME_IDS = [
-  'asmr', 'bilibili',
-  'happy-hardcore', 'uk-hardcore', 'gabber', 'frenchcore', 'uptempo-hardcore', 'puzzycore',
-  'hardstyle', 'rawstyle', 'euphoric-hardstyle',
-  'house', 'deep-house', 'tech-house', 'progressive-house', 'bass-house', 'future-house', 'amapiano',
-  'electro-house', 'complextro', 'big-room-house', 'dutch-house', 'fidget-house', 'melbourne-bounce',
-  'acid-house', 'tropical-house', 'french-house', 'disco-house', 'hard-house',
-  'future-bass', 'kawaii-bass', 'dubstep', 'moombahcore', 'brostep', 'riddim', 'future-riddim', 'colour-bass', 'deathstep', 'melodic-dubstep',
-  'trap-edm', 'festival-trap', 'hybrid-trap', 'hard-trap', 'midtempo-bass', 'glitch-hop', 'moombahton',
-  'drum-bass', 'neurofunk', 'liquid-dnb', 'dancefloor-dnb', 'jump-up-dnb', 'drumstep', 'jungle',
-  'trance', 'psytrance', 'uplifting-trance', 'progressive-trance', 'tech-trance', 'hard-trance',
-  'techno', 'hard-techno', 'acid-techno', 'melodic-techno', 'industrial-techno', 'minimal-techno',
-  'uk-garage', 'future-garage', 'speed-garage', 'two-step-garage', 'bassline',
-  'breakbeat', 'big-beat', 'breakcore', 'nu-disco', 'electro-swing',
-  'dance-pop', 'j-pop', 'anime', 'vocaloid', 'pop-rock', 'alternative', 'hip-hop', 'experimental-hip-hop', 'phonk', 'drift-phonk', 'rnb',
-  'disco-funk', 'jazz', 'classical', 'latin', 'punk',
-  'metal', 'metalcore', 'deathcore', 'industrial-metal'
-];
+// Every concrete visual is previewable. Structural nodes exist only to keep
+// the taxonomy readable and therefore stay out of the radio-item list.
+const PREVIEW_EXCLUDED_THEME_IDS = new Set(['edm', 'unknown']);
+const DEMO_THEME_IDS = Object.keys(THEMES)
+  .filter((id) => !PREVIEW_EXCLUDED_THEME_IDS.has(id));
 
 const FONT_TYPOGRAPHY = Object.freeze({
   'Black Ops One': { fontWeight: 400, letterSpacing: '0.15px' },
@@ -672,6 +801,8 @@ const MODE_TEXT_FX = Object.freeze({
   'hip-hop': { textFx: 0.58, textBaseGlow: 11 },
   phonk: { textFx: 0.7, textBaseGlow: 12 },
   rnb: { textFx: 0.5, textBaseGlow: 10 },
+  ambient: { textFx: 0.38, textBaseGlow: 8 },
+  experimental: { textFx: 0.58, textBaseGlow: 10 },
   latin: { textFx: 0.64, textBaseGlow: 12 },
   electronic: { textFx: 0.6, textBaseGlow: 11 }
 });
@@ -690,4 +821,9 @@ function themeFor(id) {
   };
 }
 
-module.exports = { THEMES, DEMO_THEME_IDS, themeFor };
+function themeWithId(id) {
+  const resolvedId = Object.hasOwn(THEMES, id) ? id : 'unknown';
+  return { id: resolvedId, ...themeFor(resolvedId) };
+}
+
+module.exports = { THEMES, DEMO_THEME_IDS, themeFor, themeWithId };

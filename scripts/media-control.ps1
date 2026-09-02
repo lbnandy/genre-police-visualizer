@@ -38,16 +38,25 @@ if (-not [string]::IsNullOrWhiteSpace($IgnoredSourcesBase64)) {
 $sessions = @($manager.GetSessions())
 $session = $null
 if (-not [string]::IsNullOrWhiteSpace($PreferredSource)) {
+    $preferred = $null
+    $preferredUpdated = [DateTimeOffset]::MinValue
     for ($index = 0; $index -lt $sessions.Count; $index += 1) {
         $candidate = $sessions[$index]
-        if ($candidate.SourceAppUserModelId -eq $PreferredSource -and -not $ignoredSources.ContainsKey([string] $candidate.SourceAppUserModelId)) {
-            $session = $candidate
-            break
+        try {
+            if ($candidate.SourceAppUserModelId -ne $PreferredSource) { continue }
+            if ($ignoredSources.ContainsKey([string] $candidate.SourceAppUserModelId)) { continue }
+            $updated = $candidate.GetTimelineProperties().LastUpdatedTime
+            if ($null -eq $preferred -or $updated -gt $preferredUpdated) {
+                $preferred = $candidate
+                $preferredUpdated = $updated
+            }
         }
+        catch { }
     }
+    if ($null -ne $preferred) { $session = $preferred }
 }
+$current = $manager.GetCurrentSession()
 if ($null -eq $session) {
-    $current = $manager.GetCurrentSession()
     if ($null -ne $current -and -not $ignoredSources.ContainsKey([string] $current.SourceAppUserModelId) -and
         $current.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing') {
         $session = $current
@@ -58,6 +67,20 @@ if ($null -eq $session) {
         $candidate = $sessions[$index]
         if (-not $ignoredSources.ContainsKey([string] $candidate.SourceAppUserModelId) -and
             $candidate.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing') {
+            $session = $candidate
+            break
+        }
+    }
+}
+if ($null -eq $session -and $null -ne $current -and
+    -not $ignoredSources.ContainsKey([string] $current.SourceAppUserModelId)) {
+    # A paused current session is still the correct target for a resume command.
+    $session = $current
+}
+if ($null -eq $session) {
+    for ($index = 0; $index -lt $sessions.Count; $index += 1) {
+        $candidate = $sessions[$index]
+        if (-not $ignoredSources.ContainsKey([string] $candidate.SourceAppUserModelId)) {
             $session = $candidate
             break
         }

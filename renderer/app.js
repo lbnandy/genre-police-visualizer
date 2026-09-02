@@ -1,5 +1,6 @@
 import { AudioEngine } from './audio-engine.js';
 import { VisualEngine } from './visual-engine.js';
+import { VisualizationRecorder } from './recording-controller.mjs';
 import { fallbackTheme, demoTracks } from './themes.js';
 import { buildLyricSweepTimeline, buildLyricUnitTimeline, lyricLineInkWidth, lyricUnitMotion } from './lyric-motion.mjs';
 import { resolveImpactFx } from './impact-fx.mjs';
@@ -7,6 +8,10 @@ import { isGenrePoliceTrack } from './easter-eggs.mjs';
 import { KawaiiExpressionTracker } from './kawaii-expression.mjs';
 import { smoothMotionEnvelope } from './motion-envelope.mjs';
 import { softenMotionMetrics } from './motion-preference.mjs';
+import {
+  applyVisualResponse,
+  normalizeVisualResponseMode
+} from './audio-response.mjs';
 import { synthwaveAudioResponse } from './synthwave-response.mjs';
 import {
   applyLyricDelay,
@@ -33,14 +38,25 @@ const previousThemedBackdrop = document.querySelector('#themed-backdrop-previous
 const hud = document.querySelector('#hud');
 const artwork = document.querySelector('#artwork');
 const monogram = document.querySelector('#monogram');
+const jurisdictionLabel = document.querySelector('.jurisdiction > span:nth-child(2)');
 const parentGenre = document.querySelector('#parent-genre');
 const genreLabel = document.querySelector('#genre');
+const genreQuickPanel = document.querySelector('#genre-quick-panel');
+const genreQuickTrack = document.querySelector('#genre-quick-track');
+const genreQuickCandidates = document.querySelector('#genre-quick-candidates');
+const genreQuickState = document.querySelector('#genre-quick-state');
+const genreQuickClose = document.querySelector('#genre-quick-close');
+const genreQuickMore = document.querySelector('#genre-quick-more');
+const genreQuickUnlock = document.querySelector('#genre-quick-unlock');
+const genreQuickUse = document.querySelector('#genre-quick-use');
+const genreQuickRemember = document.querySelector('#genre-quick-remember');
 const genreNote = document.querySelector('#genre-note');
 const titleLabel = document.querySelector('#title');
 const artistLabel = document.querySelector('#artist');
 const caseId = document.querySelector('#case-id');
 const playState = document.querySelector('#play-state');
 const genreSource = document.querySelector('#genre-source');
+const trackRule = document.querySelector('.track-rule');
 const progress = document.querySelector('.track-rule-fill');
 const settings = document.querySelector('#settings');
 const settingsScroll = document.querySelector('.settings-scroll');
@@ -51,6 +67,15 @@ const settingsPanes = [...document.querySelectorAll('.settings-pane')];
 const lastFmInput = document.querySelector('#lastfm-key');
 const discogsTokenInput = document.querySelector('#discogs-token');
 const appVersionLabel = document.querySelector('#app-version');
+const updateCheckButton = document.querySelector('#update-check-button');
+const updateViewButton = document.querySelector('#update-view-button');
+const updateCheckState = document.querySelector('#update-check-state');
+const updateToast = document.querySelector('#update-toast');
+const updateToastMessage = document.querySelector('#update-toast-message');
+const updateToastDismiss = document.querySelector('#update-toast-dismiss');
+const updateToastView = document.querySelector('#update-toast-view');
+const fpsCounter = document.querySelector('#fps-counter');
+const fpsCounterValue = document.querySelector('#fps-counter-value');
 const genreCorrectionInput = document.querySelector('#genre-correction-input');
 const genreCorrectionSuggestions = document.querySelector('#genre-correction-suggestions');
 const genreCorrectionTrack = document.querySelector('#genre-correction-track');
@@ -77,6 +102,11 @@ const idleBehaviorOptions = [...document.querySelectorAll('.idle-behavior-option
 const idleBehaviorGroup = document.querySelector('#idle-behavior-group');
 const idleFrameLimitToggle = document.querySelector('#idle-frame-limit-toggle');
 const rhythmModelToggle = document.querySelector('#rhythm-model-toggle');
+const captureAudioSourceButton = document.querySelector('#audio-source-button');
+const captureAudioSourceValue = document.querySelector('#audio-source-value');
+const captureAudioSourceMenu = document.querySelector('#audio-source-menu');
+const visualResponseOptions = [...document.querySelectorAll('.visual-response-option')];
+const visualResponseGroup = document.querySelector('#visual-response-group');
 const mediaSourceButton = document.querySelector('#media-source-button');
 const mediaSourceValue = document.querySelector('#media-source-value');
 const mediaSourceMenu = document.querySelector('#media-source-menu');
@@ -117,10 +147,16 @@ const genreDataImport = document.querySelector('#genre-data-import');
 const genreDataState = document.querySelector('#genre-data-state');
 const capsuleBackgroundSetting = document.querySelector('#capsule-background-setting');
 const posterBackgroundSetting = document.querySelector('#poster-background-setting');
+const layoutModeSetting = document.querySelector('#layout-mode-setting');
 const capsuleEnglishFontSetting = document.querySelector('#capsule-english-font-setting');
 const capsuleEnglishFontToggle = document.querySelector('#capsule-english-font-toggle');
 const posterEnglishFontSetting = document.querySelector('#poster-english-font-setting');
 const posterEnglishFontToggle = document.querySelector('#poster-english-font-toggle');
+const fullscreenEnglishFontSetting = document.querySelector('#fullscreen-english-font-setting');
+const fullscreenEnglishFontToggle = document.querySelector('#fullscreen-english-font-toggle');
+const uiScaleSetting = document.querySelector('#ui-scale-setting');
+const appearanceGeneralSection = document.querySelector('#appearance-general-section');
+const appearanceLayoutSection = document.querySelector('#appearance-layout-section');
 const capsuleThemedBackgroundToggle = document.querySelector('#capsule-themed-background-toggle');
 const posterThemedBackgroundToggle = document.querySelector('#poster-themed-background-toggle');
 const languageButton = document.querySelector('#language-button');
@@ -129,6 +165,31 @@ const languageMenu = document.querySelector('#language-menu');
 const languageOptions = [...document.querySelectorAll('.language-option')];
 const controls = document.querySelector('#controls');
 const transport = document.querySelector('#transport');
+const snapshotQuickButton = document.querySelector('#snapshot-quick-button');
+const snapshotQuickButtonToggle = document.querySelector('#snapshot-quick-button-toggle');
+const snapshotSaveButton = document.querySelector('#snapshot-save-button');
+const snapshotState = document.querySelector('#snapshot-state');
+const fullscreenQuickButton = document.querySelector('#fullscreen-quick-button');
+const fullscreenControls = document.querySelector('#fullscreen-controls');
+const fullscreenTransport = document.querySelector('#fullscreen-transport');
+const fullscreenPreviousTrackButton = document.querySelector('#fullscreen-previous-track');
+const fullscreenPlayPauseButton = document.querySelector('#fullscreen-play-pause');
+const fullscreenNextTrackButton = document.querySelector('#fullscreen-next-track');
+const fullscreenSnapshotButton = document.querySelector('#fullscreen-snapshot-button');
+const fullscreenRecordingButton = document.querySelector('#fullscreen-recording-button');
+const fullscreenSettingsButton = document.querySelector('#fullscreen-settings-button');
+const fullscreenLayoutButton = document.querySelector('#fullscreen-layout-button');
+const fullscreenTextButton = document.querySelector('#fullscreen-text-button');
+const fullscreenExitButton = document.querySelector('#fullscreen-exit-button');
+const stageOutputEntrySetting = document.querySelector('#stage-output-entry-setting');
+const stageOutputStartStop = document.querySelector('#stage-output-start-stop');
+const stageOutputStateLabel = document.querySelector('#stage-output-state');
+const stageOutputTextSetting = document.querySelector('#stage-output-text-setting');
+const stageOutputTextToggle = document.querySelector('#stage-output-text-toggle');
+const recordingQuickButton = document.querySelector('#recording-quick-button');
+const recordingQuickButtonSetting = document.querySelector('#recording-quick-button-setting');
+const recordingQuickButtonToggle = document.querySelector('#recording-quick-button-toggle');
+const snapshotQuickButtonSetting = document.querySelector('#snapshot-quick-button-setting');
 const settingsButton = document.querySelector('#settings-button');
 const layoutToggleButton = document.querySelector('#layout-toggle-button');
 const previousTrackButton = document.querySelector('#previous-track');
@@ -152,7 +213,13 @@ const lyricSweepSetting = document.querySelector('#lyric-sweep-setting');
 const lyricTranslationSetting = document.querySelector('#lyric-translation-setting');
 const lyricDelaySetting = document.querySelector('#lyric-delay-setting');
 const onlineLookupToggle = document.querySelector('#online-lookup-toggle');
+const artistGenreReferenceToggle = document.querySelector('#artist-genre-reference-toggle');
+const localGenreModelSetting = document.querySelector('#local-genre-model-setting');
+const localGenreModelToggle = document.querySelector('#local-genre-model-toggle');
+const dynamicGenreDetectionSetting = document.querySelector('#dynamic-genre-detection-setting');
+const dynamicGenreDetectionToggle = document.querySelector('#dynamic-genre-detection-toggle');
 const alwaysOnTopToggle = document.querySelector('#always-on-top-toggle');
+const desktopLayerToggle = document.querySelector('#desktop-layer-toggle');
 const mousePassthroughToggle = document.querySelector('#mouse-passthrough-toggle');
 const launchAtLoginToggle = document.querySelector('#launch-at-login-toggle');
 const credentialsSave = document.querySelector('#credentials-save');
@@ -161,11 +228,18 @@ const diagnosticsPanel = document.querySelector('#diagnostics-panel');
 const diagnosticsPlayer = document.querySelector('#diagnostics-player');
 const diagnosticsAudio = document.querySelector('#diagnostics-audio');
 const diagnosticsRhythm = document.querySelector('#diagnostics-rhythm');
+const diagnosticsGenreModel = document.querySelector('#diagnostics-genre-model');
 const diagnosticsGenre = document.querySelector('#diagnostics-genre');
 const diagnosticsLyrics = document.querySelector('#diagnostics-lyrics');
 const diagnosticsRecapture = document.querySelector('#diagnostics-recapture');
 const diagnosticsExport = document.querySelector('#diagnostics-export');
 const diagnosticsState = document.querySelector('#diagnostics-state');
+const showFpsToggle = document.querySelector('#show-fps-toggle');
+const recordingStartStop = document.querySelector('#recording-start-stop');
+const recordingState = document.querySelector('#recording-state');
+const recordingToast = document.querySelector('#recording-toast');
+const recordingToastText = document.querySelector('#recording-toast-text');
+const recordingToastClose = document.querySelector('#recording-toast-close');
 const coreArt = document.querySelector('#core-art');
 const riffStrings = document.querySelector('#riff-strings');
 const riffStringsContext = riffStrings.getContext('2d');
@@ -210,12 +284,16 @@ let uiLanguage = i18n?.DEFAULT_LOCALE || 'zh-CN';
 let layoutMode = 'side';
 let capsuleCondensedEnglish = false;
 let posterCondensedEnglish = true;
+let fullscreenCondensedEnglish = false;
 let capsuleThemedBackground = true;
 let posterThemedBackground = true;
 let motionMode = 'standard';
 let idleBehavior = 'keep';
 let idleFrameLimitEnabled = true;
 let rhythmModelEnabled = true;
+let captureAudioSourceId = 'system';
+let captureAudioSources = [{ id: 'system', kind: 'system', label: '' }];
+let visualResponseMode = 'standard';
 let preferredMediaSource = '';
 let ignoredMediaSources = [];
 let availableMediaSources = [];
@@ -229,12 +307,37 @@ let pendingCustomGenreDeleteId = '';
 let activeCustomGenreColorControl = null;
 let customGenreColorHsv = { h: 0, s: 0, v: 1 };
 let latestRhythmModelState = { type: 'unavailable' };
+let latestAudioGenreModelState = { type: 'unavailable', reason: 'not started' };
+let latestAudioGenreAnalyzing = false;
+let diagnosticsRefreshTimer = 0;
+let recordingPresentationActive = false;
+let recordingToastTimer = 0;
+let recordingUiSnapshot = { state: 'idle' };
+let restoreSettingsAfterRecording = false;
+let recordingOverlayGeometry = null;
+let recordingOverlayVisible = false;
+let stageOutputActive = false;
+let stageOutputBusy = false;
+let stageOutputTextVisible = true;
+let stageOutputRestoreLayoutMode = '';
+let fullscreenLayoutMode = 'split';
+let recordingQuickButtonVisible = false;
+let snapshotQuickButtonVisible = false;
+let snapshotSaving = false;
+let genreQuickData = null;
+let genreQuickSelectedId = '';
 const tr = (key, variables) => i18n?.translate(uiLanguage, key, variables) || key;
 const trMain = (key, variables) => i18n?.translate('en', key, variables) || key;
 
 const audio = new AudioEngine();
 const visual = new VisualEngine(canvas);
 const kawaiiExpression = new KawaiiExpressionTracker();
+const recorder = new VisualizationRecorder({
+  bridge: window.genrePolice,
+  audioTrackProvider: () => audio.createRecordingTrack(),
+  presentationChanged: setRecordingPresentation,
+  stateChanged: updateRecordingUi
+});
 
 let currentMetadata = null;
 let currentDisplayContent = null;
@@ -266,8 +369,22 @@ let posterPhase = 0;
 let posterOrbitPhase = 0;
 let posterSoftPhase = 0;
 let posterTravel = 0;
+let lastFullscreenBackdropStyleAt = 0;
 let previousAnimationTime = 0;
 let lastAnimationWorkAt = 0;
+let renderPerformanceStartedAt = 0;
+let renderPerformanceWarmupUntil = 0;
+let renderPerformanceContext = '';
+let renderFrameIntervals = [];
+let renderDurations = [];
+let renderWorkDurations = [];
+let adaptiveResolutionScale = 1;
+let adaptiveLowFpsWindows = 0;
+let adaptiveHighFpsWindows = 0;
+const adaptiveResolutionProfiles = new Map();
+let showFps = false;
+let fpsCounterStartedAt = 0;
+let fpsCounterFrameCount = 0;
 let idleSettleTimer = 0;
 let mediaControlSerial = 0;
 let optimisticPlaybackIcon = null;
@@ -293,9 +410,17 @@ let lyricsEnabled = true;
 let lyricTranslationEnabled = true;
 let lyricSweepEnabled = true;
 let onlineGenreLookupEnabled = true;
+let artistGenreReferenceEnabled = true;
+let localGenreModelEnabled = true;
+let localGenreModelAvailable = true;
+let dynamicGenreDetectionEnabled = false;
 let alwaysOnTopEnabled = false;
+let desktopLayerEnabled = false;
+let desktopLayerAvailable = true;
 let mousePassthroughEnabled = false;
 let launchAtLoginEnabled = false;
+let latestUpdateResult = null;
+let pendingUpdateResult = null;
 let lyricDelayMs = 0;
 let playbackClock = {
   positionMs: 0,
@@ -313,8 +438,8 @@ function metadataKey(metadata) {
 }
 
 const HARD_TANOC_GENRES = new Set([
-  'hardcore', 'gabber', 'frenchcore', 'uptempo-hardcore', 'puzzycore',
-  'industrial-hardcore', 'hardstyle', 'rawstyle'
+  'gabber', 'frenchcore', 'uptempo-hardcore', 'puzzycore',
+  'industrial-hardcore', 'rawstyle'
 ]);
 
 function resolveTanocFaceVariant(theme, member) {
@@ -453,9 +578,13 @@ function drawForegroundRiffStrings(metrics, time) {
 }
 
 function setPlayPauseIcon(playing) {
-  playPauseButton.classList.toggle('is-playing', Boolean(playing));
-  playPauseButton.title = playing ? tr('controls.pause') : tr('controls.play');
-  playPauseButton.setAttribute('aria-label', playing ? tr('controls.pause') : tr('controls.play'));
+  const label = playing ? tr('controls.pause') : tr('controls.play');
+  [playPauseButton, fullscreenPlayPauseButton].forEach((button) => {
+    button.classList.toggle('is-playing', Boolean(playing));
+    button.title = label;
+    button.setAttribute('aria-label', label);
+  });
+  if (recordingPresentationActive) syncRecordingControlsOverlay(recordingOverlayVisible);
 }
 
 function reconcilePlayPauseIcon(playing, time = performance.now()) {
@@ -646,7 +775,9 @@ function setPosterCondensedEnglish(enabled, { persist = false } = {}) {
         animateLayout: false
       });
     }
+    refreshPresentationTypography();
   });
+  renderFullscreenControls();
   if (persist) window.genrePolice.setConfig({ posterCondensedEnglish }).catch(() => {});
 }
 
@@ -666,13 +797,41 @@ function setCapsuleCondensedEnglish(enabled, { persist = false } = {}) {
         animateLayout: false
       });
     }
+    refreshPresentationTypography();
   });
+  renderFullscreenControls();
   if (persist) window.genrePolice.setConfig({ capsuleCondensedEnglish }).catch(() => {});
 }
 
+function setFullscreenCondensedEnglish(enabled, { persist = false } = {}) {
+  fullscreenCondensedEnglish = enabled === true;
+  document.body.dataset.fullscreenEnglish = fullscreenCondensedEnglish ? 'condensed' : 'regular';
+  fullscreenEnglishFontToggle.setAttribute('aria-checked', String(fullscreenCondensedEnglish));
+  fullscreenEnglishFontToggle.title = fullscreenCondensedEnglish
+    ? tr('settings.fullscreenCondensedEnglishOn')
+    : tr('settings.fullscreenCondensedEnglishOff');
+  requestAnimationFrame(() => {
+    updateTitleOverflow();
+    const visibleLyric = lyricLines[Math.max(0, lyricIndex)] || null;
+    if (visibleLyric || lyricCurrentBase.textContent) {
+      setLyricText(visibleLyric?.text || lyricCurrentBase.textContent || '', {
+        translation: visibleLyric?.translation || lyricTranslation.dataset.text || '',
+        animateLayout: false
+      });
+    }
+    refreshPresentationTypography();
+  });
+  if (persist) window.genrePolice.setConfig({ fullscreenCondensedEnglish }).catch(() => {});
+}
+
 function updateBackgroundStyle() {
-  const themed = layoutMode === 'poster' ? posterThemedBackground : capsuleThemedBackground;
-  document.body.dataset.backgroundStyle = themed ? 'themed' : 'adaptive';
+  const themed = stageOutputActive
+    || recordingPresentationActive
+    || (layoutMode === 'poster' ? posterThemedBackground : capsuleThemedBackground);
+  const nextStyle = themed ? 'themed' : 'adaptive';
+  if (document.body.dataset.backgroundStyle !== nextStyle) {
+    document.body.dataset.backgroundStyle = nextStyle;
+  }
   if (!themed) cancelBackdropCrossfade();
   capsuleThemedBackgroundToggle.setAttribute('aria-checked', String(capsuleThemedBackground));
   posterThemedBackgroundToggle.setAttribute('aria-checked', String(posterThemedBackground));
@@ -703,6 +862,70 @@ function setOnlineGenreLookupEnabled(enabled, { persist = false } = {}) {
   if (persist) window.genrePolice.setConfig({ onlineGenreLookupEnabled }).catch(() => {});
 }
 
+function setArtistGenreReferenceEnabled(enabled, { persist = false } = {}) {
+  artistGenreReferenceEnabled = enabled !== false;
+  artistGenreReferenceToggle.setAttribute('aria-checked', String(artistGenreReferenceEnabled));
+  artistGenreReferenceToggle.title = artistGenreReferenceEnabled
+    ? tr('settings.artistGenreReferenceOn')
+    : tr('settings.artistGenreReferenceOff');
+  if (persist) {
+    window.genrePolice.setConfig({ artistGenreReferenceEnabled }).then((result) => {
+      if (typeof result?.artistGenreReferenceEnabled === 'boolean') {
+        setArtistGenreReferenceEnabled(result.artistGenreReferenceEnabled);
+      }
+    }).catch(() => setArtistGenreReferenceEnabled(!artistGenreReferenceEnabled));
+  }
+}
+
+function updateLocalGenreSettingState() {
+  localGenreModelToggle.disabled = !localGenreModelAvailable;
+  localGenreModelSetting.classList.toggle('is-unavailable', !localGenreModelAvailable);
+  localGenreModelToggle.setAttribute('aria-checked', String(localGenreModelEnabled));
+  localGenreModelToggle.title = !localGenreModelAvailable
+    ? tr('settings.localGenreModelUnavailable')
+    : localGenreModelEnabled
+      ? tr('settings.localGenreModelOn')
+      : tr('settings.localGenreModelOff');
+  dynamicGenreDetectionSetting.hidden = !localGenreModelAvailable || !localGenreModelEnabled;
+  dynamicGenreDetectionToggle.setAttribute('aria-checked', String(dynamicGenreDetectionEnabled));
+  dynamicGenreDetectionToggle.title = dynamicGenreDetectionEnabled
+    ? tr('settings.dynamicGenreDetectionOn')
+    : tr('settings.dynamicGenreDetectionOff');
+}
+
+function setDynamicGenreDetectionEnabled(enabled, { persist = false } = {}) {
+  dynamicGenreDetectionEnabled = localGenreModelAvailable
+    && localGenreModelEnabled
+    && enabled === true;
+  updateLocalGenreSettingState();
+  if (persist) {
+    window.genrePolice.setConfig({ dynamicGenreDetectionEnabled }).then((result) => {
+      if (typeof result?.dynamicGenreDetectionEnabled === 'boolean') {
+        setDynamicGenreDetectionEnabled(result.dynamicGenreDetectionEnabled);
+      }
+    }).catch(() => setDynamicGenreDetectionEnabled(!dynamicGenreDetectionEnabled));
+  }
+}
+
+function setLocalGenreModelEnabled(enabled, { persist = false, available = localGenreModelAvailable } = {}) {
+  localGenreModelAvailable = available !== false;
+  localGenreModelEnabled = enabled !== false;
+  if (!localGenreModelEnabled || !localGenreModelAvailable) dynamicGenreDetectionEnabled = false;
+  updateLocalGenreSettingState();
+  audio.setLocalGenreModelEnabled(localGenreModelEnabled && localGenreModelAvailable);
+  if (persist && localGenreModelAvailable) {
+    const patch = { localGenreModelEnabled };
+    if (!localGenreModelEnabled) patch.dynamicGenreDetectionEnabled = false;
+    window.genrePolice.setConfig(patch).then((result) => {
+      if (typeof result?.localGenreModelEnabled !== 'boolean') return;
+      dynamicGenreDetectionEnabled = result.dynamicGenreDetectionEnabled === true;
+      setLocalGenreModelEnabled(result.localGenreModelEnabled, {
+        available: result.localGenreModelAvailable !== false
+      });
+    }).catch(() => setLocalGenreModelEnabled(!localGenreModelEnabled));
+  }
+}
+
 function setAlwaysOnTopEnabled(enabled, { persist = false } = {}) {
   alwaysOnTopEnabled = enabled === true;
   alwaysOnTopToggle.setAttribute('aria-checked', String(alwaysOnTopEnabled));
@@ -712,7 +935,66 @@ function setAlwaysOnTopEnabled(enabled, { persist = false } = {}) {
   if (persist) {
     window.genrePolice.setConfig({ alwaysOnTop: alwaysOnTopEnabled }).then((result) => {
       if (typeof result?.alwaysOnTop === 'boolean') setAlwaysOnTopEnabled(result.alwaysOnTop);
+      if (typeof result?.desktopLayer === 'boolean') {
+        setDesktopLayerEnabled(result.desktopLayer, { available: result.desktopLayerAvailable !== false });
+      }
     }).catch(() => setAlwaysOnTopEnabled(!alwaysOnTopEnabled));
+  }
+}
+
+function setDesktopLayerEnabled(enabled, { persist = false, available = desktopLayerAvailable } = {}) {
+  desktopLayerAvailable = available === true;
+  desktopLayerEnabled = enabled === true && desktopLayerAvailable;
+  desktopLayerToggle.disabled = !desktopLayerAvailable;
+  desktopLayerToggle.setAttribute('aria-checked', String(desktopLayerEnabled));
+  desktopLayerToggle.title = desktopLayerEnabled
+    ? tr('settings.desktopLayerOn')
+    : tr('settings.desktopLayerOff');
+  if (persist && desktopLayerAvailable) {
+    window.genrePolice.setConfig({ desktopLayer: desktopLayerEnabled }).then((result) => {
+      if (typeof result?.desktopLayer === 'boolean') {
+        setDesktopLayerEnabled(result.desktopLayer, { available: result.desktopLayerAvailable !== false });
+      }
+      if (typeof result?.alwaysOnTop === 'boolean') setAlwaysOnTopEnabled(result.alwaysOnTop);
+    }).catch(() => setDesktopLayerEnabled(!desktopLayerEnabled));
+  }
+}
+
+function setRecordingQuickButtonVisible(enabled, { persist = false } = {}) {
+  recordingQuickButtonVisible = enabled === true;
+  recordingQuickButton.hidden = !recordingQuickButtonVisible;
+  fullscreenRecordingButton.hidden = !recordingQuickButtonVisible;
+  recordingQuickButtonToggle.setAttribute('aria-checked', String(recordingQuickButtonVisible));
+  recordingQuickButtonToggle.title = recordingQuickButtonVisible
+    ? tr('settings.recordingQuickButtonOn')
+    : tr('settings.recordingQuickButtonOff');
+  recordingOverlayGeometry = null;
+  if (persist) {
+    window.genrePolice.setConfig({ recordingQuickButtonVisible }).then((result) => {
+      if (typeof result?.recordingQuickButtonVisible === 'boolean') {
+        setRecordingQuickButtonVisible(result.recordingQuickButtonVisible);
+      }
+    }).catch(() => setRecordingQuickButtonVisible(!recordingQuickButtonVisible));
+  }
+}
+
+function setSnapshotQuickButtonVisible(enabled, { persist = false } = {}) {
+  snapshotQuickButtonVisible = enabled === true;
+  snapshotQuickButton.hidden = !snapshotQuickButtonVisible;
+  fullscreenSnapshotButton.hidden = !snapshotQuickButtonVisible;
+  snapshotQuickButtonToggle.setAttribute('aria-checked', String(snapshotQuickButtonVisible));
+  snapshotQuickButtonToggle.title = snapshotQuickButtonVisible
+    ? tr('settings.snapshotQuickButtonOn')
+    : tr('settings.snapshotQuickButtonOff');
+  stageOutputTextToggle.title = stageOutputTextVisible
+    ? tr('settings.stageOutputTextOn')
+    : tr('settings.stageOutputTextOff');
+  if (persist) {
+    window.genrePolice.setConfig({ snapshotQuickButtonVisible }).then((result) => {
+      if (typeof result?.snapshotQuickButtonVisible === 'boolean') {
+        setSnapshotQuickButtonVisible(result.snapshotQuickButtonVisible);
+      }
+    }).catch(() => setSnapshotQuickButtonVisible(!snapshotQuickButtonVisible));
   }
 }
 
@@ -780,6 +1062,39 @@ function setIdleFrameLimitEnabled(enabled, { persist = false } = {}) {
   if (persist) window.genrePolice.setConfig({ idleFrameLimitEnabled }).catch(() => {});
 }
 
+function setShowFps(enabled, { persist = false } = {}) {
+  showFps = enabled === true;
+  showFpsToggle.setAttribute('aria-checked', String(showFps));
+  showFpsToggle.title = showFps ? tr('settings.showFpsOn') : tr('settings.showFpsOff');
+  fpsCounter.hidden = !showFps;
+  fpsCounterValue.textContent = '--';
+  fpsCounter.removeAttribute('data-status');
+  fpsCounterStartedAt = 0;
+  fpsCounterFrameCount = 0;
+  if (persist) window.genrePolice.setConfig({ showFps }).catch(() => {});
+}
+
+function updateFpsCounter(time) {
+  if (!showFps || document.hidden) {
+    fpsCounterStartedAt = 0;
+    fpsCounterFrameCount = 0;
+    return;
+  }
+  if (!fpsCounterStartedAt) {
+    fpsCounterStartedAt = time;
+    fpsCounterFrameCount = 0;
+    return;
+  }
+  fpsCounterFrameCount += 1;
+  const elapsed = time - fpsCounterStartedAt;
+  if (elapsed < 500) return;
+  const fps = fpsCounterFrameCount * 1000 / Math.max(1, elapsed);
+  fpsCounterValue.textContent = String(Math.round(fps));
+  fpsCounter.dataset.status = fps < 45 ? 'low' : fps < 56 ? 'mid' : 'good';
+  fpsCounterStartedAt = time;
+  fpsCounterFrameCount = 0;
+}
+
 function setRhythmModelEnabled(enabled, { persist = false } = {}) {
   rhythmModelEnabled = enabled !== false;
   rhythmModelToggle.setAttribute('aria-checked', String(rhythmModelEnabled));
@@ -795,6 +1110,86 @@ function setRhythmModelEnabled(enabled, { persist = false } = {}) {
       }
     }).catch(() => setRhythmModelEnabled(!rhythmModelEnabled));
   }
+}
+
+function captureAudioSourceName(source) {
+  if (!source || source.id === 'system') return tr('settings.audioSourceSystem');
+  return String(source.label || '').trim()
+    || tr('settings.audioInputNumber', { number: source.inputNumber || 1 });
+}
+
+function captureAudioSourceOptions() {
+  return [...captureAudioSourceMenu.querySelectorAll('.audio-source-option')];
+}
+
+function renderCaptureAudioSources() {
+  const selected = captureAudioSources.find((source) => source.id === captureAudioSourceId)
+    || { id: captureAudioSourceId, kind: 'input', label: '', inputNumber: 1 };
+  captureAudioSourceValue.textContent = captureAudioSourceName(selected);
+  captureAudioSourceButton.title = captureAudioSourceName(selected);
+  captureAudioSourceMenu.replaceChildren();
+  for (const source of captureAudioSources) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'audio-source-option';
+    option.dataset.audioSource = source.id;
+    option.textContent = captureAudioSourceName(source);
+    option.title = source.label || option.textContent;
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(source.id === captureAudioSourceId));
+    captureAudioSourceMenu.append(option);
+  }
+}
+
+async function refreshCaptureAudioSources(sources = null) {
+  captureAudioSources = Array.isArray(sources) && sources.length
+    ? sources
+    : await audio.audioSources();
+  renderCaptureAudioSources();
+}
+
+function setCaptureAudioSourceMenuOpen(open, { focus = false } = {}) {
+  const nextOpen = Boolean(open);
+  if (nextOpen) {
+    setScaleMenuOpen(false);
+    setLanguageMenuOpen(false);
+    setMediaSourceMenuOpen(false);
+    setCustomGenreVisualMenuOpen(false);
+    setGenreArtistMenuOpen(false);
+    void refreshCaptureAudioSources().then(() => {
+      if (!focus || captureAudioSourceMenu.hidden) return;
+      const options = captureAudioSourceOptions();
+      const selected = options.find((option) => option.getAttribute('aria-selected') === 'true') || options[0];
+      selected?.focus();
+    });
+  }
+  captureAudioSourceMenu.hidden = !nextOpen;
+  captureAudioSourceButton.setAttribute('aria-expanded', String(nextOpen));
+}
+
+async function chooseCaptureAudioSource(sourceId) {
+  setCaptureAudioSourceMenuOpen(false);
+  captureAudioSourceButton.disabled = true;
+  try {
+    captureAudioSourceId = await audio.setAudioSource(sourceId);
+    await window.genrePolice.setConfig({ audioSourceId: captureAudioSourceId });
+  } catch {
+    captureAudioSourceId = 'system';
+    window.genrePolice.setConfig({ audioSourceId: captureAudioSourceId }).catch(() => {});
+  } finally {
+    captureAudioSourceButton.disabled = false;
+    await refreshCaptureAudioSources();
+    captureAudioSourceButton.focus();
+    updateDiagnosticsUi();
+  }
+}
+
+function setVisualResponseMode(value, { persist = false } = {}) {
+  visualResponseMode = normalizeVisualResponseMode(value);
+  visualResponseOptions.forEach((option) => {
+    option.setAttribute('aria-checked', String(option.dataset.visualResponse === visualResponseMode));
+  });
+  if (persist) window.genrePolice.setConfig({ visualResponseMode }).catch(() => {});
 }
 
 function mediaSourceName(source) {
@@ -867,6 +1262,7 @@ function renderMediaSourceSettings() {
 
 function dismissNeteaseSmtcToast() {
   neteaseSmtcToast.hidden = true;
+  showPendingUpdateToast();
 }
 
 function updateNeteaseSmtcToast(missingNeteaseSmtc) {
@@ -877,7 +1273,98 @@ function updateNeteaseSmtcToast(missingNeteaseSmtc) {
   if (neteaseSmtcToastShown) return;
   neteaseSmtcToastShown = true;
   if (!settings.hidden) return;
+  if (!updateToast.hidden) {
+    pendingUpdateResult = latestUpdateResult;
+    updateToast.hidden = true;
+  }
   neteaseSmtcToast.hidden = false;
+}
+
+function normalizedUpdateResult(value) {
+  const status = ['available', 'current', 'checking', 'error', 'skipped'].includes(value?.status)
+    ? value.status
+    : 'error';
+  return {
+    status,
+    currentVersion: String(value?.currentVersion || '').slice(0, 48),
+    latestVersion: String(value?.latestVersion || '').slice(0, 48),
+    releaseUrl: String(value?.releaseUrl || '').slice(0, 512)
+  };
+}
+
+function renderUpdateUi() {
+  const result = latestUpdateResult;
+  updateViewButton.hidden = result?.status !== 'available';
+  updateCheckState.textContent = result?.status === 'checking'
+    ? tr('updates.checking')
+    : result?.status === 'current'
+      ? tr('updates.current')
+      : result?.status === 'available'
+        ? tr('updates.available', { version: result.latestVersion })
+        : result?.status === 'error'
+          ? tr('updates.failed')
+          : '';
+  if (result?.status === 'available') {
+    updateToastMessage.textContent = tr('updates.availableMessage', {
+      version: result.latestVersion
+    });
+  }
+}
+
+function updateToastBlocked() {
+  return !settings.hidden || !recordingToast.hidden || !neteaseSmtcToast.hidden;
+}
+
+function showPendingUpdateToast() {
+  if (!pendingUpdateResult || updateToastBlocked()) return;
+  const result = pendingUpdateResult;
+  pendingUpdateResult = null;
+  showUpdateToast(result);
+}
+
+function showUpdateToast(value) {
+  const result = normalizedUpdateResult(value);
+  latestUpdateResult = result;
+  renderUpdateUi();
+  if (result.status !== 'available') return;
+  if (updateToastBlocked()) {
+    pendingUpdateResult = result;
+    return;
+  }
+  pendingUpdateResult = null;
+  updateToast.hidden = false;
+}
+
+function hideUpdateToast({ clearPending = false } = {}) {
+  updateToast.hidden = true;
+  if (clearPending) pendingUpdateResult = null;
+}
+
+async function openAvailableUpdate({ acknowledge = false } = {}) {
+  const result = latestUpdateResult;
+  if (result?.status !== 'available') return;
+  if (acknowledge) {
+    hideUpdateToast({ clearPending: true });
+    await window.genrePolice.dismissUpdate(result.latestVersion).catch(() => {});
+  }
+  await window.genrePolice.openUpdatePage(result.releaseUrl).catch(() => {});
+}
+
+async function checkForUpdatesManually() {
+  updateCheckButton.disabled = true;
+  updateCheckButton.setAttribute('aria-busy', 'true');
+  latestUpdateResult = normalizedUpdateResult({ status: 'checking' });
+  renderUpdateUi();
+  try {
+    latestUpdateResult = normalizedUpdateResult(await window.genrePolice.checkForUpdates());
+  } catch {
+    latestUpdateResult = normalizedUpdateResult({ status: 'error' });
+  } finally {
+    updateCheckButton.disabled = false;
+    updateCheckButton.removeAttribute('aria-busy');
+    renderUpdateUi();
+    requestAnimationFrame(updateSettingsScrollbar);
+  }
 }
 
 function setMediaSources(payload = {}) {
@@ -1320,6 +1807,7 @@ function setMediaSourceMenuOpen(open, { focus = false } = {}) {
   if (nextOpen) {
     setScaleMenuOpen(false);
     setLanguageMenuOpen(false);
+    setCaptureAudioSourceMenuOpen(false);
     setCustomGenreVisualMenuOpen(false);
     setGenreArtistMenuOpen(false);
   }
@@ -1403,10 +1891,15 @@ function chooseCustomGenreVisual(genreId) {
 }
 
 function audioDiagnosticLabel() {
-  if (audio.status === 'live') return tr('diagnostics.audioLive');
-  if (audio.status === 'metadata-only') return tr('diagnostics.audioFallback');
-  if (audio.status === 'starting') return tr('diagnostics.starting');
-  return tr('diagnostics.unavailable');
+  const status = audio.status === 'live'
+    ? tr('diagnostics.audioLive')
+    : audio.status === 'metadata-only'
+      ? tr('diagnostics.audioFallback')
+      : audio.status === 'starting'
+        ? tr('diagnostics.starting')
+        : tr('diagnostics.unavailable');
+  const source = captureAudioSources.find((item) => item.id === captureAudioSourceId);
+  return `${status} · ${captureAudioSourceName(source)}`;
 }
 
 function rhythmDiagnosticLabel() {
@@ -1418,11 +1911,97 @@ function rhythmDiagnosticLabel() {
     : tr('diagnostics.rhythmFallback');
 }
 
+function diagnosticGenreName(genreId) {
+  const id = String(genreId || '');
+  if (!id) return tr('diagnostics.none');
+  if (currentMetadata?.genre?.id === id && currentMetadata.genre.label) {
+    return currentMetadata.genre.label;
+  }
+  return genreOptions.find((genre) => genre.id === id)?.label
+    || id.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function audioGenreModelDiagnostic() {
+  const state = latestAudioGenreModelState || {};
+  if (!localGenreModelEnabled || state.type === 'disabled') {
+    return { label: tr('diagnostics.genreModelDisabled'), title: state.reason || '' };
+  }
+  if (!localGenreModelAvailable || state.type === 'unavailable') {
+    return { label: tr('diagnostics.genreModelUnavailable'), title: state.reason || '' };
+  }
+  if (state.type === 'starting') {
+    return { label: tr('diagnostics.genreModelStarting'), title: state.reason || '' };
+  }
+  if (state.type === 'error') {
+    return { label: tr('diagnostics.genreModelError'), title: state.reason || '' };
+  }
+  if (state.type === 'silence') {
+    return { label: tr('diagnostics.genreModelSilence'), title: state.reason || '' };
+  }
+  if (state.type === 'prediction') {
+    const genre = diagnosticGenreName(state.genreId);
+    const windows = Number(state.acceptedWindows) || 0;
+    const label = tr(
+      latestAudioGenreAnalyzing ? 'diagnostics.genreModelAnalyzing' : 'diagnostics.genreModelResult',
+      { genre, windows }
+    );
+    const details = [
+      state.stage && `stage ${state.stage}`,
+      Number.isFinite(Number(state.confidence)) && `score ${Number(state.confidence).toFixed(3)}`,
+      Number.isFinite(Number(state.margin)) && `margin ${Number(state.margin).toFixed(3)}`
+    ].filter(Boolean).join(' · ');
+    return { label, title: details || label };
+  }
+  if (latestAudioGenreAnalyzing) {
+    return { label: tr('diagnostics.genreModelAwaitingResult'), title: state.reason || '' };
+  }
+  return { label: tr('diagnostics.genreModelReady'), title: state.reason || '' };
+}
+
+const GENRE_UNCERTAINTY_LABELS = {
+  'broad-genre': 'diagnostics.uncertainBroadGenre',
+  'audio-memory': 'diagnostics.uncertainAudioMemory',
+  'audio-relative-lead': 'diagnostics.uncertainAudioRelativeLead',
+  'audio-unconfirmed': 'diagnostics.uncertainAudioUnconfirmed',
+  'artist-fallback': 'diagnostics.uncertainArtistFallback',
+  'collection-fallback': 'diagnostics.uncertainCollectionFallback',
+  'title-inference': 'diagnostics.uncertainTitleInference',
+  'raw-genre': 'diagnostics.uncertainRawGenre',
+  'low-confidence': 'diagnostics.uncertainLowConfidence'
+};
+
+function genreUncertaintyLabel(reason) {
+  const key = GENRE_UNCERTAINTY_LABELS[String(reason || '')];
+  return key ? tr(key) : tr('diagnostics.uncertainResult');
+}
+
+async function refreshDiagnosticsStatus() {
+  try {
+    const status = await window.genrePolice.getDiagnosticsStatus();
+    latestAudioGenreModelState = status?.audioGenreModelState || latestAudioGenreModelState;
+    latestAudioGenreAnalyzing = status?.audioGenreAnalyzing === true;
+    if (diagnosticsPanel.open) updateDiagnosticsUi();
+  } catch {
+    // The current on-screen state remains useful if the main process is briefly busy.
+  }
+}
+
+function setDiagnosticsRefreshing(enabled) {
+  window.clearInterval(diagnosticsRefreshTimer);
+  diagnosticsRefreshTimer = 0;
+  if (!enabled) return;
+  void refreshDiagnosticsStatus();
+  diagnosticsRefreshTimer = window.setInterval(refreshDiagnosticsStatus, 1000);
+}
+
 function updateDiagnosticsUi() {
   diagnosticsPlayer.textContent = currentMediaSource ? mediaSourceName(currentMediaSource) : tr('diagnostics.none');
   diagnosticsPlayer.title = currentMediaSource;
   diagnosticsAudio.textContent = audioDiagnosticLabel();
   diagnosticsRhythm.textContent = rhythmDiagnosticLabel();
+  const genreModel = audioGenreModelDiagnostic();
+  diagnosticsGenreModel.textContent = genreModel.label;
+  diagnosticsGenreModel.title = genreModel.title;
   const evidence = currentMetadata?.genreEvidence || null;
   let genreEvidenceLabel = currentMetadata?.genreSource || '';
   if (evidence?.type === 'user-artist') {
@@ -1438,6 +2017,10 @@ function updateDiagnosticsUi() {
     if (matched && !genreEvidenceLabel.toLocaleLowerCase().includes(matched.toLocaleLowerCase())) {
       genreEvidenceLabel = [genreEvidenceLabel, matched].filter(Boolean).join(' · ');
     }
+  }
+  if (currentMetadata?.genreUncertain) {
+    const uncertainty = genreUncertaintyLabel(currentMetadata.genreUncertainReason);
+    genreEvidenceLabel = [genreEvidenceLabel, uncertainty].filter(Boolean).join(' · ');
   }
   diagnosticsGenre.textContent = genreEvidenceLabel || tr('diagnostics.none');
   diagnosticsGenre.title = genreEvidenceLabel;
@@ -1841,15 +2424,140 @@ async function applyThemeWithBackdropTransition(theme) {
 }
 
 let genreFitFrame = 0;
+let typographyRefreshFrame = 0;
+let typographyRefreshFollowupFrame = 0;
+const genreMetricsCanvas = document.createElement('canvas');
+const genreMetricsContext = genreMetricsCanvas.getContext('2d');
+
+function textInkBounds(element, text, uiScale) {
+  if (!genreMetricsContext || !element || !String(text || '').trim()) return null;
+  const style = getComputedStyle(element);
+  const renderedText = style.textTransform === 'uppercase'
+    ? String(text).toLocaleUpperCase()
+    : style.textTransform === 'lowercase'
+      ? String(text).toLocaleLowerCase()
+      : String(text);
+  genreMetricsContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  genreMetricsContext.fontKerning = style.fontKerning;
+  const metrics = genreMetricsContext.measureText(renderedText);
+  const actualAscent = Number(metrics.actualBoundingBoxAscent) || 0;
+  const actualDescent = Number(metrics.actualBoundingBoxDescent) || 0;
+  const fontAscent = Number(metrics.fontBoundingBoxAscent) || actualAscent;
+  const fontDescent = Number(metrics.fontBoundingBoxDescent) || actualDescent;
+  if (!(actualAscent + actualDescent > 0) || !(fontAscent + fontDescent > 0)) return null;
+
+  const rect = element.getBoundingClientRect();
+  const fontBoxHeight = (fontAscent + fontDescent) * uiScale;
+  const baseline = rect.top + (rect.height - fontBoxHeight) / 2 + fontAscent * uiScale;
+  return {
+    top: baseline - actualAscent * uiScale,
+    bottom: baseline + actualDescent * uiScale
+  };
+}
+
+function balanceCapsuleGenreStack() {
+  const genreFace = genreLabel.querySelector('#genre-face');
+  const capsuleLayout = document.body.dataset.layout !== 'poster';
+  if (!capsuleLayout || !jurisdictionLabel || !genreFace || !trackRule
+      || !parentGenre.textContent.trim() || !genreFace.textContent.trim()) {
+    parentGenre.style.removeProperty('--parent-balance-y');
+    return false;
+  }
+
+  const savedScale = genreLabel.style.getPropertyValue('--genre-scale');
+  const savedLift = genreLabel.style.getPropertyValue('--genre-lift');
+  parentGenre.style.setProperty('--parent-balance-y', '0px');
+  genreLabel.style.setProperty('--genre-scale', '1');
+  genreLabel.style.setProperty('--genre-lift', '0px');
+  genreLabel.style.setProperty('--genre-balance-y', '0px');
+
+  const appRect = appShell.getBoundingClientRect();
+  const uiScale = appShell.offsetHeight > 0 ? appRect.height / appShell.offsetHeight : 1;
+  const jurisdictionInk = textInkBounds(jurisdictionLabel, jurisdictionLabel.textContent, uiScale);
+  const parentInk = textInkBounds(parentGenre, parentGenre.textContent, uiScale);
+  const genreInk = textInkBounds(genreFace, genreFace.textContent, uiScale);
+  const ruleTop = trackRule.getBoundingClientRect().top;
+
+  if (savedScale) genreLabel.style.setProperty('--genre-scale', savedScale);
+  else genreLabel.style.removeProperty('--genre-scale');
+  if (savedLift) genreLabel.style.setProperty('--genre-lift', savedLift);
+  else genreLabel.style.removeProperty('--genre-lift');
+
+  if (!jurisdictionInk || !parentInk || !genreInk || !(uiScale > 0)) {
+    parentGenre.style.removeProperty('--parent-balance-y');
+    genreLabel.style.removeProperty('--genre-balance-y');
+    return true;
+  }
+
+  const parentHeight = parentInk.bottom - parentInk.top;
+  const genreHeight = genreInk.bottom - genreInk.top;
+  const freeSpace = ruleTop - jurisdictionInk.bottom - parentHeight - genreHeight;
+  const targetGap = Math.max(0, freeSpace / 3);
+  const parentOffset = clamp(
+    (jurisdictionInk.bottom + targetGap - parentInk.top) / uiScale,
+    -16,
+    16
+  );
+  const genreOffset = clamp(
+    (ruleTop - targetGap - genreInk.bottom) / uiScale,
+    -16,
+    16
+  );
+  parentGenre.style.setProperty('--parent-balance-y', `${parentOffset.toFixed(2)}px`);
+  genreLabel.style.setProperty('--genre-balance-y', `${genreOffset.toFixed(2)}px`);
+  return true;
+}
+
+function balanceGenreLabel() {
+  if (balanceCapsuleGenreStack()) return;
+
+  const genreFace = genreLabel.querySelector('#genre-face');
+  if (!genreFace || !parentGenre.textContent.trim() || !genreFace.textContent.trim() || !trackRule) {
+    genreLabel.style.removeProperty('--genre-balance-y');
+    return;
+  }
+
+  const savedScale = genreLabel.style.getPropertyValue('--genre-scale');
+  const savedLift = genreLabel.style.getPropertyValue('--genre-lift');
+  genreLabel.style.setProperty('--genre-scale', '1');
+  genreLabel.style.setProperty('--genre-lift', '0px');
+  genreLabel.style.setProperty('--genre-balance-y', '0px');
+
+  const appRect = appShell.getBoundingClientRect();
+  const uiScale = appShell.offsetHeight > 0 ? appRect.height / appShell.offsetHeight : 1;
+  const parentInk = textInkBounds(parentGenre, parentGenre.textContent, uiScale);
+  const genreInk = textInkBounds(genreFace, genreFace.textContent, uiScale);
+  const ruleTop = trackRule.getBoundingClientRect().top;
+
+  if (savedScale) genreLabel.style.setProperty('--genre-scale', savedScale);
+  else genreLabel.style.removeProperty('--genre-scale');
+  if (savedLift) genreLabel.style.setProperty('--genre-lift', savedLift);
+  else genreLabel.style.removeProperty('--genre-lift');
+
+  if (!parentInk || !genreInk || !(uiScale > 0)) {
+    genreLabel.style.removeProperty('--genre-balance-y');
+    return;
+  }
+
+  const targetCenter = (parentInk.bottom + ruleTop) / 2;
+  const currentCenter = (genreInk.top + genreInk.bottom) / 2;
+  const offset = clamp((targetCenter - currentCenter) / uiScale, -12, 12);
+  genreLabel.style.setProperty('--genre-balance-y', `${offset.toFixed(2)}px`);
+}
 
 function fitGenreLabel() {
   // Start from the genre family's intended type size, then shrink only when
-  // the rendered font would overflow. Measuring scrollWidth keeps this exact
-  // for wide display faces instead of guessing from the character count.
+  // the rendered font would overflow. Measure the static face rather than the
+  // effect container: animated glitch copies can extend its scrollWidth and
+  // otherwise make long labels refit by fractions of a pixel during playback.
   genreLabel.style.removeProperty('font-size');
   const availableWidth = genreLabel.clientWidth;
-  const renderedWidth = genreLabel.scrollWidth;
-  if (!availableWidth || !renderedWidth) return;
+  const genreFace = genreLabel.querySelector('#genre-face');
+  const renderedWidth = genreFace?.scrollWidth || genreLabel.scrollWidth;
+  if (!availableWidth || !renderedWidth) {
+    balanceGenreLabel();
+    return;
+  }
 
   const naturalSize = Number.parseFloat(getComputedStyle(genreLabel).fontSize) || 58;
   // Leave room for the live scale/glow so a fitted label does not appear to
@@ -1859,6 +2567,7 @@ function fitGenreLabel() {
     const fittedSize = Math.max(25, naturalSize * safeWidth / renderedWidth);
     genreLabel.style.fontSize = `${fittedSize.toFixed(2)}px`;
   }
+  balanceGenreLabel();
 }
 
 function scheduleGenreFit() {
@@ -1869,6 +2578,30 @@ function scheduleGenreFit() {
     // the face is ready so a fallback-font measurement can never clip a title.
     document.fonts?.ready.then(() => {
       if (genreLabel.isConnected) fitGenreLabel();
+    });
+  });
+}
+
+function refreshPresentationTypography() {
+  cancelAnimationFrame(typographyRefreshFrame);
+  cancelAnimationFrame(typographyRefreshFollowupFrame);
+  typographyRefreshFrame = requestAnimationFrame(() => {
+    typographyRefreshFollowupFrame = requestAnimationFrame(() => {
+      typographyRefreshFrame = 0;
+      typographyRefreshFollowupFrame = 0;
+      if (!hud.isConnected) return;
+
+      // Chromium can retain the HUD's old text texture when the fixed design
+      // canvas changes CSS scale. Rebuilding its render subtree in one frame
+      // invalidates that texture without exposing a hidden intermediate state.
+      const previousDisplay = hud.style.display;
+      hud.style.display = 'none';
+      void hud.offsetWidth;
+      if (previousDisplay) hud.style.display = previousDisplay;
+      else hud.style.removeProperty('display');
+      void hud.offsetWidth;
+      fitGenreLabel();
+      updateTitleOverflow();
     });
   });
 }
@@ -1923,14 +2656,20 @@ function renderLocalizedHud(content = currentDisplayContent) {
   if (!content) return;
   parentGenre.textContent = content.genrePoliceEasterEgg
     ? trMain('hud.specialUnit')
-    : content.placeholder
-      ? trMain('hud.analysing')
+    : content.placeholder || content.resolving
+      ? ''
       : content.theme.parent || trMain('hud.genrePolice');
   const nextGenreText = content.resolving
     ? trMain('hud.identifying')
     : content.placeholder
-      ? trMain('hud.unknownSignal')
-      : content.theme.label;
+      ? trMain('hud.awaitingSignal')
+      : content.theme.hudLabel || content.theme.label;
+  const genreSelectable = Boolean(currentMetadata?.title && !demoTheme && !content.placeholder);
+  genreLabel.tabIndex = genreSelectable ? 0 : -1;
+  genreLabel.setAttribute('aria-disabled', String(!genreSelectable));
+  genreLabel.setAttribute('aria-label', genreSelectable
+    ? tr('genreQuick.open', { genre: nextGenreText })
+    : nextGenreText);
   const genreFace = genreLabel.querySelector('#genre-face');
   if (genreFace) genreFace.textContent = nextGenreText;
   else genreLabel.textContent = nextGenreText;
@@ -1956,7 +2695,11 @@ function renderLocalizedHud(content = currentDisplayContent) {
   genreSource.setAttribute('role', 'status');
   caseId.textContent = content.genrePoliceEasterEgg
     ? trMain('hud.specialCase')
-    : content.resolving ? trMain('hud.checkingDatabases') : trMain('hud.classified');
+    : content.placeholder
+      ? trMain('hud.standby')
+      : content.resolving
+        ? trMain('hud.caseOpen')
+        : `${trMain('hud.classified')}${content.genreUncertain ? '?' : ''}`;
   playState.textContent = localizedPlaybackStatus(content.playing);
 }
 
@@ -1969,7 +2712,9 @@ function applyLanguage(value, { persist = false } = {}) {
     option.setAttribute('aria-selected', String(option.dataset.language === uiLanguage));
   });
   applyStaticTranslations();
+  renderUpdateUi();
   lyricTranslationSetting.hidden = !supportsLyricTranslationForUiLanguage();
+  renderCaptureAudioSources();
   renderMediaSourceSettings();
   renderGenreArtistRules();
   renderCustomGenres();
@@ -1987,20 +2732,39 @@ function applyLanguage(value, { persist = false } = {}) {
   capsuleEnglishFontToggle.title = capsuleCondensedEnglish
     ? tr('settings.capsuleCondensedEnglishOn')
     : tr('settings.capsuleCondensedEnglishOff');
+  fullscreenEnglishFontToggle.title = fullscreenCondensedEnglish
+    ? tr('settings.fullscreenCondensedEnglishOn')
+    : tr('settings.fullscreenCondensedEnglishOff');
   updateBackgroundStyle();
   onlineLookupToggle.title = onlineGenreLookupEnabled ? tr('settings.onlineLookupOn') : tr('settings.onlineLookupOff');
+  artistGenreReferenceToggle.title = artistGenreReferenceEnabled
+    ? tr('settings.artistGenreReferenceOn')
+    : tr('settings.artistGenreReferenceOff');
+  updateLocalGenreSettingState();
   alwaysOnTopToggle.title = alwaysOnTopEnabled
     ? tr('settings.alwaysOnTopOn')
     : tr('settings.alwaysOnTopOff');
+  desktopLayerToggle.title = desktopLayerEnabled
+    ? tr('settings.desktopLayerOn')
+    : tr('settings.desktopLayerOff');
+  recordingQuickButtonToggle.title = recordingQuickButtonVisible
+    ? tr('settings.recordingQuickButtonOn')
+    : tr('settings.recordingQuickButtonOff');
+  snapshotQuickButtonToggle.title = snapshotQuickButtonVisible
+    ? tr('settings.snapshotQuickButtonOn')
+    : tr('settings.snapshotQuickButtonOff');
+  if (!genreQuickPanel.hidden) renderGenreQuickPanel();
   mousePassthroughToggle.title = mousePassthroughEnabled
     ? tr('settings.mousePassthroughOn')
     : tr('settings.mousePassthroughOff');
+  showFpsToggle.title = showFps ? tr('settings.showFpsOn') : tr('settings.showFpsOff');
   rhythmModelToggle.title = rhythmModelEnabled
     ? tr('settings.rhythmModelOn')
     : tr('settings.rhythmModelOff');
   launchAtLoginToggle.title = launchAtLoginToggle.disabled
     ? tr('settings.launchAtLoginUnsupported')
     : launchAtLoginEnabled ? tr('settings.launchAtLoginOn') : tr('settings.launchAtLoginOff');
+  renderRecordingUi();
   renderLocalizedHud();
   const visibleLyric = lyricLines[Math.max(0, lyricIndex)] || null;
   setLyricText(visibleLyric?.text || lyricCurrentBase.textContent || '', {
@@ -2022,21 +2786,282 @@ function applyUiScale(value) {
     option.setAttribute('aria-selected', String(Number(option.dataset.scale) === scale));
   });
   requestAnimationFrame(updateSettingsScrollbar);
+  refreshPresentationTypography();
+}
+
+function updateStageOutputScale() {
+  if (!stageOutputActive) return;
+  const scale = Math.min(
+    Math.max(1, window.innerWidth - 96) / 920,
+    Math.max(1, window.innerHeight - 96) / 400
+  );
+  const safeScale = Math.max(0.1, scale);
+  const appLeft = (window.innerWidth - 920 * safeScale) / 2;
+  const appTop = (window.innerHeight - 400 * safeScale) / 2;
+  // Cover exactly the visible display plus a small screen-space glow guard.
+  // A fixed 128px design-space overscan rendered a large invisible region at
+  // fullscreen pixel density, multiplying the cost of effect-heavy genres.
+  const guard = 24 / safeScale;
+  const visualOverscanX = Math.ceil(Math.max(0, appLeft / safeScale) + guard);
+  const visualOverscanY = Math.ceil(Math.max(0, appTop / safeScale) + guard);
+  const settingsScreenScale = Math.min(
+    1.25,
+    Math.max(0.72, (window.innerWidth - 64) / 540),
+    Math.max(0.72, (window.innerHeight - 64) / 560)
+  );
+  document.documentElement.style.setProperty('--stage-output-scale', String(safeScale));
+  document.documentElement.style.setProperty('--stage-visual-left', `${-visualOverscanX}px`);
+  document.documentElement.style.setProperty('--stage-visual-top', `${-visualOverscanY}px`);
+  document.documentElement.style.setProperty('--stage-visual-width', `${920 + visualOverscanX * 2}px`);
+  document.documentElement.style.setProperty('--stage-visual-height', `${400 + visualOverscanY * 2}px`);
+  document.documentElement.style.setProperty('--stage-split-visual-center-x', `${206 + visualOverscanX}px`);
+  document.documentElement.style.setProperty('--stage-split-visual-center-y', `${200 + visualOverscanY}px`);
+  document.documentElement.style.setProperty('--stage-stacked-visual-center-x', `${460 + visualOverscanX}px`);
+  document.documentElement.style.setProperty('--stage-stacked-visual-center-y', `${100 + visualOverscanY}px`);
+  document.documentElement.style.setProperty('--stage-hidden-visual-center-y', `${200 + visualOverscanY}px`);
+  document.documentElement.style.setProperty(
+    '--stage-output-settings-scale',
+    String(settingsScreenScale / safeScale)
+  );
+  document.documentElement.style.setProperty(
+    '--fullscreen-heading-left',
+    `${(40 - appLeft) / safeScale - 180}px`
+  );
+  document.documentElement.style.setProperty(
+    '--fullscreen-heading-top',
+    `${(32 - appTop) / safeScale - 200}px`
+  );
+  visual.resize();
+}
+
+function renderFullscreenControls() {
+  const { state } = recordingUiSnapshot;
+  const recordingBusy = state === 'preparing' || state === 'stopping';
+  const recordingActive = state === 'recording' || state === 'stopping';
+  const recordingLocked = state !== 'idle';
+  const recordingAction = tr(recordingActive ? 'actions.stopRecording' : 'actions.startRecording');
+
+  fullscreenQuickButton.disabled = stageOutputBusy || recordingLocked;
+  fullscreenQuickButton.title = tr('controls.enterFullscreen');
+  fullscreenQuickButton.setAttribute('aria-label', fullscreenQuickButton.title);
+
+  fullscreenSnapshotButton.disabled = snapshotSaving || recordingLocked;
+  fullscreenRecordingButton.disabled = recordingBusy;
+  fullscreenRecordingButton.classList.toggle('is-recording', recordingActive);
+  fullscreenRecordingButton.title = recordingAction;
+  fullscreenRecordingButton.setAttribute('aria-label', recordingAction);
+  fullscreenRecordingButton.setAttribute('aria-busy', String(recordingBusy));
+
+  [fullscreenSettingsButton, fullscreenLayoutButton, fullscreenTextButton, fullscreenExitButton]
+    .forEach((button) => { button.disabled = recordingLocked; });
+
+  const nextLayoutKey = fullscreenLayoutMode === 'stacked'
+    ? 'controls.fullscreenLayoutSplit'
+    : 'controls.fullscreenLayoutStacked';
+  fullscreenLayoutButton.title = tr(nextLayoutKey);
+  fullscreenLayoutButton.setAttribute('aria-label', fullscreenLayoutButton.title);
+  fullscreenTextButton.title = tr(stageOutputTextVisible
+    ? 'controls.fullscreenHideText'
+    : 'controls.fullscreenShowText');
+  fullscreenTextButton.setAttribute('aria-label', fullscreenTextButton.title);
+  fullscreenTextButton.setAttribute('aria-pressed', String(stageOutputTextVisible));
+}
+
+function renderStageOutputUi(message = '') {
+  const recordingBusy = recordingUiSnapshot.state !== 'idle';
+  stageOutputStartStop.disabled = stageOutputBusy || recordingBusy;
+  stageOutputStartStop.textContent = tr(stageOutputActive
+    ? 'actions.stopStageOutput'
+    : 'actions.startStageOutput');
+  stageOutputStartStop.setAttribute('aria-busy', String(stageOutputBusy));
+  stageOutputStateLabel.textContent = message;
+  renderFullscreenControls();
+}
+
+function setFullscreenLayoutMode(value, { persist = false } = {}) {
+  const previousMode = fullscreenLayoutMode;
+  fullscreenLayoutMode = value === 'stacked' ? 'stacked' : 'split';
+  const switchingLayout = stageOutputActive && stageOutputTextVisible
+    && previousMode !== fullscreenLayoutMode;
+  if (switchingLayout) document.body.classList.add('layout-switching');
+  document.body.dataset.fullscreenLayout = fullscreenLayoutMode;
+  updatePresentationSettingsVisibility();
+  renderFullscreenControls();
+  if (stageOutputActive && stageOutputTextVisible) {
+    // Resolve the new text flow before measuring the progress-rule horizon.
+    // The temporary class disables the HUD's normal transform transition, so
+    // the measured anchor is already the final one for this composition.
+    fitGenreLabel();
+    updateTitleOverflow();
+    visual.resize();
+    requestAnimationFrame(() => {
+      scheduleGenreFit();
+      updateTitleOverflow();
+      refreshPresentationTypography();
+      if (switchingLayout) {
+        requestAnimationFrame(() => document.body.classList.remove('layout-switching'));
+      }
+    });
+  }
+  if (persist) {
+    window.genrePolice.setConfig({ fullscreenLayoutMode }).then((result) => {
+      if (typeof result?.fullscreenLayoutMode === 'string') {
+        setFullscreenLayoutMode(result.fullscreenLayoutMode);
+      }
+    }).catch(() => setFullscreenLayoutMode(previousMode));
+  }
+}
+
+function setStageOutputTextVisible(enabled, { persist = false } = {}) {
+  stageOutputTextVisible = enabled !== false;
+  document.body.dataset.stageOutputText = String(stageOutputTextVisible);
+  stageOutputTextToggle.setAttribute('aria-checked', String(stageOutputTextVisible));
+  stageOutputTextToggle.title = stageOutputTextVisible
+    ? tr('settings.stageOutputTextOn')
+    : tr('settings.stageOutputTextOff');
+  if (persist) {
+    window.genrePolice.setConfig({ stageOutputTextVisible }).then((result) => {
+      if (typeof result?.stageOutputTextVisible === 'boolean') {
+        setStageOutputTextVisible(result.stageOutputTextVisible);
+      }
+    }).catch(() => setStageOutputTextVisible(!stageOutputTextVisible));
+  }
+  if (stageOutputActive) {
+    // Keep the hidden HUD measurable, then finish all text fitting before this
+    // event yields so restoring text cannot paint a zero-width intermediate layout.
+    visual.resize();
+    fitGenreLabel();
+    updateTitleOverflow();
+    requestAnimationFrame(() => {
+      visual.resize();
+      fitGenreLabel();
+      updateTitleOverflow();
+      refreshPresentationTypography();
+    });
+  }
+  renderFullscreenControls();
+}
+
+function applyStageOutputState(payload = {}) {
+  const nextActive = payload.active === true;
+  const entering = nextActive && !stageOutputActive;
+  const leaving = !nextActive && stageOutputActive;
+
+  if (entering) {
+    stageOutputRestoreLayoutMode = layoutMode;
+    recordingOverlayGeometry = null;
+  }
+
+  stageOutputActive = nextActive;
+  if (entering || leaving) {
+    adaptiveResolutionScale = 1;
+    adaptiveLowFpsWindows = 0;
+    adaptiveHighFpsWindows = 0;
+    renderPerformanceContext = '';
+    visual.setOutputResolutionScale(1);
+  }
+  document.body.dataset.stageOutput = String(stageOutputActive);
+  updatePresentationSettingsVisibility();
+  if (stageOutputActive) {
+    clearControlsTimer();
+    closeGenreQuickPanel({ restoreHitTest: false });
+    if (!settings.hidden) closeSettings();
+    // Fullscreen output has its own landscape composition. Keep the user's
+    // desktop layout untouched and restore it when the output closes.
+    if (layoutMode !== 'side') applyLayoutMode('side');
+    updateBackgroundStyle();
+    updateStageOutputScale();
+    showControls();
+  } else {
+    document.documentElement.style.removeProperty('--stage-output-scale');
+    document.documentElement.style.removeProperty('--stage-output-settings-scale');
+    document.documentElement.style.removeProperty('--fullscreen-heading-left');
+    document.documentElement.style.removeProperty('--fullscreen-heading-top');
+    [
+      '--stage-visual-left',
+      '--stage-visual-top',
+      '--stage-visual-width',
+      '--stage-visual-height',
+      '--stage-split-visual-center-x',
+      '--stage-split-visual-center-y',
+      '--stage-stacked-visual-center-x',
+      '--stage-stacked-visual-center-y',
+      '--stage-hidden-visual-center-y'
+    ].forEach((property) => document.documentElement.style.removeProperty(property));
+    lastFullscreenBackdropStyleAt = 0;
+    if (leaving && stageOutputRestoreLayoutMode && layoutMode !== stageOutputRestoreLayoutMode) {
+      const restoreLayoutMode = stageOutputRestoreLayoutMode;
+      stageOutputRestoreLayoutMode = '';
+      applyLayoutMode(restoreLayoutMode);
+    } else {
+      stageOutputRestoreLayoutMode = '';
+      updateBackgroundStyle();
+    }
+    showControls();
+  }
+  renderStageOutputUi();
+  requestAnimationFrame(() => {
+    visual.resize();
+    scheduleGenreFit();
+    updateTitleOverflow();
+    refreshPresentationTypography();
+  });
+}
+
+async function toggleStageOutput() {
+  if (stageOutputBusy) return;
+  if (!stageOutputActive) {
+    setFullscreenLayoutMode(layoutMode === 'poster' ? 'stacked' : 'split');
+  }
+  stageOutputBusy = true;
+  renderStageOutputUi();
+  try {
+    const result = await window.genrePolice.setStageOutput(!stageOutputActive);
+    if (!result?.ok) {
+      renderStageOutputUi(result?.error === 'recording-active'
+        ? tr('stageOutput.recordingBlocked')
+        : tr('stageOutput.failed'));
+      return;
+    }
+    applyStageOutputState(result);
+  } catch {
+    renderStageOutputUi(tr('stageOutput.failed'));
+  } finally {
+    stageOutputBusy = false;
+    renderStageOutputUi(stageOutputStateLabel.textContent);
+  }
+}
+
+function openSettingsFromFullscreen() {
+  if (recordingUiSnapshot.state !== 'idle') return;
+  openSettings();
+}
+
+function updatePresentationSettingsVisibility() {
+  const posterPresentation = layoutMode === 'poster';
+  appearanceGeneralSection.hidden = stageOutputActive;
+  appearanceLayoutSection.hidden = stageOutputActive;
+  capsuleBackgroundSetting.hidden = stageOutputActive || posterPresentation;
+  capsuleEnglishFontSetting.hidden = stageOutputActive || posterPresentation;
+  posterBackgroundSetting.hidden = stageOutputActive || !posterPresentation;
+  posterEnglishFontSetting.hidden = stageOutputActive || !posterPresentation;
+  fullscreenEnglishFontSetting.hidden = !stageOutputActive;
+  stageOutputTextSetting.hidden = !stageOutputActive;
+  stageOutputEntrySetting.hidden = stageOutputActive;
+  uiScaleSetting.hidden = stageOutputActive;
+  layoutModeSetting.hidden = stageOutputActive;
 }
 
 function applyLayoutMode(value) {
   document.body.classList.add('layout-switching');
   layoutMode = value === 'poster' || value === 'stage' ? 'poster' : 'side';
   document.body.dataset.layout = layoutMode;
+  updateStageOutputScale();
   updateBackgroundStyle();
   // CSS swaps the fixed design canvas immediately. Resize in the same task so
   // no animation frame can draw the new layout with the previous dimensions.
   visual.resize();
-  const posterLayout = layoutMode === 'poster';
-  capsuleBackgroundSetting.hidden = posterLayout;
-  capsuleEnglishFontSetting.hidden = posterLayout;
-  posterBackgroundSetting.hidden = !posterLayout;
-  posterEnglishFontSetting.hidden = !posterLayout;
+  updatePresentationSettingsVisibility();
   updateLayoutToggleButton();
   layoutModeOptions.forEach((option) => {
     option.setAttribute('aria-checked', String(option.dataset.layoutMode === layoutMode));
@@ -2054,6 +3079,7 @@ function applyLayoutMode(value) {
       });
     }
     updateSettingsScrollbar();
+    refreshPresentationTypography();
     requestAnimationFrame(() => document.body.classList.remove('layout-switching'));
   });
 }
@@ -2068,7 +3094,8 @@ function updateLayoutToggleButton() {
 async function chooseLayoutMode(value) {
   const requested = value === 'poster' ? 'poster' : 'side';
   const result = await window.genrePolice.setLayoutMode(requested);
-  applyLayoutMode(result?.mode);
+  const resolved = result?.mode === 'poster' || result?.mode === 'stage' ? 'poster' : 'side';
+  if (resolved !== layoutMode) applyLayoutMode(resolved);
 }
 
 function setScaleMenuOpen(open, { focus = false } = {}) {
@@ -2134,14 +3161,24 @@ function clearControlsTimer() {
 function hideControls(delay = 0) {
   clearControlsTimer();
   controlsHideTimer = window.setTimeout(() => {
-    if (!document.body.classList.contains('settings-open')) document.body.classList.remove('pointer-active');
+    if (!document.body.classList.contains('settings-open')) {
+      if (recordingPresentationActive) {
+        setRecordingOverlayVisibility(false);
+      } else {
+        document.body.classList.remove('pointer-active');
+      }
+    }
   }, delay);
 }
 
 function showControls() {
-  if (!document.body.classList.contains('interactive')) return;
+  if (!document.body.classList.contains('interactive') && !stageOutputActive) return;
   wakeIdleVisual();
-  document.body.classList.add('pointer-active');
+  if (recordingPresentationActive) {
+    setRecordingOverlayVisibility(true);
+  } else {
+    document.body.classList.add('pointer-active');
+  }
   if (!document.body.classList.contains('settings-open')) hideControls(1650);
 }
 
@@ -2154,10 +3191,327 @@ function closeSettings() {
   closeCustomGenreColorEditor();
   closeGenreCorrectionSuggestions();
   settings.hidden = true;
+  window.genrePolice.setSettingsOpen(false);
   document.body.classList.remove('settings-open');
   settingsButton.setAttribute('aria-expanded', 'false');
   showControls();
   scheduleIdleDim();
+  showPendingUpdateToast();
+}
+
+function genreCandidateBasis(candidate) {
+  return (candidate?.bases || [])
+    .map((basis) => tr(`genreQuick.basis.${basis}`))
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function renderGenreQuickPanel() {
+  if (!genreQuickData) return;
+  genreQuickTrack.textContent = [genreQuickData.title, genreQuickData.artist]
+    .filter(Boolean)
+    .join(' — ');
+  genreQuickCandidates.replaceChildren();
+  for (const candidate of genreQuickData.candidates || []) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'option');
+    button.dataset.genreId = candidate.id;
+    button.setAttribute('aria-selected', String(candidate.id === genreQuickSelectedId));
+    const label = document.createElement('strong');
+    label.textContent = candidate.label;
+    const basis = document.createElement('small');
+    basis.textContent = genreCandidateBasis(candidate);
+    button.append(label, basis);
+    button.addEventListener('click', () => {
+      genreQuickSelectedId = candidate.id;
+      renderGenreQuickPanel();
+    });
+    genreQuickCandidates.append(button);
+  }
+  genreQuickUnlock.hidden = !genreQuickData.locked;
+  const canApply = Boolean(genreQuickSelectedId);
+  genreQuickUse.disabled = !canApply;
+  genreQuickRemember.disabled = !canApply;
+}
+
+async function refreshGenreQuickPanel() {
+  genreQuickState.textContent = tr('genreQuick.loading');
+  try {
+    const data = await window.genrePolice.getGenreCandidates();
+    if (genreQuickPanel.hidden) return;
+    genreQuickData = data || { candidates: [] };
+    const availableIds = new Set((genreQuickData.candidates || []).map((candidate) => candidate.id));
+    genreQuickSelectedId = availableIds.has(genreQuickData.selectedGenreId)
+      ? genreQuickData.selectedGenreId
+      : genreQuickData.candidates?.[0]?.id || '';
+    genreQuickState.textContent = '';
+    renderGenreQuickPanel();
+  } catch {
+    genreQuickState.textContent = tr('genreQuick.failed');
+  }
+}
+
+function closeGenreQuickPanel({ restoreHitTest = true } = {}) {
+  if (genreQuickPanel.hidden) return;
+  genreQuickPanel.hidden = true;
+  document.body.classList.remove('genre-quick-open');
+  genreLabel.setAttribute('aria-expanded', 'false');
+  genreQuickData = null;
+  genreQuickSelectedId = '';
+  if (restoreHitTest && settings.hidden) window.genrePolice.setSettingsOpen(false);
+  showControls();
+}
+
+function openGenreQuickPanel() {
+  if (!currentMetadata?.title || demoTheme || genreLabel.getAttribute('aria-disabled') === 'true') return;
+  if (!settings.hidden) closeSettings();
+  genreQuickPanel.hidden = false;
+  document.body.classList.add('genre-quick-open', 'pointer-active');
+  genreLabel.setAttribute('aria-expanded', 'true');
+  window.genrePolice.setSettingsOpen(true);
+  clearControlsTimer();
+  genreQuickData = null;
+  genreQuickCandidates.replaceChildren();
+  void refreshGenreQuickPanel();
+}
+
+async function saveSnapshot() {
+  if (snapshotSaving || recordingPresentationActive) return;
+  snapshotSaving = true;
+  snapshotSaveButton.disabled = true;
+  snapshotQuickButton.disabled = true;
+  renderFullscreenControls();
+  snapshotState.textContent = tr('snapshot.preparing');
+  try {
+    const prepared = await window.genrePolice.prepareSnapshot();
+    if (!prepared?.ok) {
+      snapshotState.textContent = prepared?.canceled ? '' : tr('snapshot.failed');
+      return;
+    }
+    document.body.classList.add('snapshot-capture');
+    await document.fonts?.ready;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const result = await window.genrePolice.captureSnapshot(prepared.token);
+    if (!result?.ok) throw new Error(result?.error || 'capture-failed');
+    const message = tr('snapshot.saved', { file: recordingFileName(result.filePath) });
+    snapshotState.textContent = message;
+    showRecordingToast(message);
+  } catch {
+    snapshotState.textContent = tr('snapshot.failed');
+    showRecordingToast(tr('snapshot.failed'), { error: true });
+  } finally {
+    document.body.classList.remove('snapshot-capture');
+    snapshotSaving = false;
+    snapshotSaveButton.disabled = false;
+    snapshotQuickButton.disabled = false;
+    renderFullscreenControls();
+  }
+}
+
+function recordingErrorMessage(error) {
+  if (error === 'audio-unavailable') return tr('recording.audioUnavailable');
+  if (error === 'unsupported') return tr('recording.unsupported');
+  if (error === 'open-failed') return tr('recording.openFailed');
+  if (error === 'write-failed') return tr('recording.writeFailed');
+  if (error === 'finalize-failed') return tr('recording.finalizeFailed');
+  return tr('recording.failed');
+}
+
+function recordingFileName(filePath) {
+  return String(filePath || '').split(/[\\/]/).pop() || tr('recording.videoFile');
+}
+
+function hideRecordingToast() {
+  window.clearTimeout(recordingToastTimer);
+  recordingToastTimer = 0;
+  recordingToast.hidden = true;
+  recordingToast.classList.remove('is-error');
+  showPendingUpdateToast();
+}
+
+function showRecordingToast(message, { error = false } = {}) {
+  window.clearTimeout(recordingToastTimer);
+  if (!updateToast.hidden) {
+    pendingUpdateResult = latestUpdateResult;
+    updateToast.hidden = true;
+  }
+  recordingToastText.textContent = message;
+  recordingToast.classList.toggle('is-error', error);
+  recordingToast.hidden = false;
+  recordingToastTimer = window.setTimeout(hideRecordingToast, error ? 6500 : 5000);
+}
+
+function renderRecordingUi() {
+  const { state, error } = recordingUiSnapshot;
+  const busy = state === 'preparing' || state === 'stopping';
+  const active = state === 'recording' || state === 'stopping';
+  const actionKey = active ? 'actions.stopRecording' : 'actions.startRecording';
+  const actionLabel = tr(actionKey);
+  recordingStartStop.disabled = busy;
+  recordingStartStop.classList.toggle('is-recording', active);
+  recordingStartStop.textContent = actionLabel;
+  recordingStartStop.setAttribute('aria-busy', String(busy));
+  recordingQuickButton.disabled = busy;
+  recordingQuickButton.classList.toggle('is-recording', active);
+  recordingQuickButton.title = actionLabel;
+  recordingQuickButton.setAttribute('aria-label', actionLabel);
+  recordingQuickButton.setAttribute('aria-busy', String(busy));
+  recordingState.textContent = state === 'preparing'
+    ? tr('recording.preparing')
+    : state === 'recording'
+      ? tr('recording.active')
+      : state === 'stopping'
+        ? tr('recording.finalizing')
+        : error
+          ? recordingErrorMessage(error)
+          : '';
+  renderStageOutputUi();
+  if (recordingPresentationActive) syncRecordingControlsOverlay(recordingOverlayVisible);
+}
+
+function recordingControlsOverlayPayload(visible) {
+  const controlsElement = stageOutputActive ? fullscreenControls : controls;
+  const rect = controlsElement.getBoundingClientRect();
+  const transportElement = stageOutputActive ? fullscreenTransport : transport;
+  const transportRect = transportElement.getBoundingClientRect();
+  const rootStyle = getComputedStyle(document.documentElement);
+  const button = stageOutputActive ? fullscreenSettingsButton : settingsButton;
+  const buttonStyle = button ? getComputedStyle(button) : null;
+  const iconStyle = button ? getComputedStyle(button.querySelector('.control-icon')) : null;
+  const transportButton = transportElement.querySelector('button');
+  const transportButtonStyle = transportButton ? getComputedStyle(transportButton) : null;
+  const transportIconStyle = transportButton
+    ? getComputedStyle(transportButton.querySelector('.control-icon'))
+    : null;
+  if (rect.width > 0 && rect.height > 0
+      && (stageOutputActive || (transportRect.width > 0 && transportRect.height > 0))) {
+    const scale = stageOutputActive ? 1 : (Number.parseFloat(rootStyle.getPropertyValue('--ui-scale')) || 1);
+    const buttonSize = Number.parseFloat(buttonStyle?.width) || 30;
+    const gap = Number.parseFloat(getComputedStyle(controlsElement).gap) || 6;
+    const overlayWidth = buttonSize * scale;
+    recordingOverlayGeometry = {
+      rect: {
+        x: rect.right - overlayWidth,
+        y: rect.y,
+        width: overlayWidth,
+        height: buttonSize * scale
+      },
+      transportRect: {
+        x: transportRect.x,
+        y: transportRect.y,
+        width: transportRect.width,
+        height: transportRect.height
+      },
+      appearance: {
+        scale,
+        buttonSize,
+        iconSize: Number.parseFloat(iconStyle?.width) || 16,
+        gap,
+        transportButtonSize: Number.parseFloat(transportButtonStyle?.width) || 30,
+        transportIconSize: Number.parseFloat(transportIconStyle?.width) || 16,
+        transportGap: Number.parseFloat(getComputedStyle(transportElement).gap) || 6
+      }
+    };
+  }
+  const geometry = recordingOverlayGeometry || {
+    rect: { x: 0, y: 0, width: 30, height: 30 },
+    transportRect: { x: 0, y: 0, width: 102, height: 36 },
+    appearance: {
+      scale: 1,
+      buttonSize: 30,
+      iconSize: 16,
+      gap: 6,
+      transportButtonSize: 30,
+      transportIconSize: 16,
+      transportGap: 6
+    }
+  };
+  return {
+    active: recordingPresentationActive,
+    visible,
+    showTransport: true,
+    state: recordingUiSnapshot.state || 'idle',
+    rect: geometry.rect,
+    transportRect: geometry.transportRect,
+    appearance: {
+      accent: rootStyle.getPropertyValue('--accent').trim() || '#67f7ff',
+      ...geometry.appearance,
+      edgePadding: Math.ceil(18 * geometry.appearance.scale)
+    },
+    playing: playPauseButton.classList.contains('is-playing'),
+    labels: {
+      stop: tr('actions.stopRecording'),
+      previous: tr('controls.previous'),
+      play: tr('controls.play'),
+      pause: tr('controls.pause'),
+      next: tr('controls.next'),
+      finalizing: tr('recording.finalizing')
+    }
+  };
+}
+
+function syncRecordingControlsOverlay(visible) {
+  window.genrePolice.updateRecordingControls(recordingControlsOverlayPayload(visible));
+}
+
+function setRecordingOverlayVisibility(visible, { force = false } = {}) {
+  const recordingStateVisible = recordingUiSnapshot.state === 'recording'
+    || recordingUiSnapshot.state === 'stopping';
+  const nextVisible = Boolean(visible && recordingPresentationActive && recordingStateVisible);
+  if (!force && recordingOverlayVisible === nextVisible) return;
+  recordingOverlayVisible = nextVisible;
+  syncRecordingControlsOverlay(recordingOverlayVisible);
+}
+
+function updateRecordingUi(snapshot) {
+  const previousState = recordingUiSnapshot.state;
+  recordingUiSnapshot = snapshot || { state: 'idle' };
+  renderRecordingUi();
+  if (recordingUiSnapshot.state === 'recording' && previousState !== 'recording') showControls();
+  if (snapshot?.state !== 'idle' || snapshot.canceled) return;
+  if (snapshot.result?.ok) {
+    showRecordingToast(tr('recording.saved', {
+      file: recordingFileName(snapshot.result.filePath || snapshot.filePath)
+    }));
+  } else if (snapshot.error) {
+    showRecordingToast(recordingErrorMessage(snapshot.error), { error: true });
+  }
+}
+
+function setRecordingPresentation(active) {
+  const nextActive = active === true;
+  if (nextActive) recordingControlsOverlayPayload(false);
+  recordingPresentationActive = nextActive;
+  recordingOverlayVisible = false;
+  syncRecordingControlsOverlay(false);
+  [controls, transport, fullscreenControls, fullscreenTransport, settings, neteaseSmtcToast, recordingToast].forEach((element) => {
+    element.classList.toggle('recording-suppressed', recordingPresentationActive);
+  });
+  genreQuickPanel.classList.toggle('recording-suppressed', recordingPresentationActive);
+  if (recordingPresentationActive) {
+    closeGenreQuickPanel({ restoreHitTest: false });
+    restoreSettingsAfterRecording = !settings.hidden;
+    if (!settings.hidden) closeSettings();
+    dismissNeteaseSmtcToast();
+    hideRecordingToast();
+    clearControlsTimer();
+  }
+  updateBackgroundStyle();
+  if (!recordingPresentationActive && restoreSettingsAfterRecording) {
+    restoreSettingsAfterRecording = false;
+    requestAnimationFrame(openSettings);
+  } else if (!recordingPresentationActive) {
+    requestAnimationFrame(showControls);
+  }
+}
+
+function toggleRecording() {
+  if (recorder.state === 'recording') {
+    void recorder.stop();
+  } else if (recorder.state === 'idle') {
+    void recorder.start();
+  }
 }
 
 function selectSettingsPane(value, { focusTab = false, resetScroll = true } = {}) {
@@ -2298,8 +3652,14 @@ function finishSettingsScrollbarDrag(event) {
 function openSettings({ focusCorrection = false } = {}) {
   window.clearTimeout(idleSettleTimer);
   document.body.classList.remove('idle-settled');
+  closeGenreQuickPanel({ restoreHitTest: false });
   dismissNeteaseSmtcToast();
+  if (!updateToast.hidden) {
+    pendingUpdateResult = latestUpdateResult;
+    updateToast.hidden = true;
+  }
   settings.hidden = false;
+  window.genrePolice.setSettingsOpen(true);
   document.body.classList.add('settings-open', 'pointer-active');
   settingsButton.setAttribute('aria-expanded', 'true');
   clearControlsTimer();
@@ -2327,11 +3687,13 @@ function setInteractionState(clickThrough) {
   document.body.classList.toggle('interactive', !mousePassthroughEnabled);
   if (mousePassthroughEnabled) {
     clearControlsTimer();
+    closeGenreQuickPanel({ restoreHitTest: false });
     setScaleMenuOpen(false);
     setLanguageMenuOpen(false);
     setMediaSourceMenuOpen(false);
     document.body.classList.remove('pointer-active', 'settings-open');
     settings.hidden = true;
+    window.genrePolice.setSettingsOpen(false);
   } else {
     showControls();
   }
@@ -2401,12 +3763,13 @@ function contentFor(metadata) {
     lyrics: metadata?.lyrics || null,
     playing: Boolean(metadata?.playing),
     resolving: Boolean(metadata?.resolving),
+    genreUncertain: Boolean(metadata?.genreUncertain),
     hardcoreTanoc: Boolean(metadata?.hardcoreTanoc),
     genrePoliceEasterEgg: isGenrePoliceTrack(metadata)
   };
 }
 
-async function transitionTo(metadata, immediate = false) {
+async function transitionTo(metadata, immediate = false, subtle = false) {
   const token = ++transitionToken;
   const content = contentFor(metadata);
   currentDisplayContent = content;
@@ -2441,6 +3804,7 @@ async function transitionTo(metadata, immediate = false) {
   setSyncedLyrics(content.lyrics);
 
   hud.classList.remove('leaving');
+  if (subtle) return;
   void hud.offsetWidth;
   hud.classList.add('entering');
   setTimeout(() => hud.classList.remove('entering'), 1000);
@@ -2518,7 +3882,7 @@ function syntheticDemoMetrics(metrics, time) {
 }
 
 function animate(time) {
-  const animationActive = Boolean(demoTheme || currentMetadata?.playing);
+  const animationActive = Boolean(recordingPresentationActive || demoTheme || currentMetadata?.playing);
   const minimumFrameInterval = document.hidden
     ? 250
     : animationActive || !idleFrameLimitEnabled
@@ -2529,20 +3893,27 @@ function animate(time) {
     return;
   }
   lastAnimationWorkAt = time;
-  const elapsedMs = previousAnimationTime ? Math.min(80, Math.max(4, time - previousAnimationTime)) : 16.667;
+  updateFpsCounter(time);
+  const rawFrameIntervalMs = previousAnimationTime ? time - previousAnimationTime : 16.667;
+  const elapsedMs = Math.min(80, Math.max(4, rawFrameIntervalMs));
   const frameScale = Math.min(2, elapsedMs / 16.667);
   previousAnimationTime = time;
+  const frameWorkStartedAt = performance.now();
   let metrics = audio.update(time);
   metrics = syntheticDemoMetrics(metrics, time);
+  metrics = applyVisualResponse(metrics, visualResponseMode);
   metrics = softenMotionMetrics(metrics, motionMode);
   const synthwaveMode = currentTheme.id === 'synthwave';
   const synthwaveResponse = synthwaveMode ? synthwaveAudioResponse(metrics) : null;
+  const visualRenderStartedAt = performance.now();
   visual.render(synthwaveResponse ? { ...metrics, synthwaveResponse } : metrics, time);
+  const visualRenderDuration = performance.now() - visualRenderStartedAt;
   const playbackActive = Boolean(demoTheme || currentMetadata?.playing);
   const asmrMode = currentTheme.mode === 'asmr';
   const bilibiliMode = currentTheme.mode === 'bilibili';
   const tranceMode = currentTheme.mode === 'trance'
-    && !['classical', 'soundtrack', 'synthwave'].includes(currentTheme.id);
+    && currentTheme.family !== 'classical'
+    && !['soundtrack', 'synthwave'].includes(currentTheme.id);
   const asmrBreath = 0.5 + 0.5 * Math.sin(time * 0.00062);
   const posterEnergyTarget = playbackActive && !bilibiliMode
     ? synthwaveResponse?.starEnergy ?? clamp(
@@ -2590,7 +3961,11 @@ function animate(time) {
   posterOrbitPhase = (posterOrbitPhase + elapsedMs * (0.0022 + posterEnergy * 0.0055)) % 360;
   posterSoftPhase = (posterSoftPhase + elapsedMs * (0.00042 + posterEnergy * 0.00105)) % 360;
   posterTravel += elapsedMs * (0.012 + posterEnergy * 0.032);
-  if (document.body.dataset.backgroundStyle === 'themed') {
+  const backdropStyleDue = !stageOutputActive
+    || !lastFullscreenBackdropStyleAt
+    || time - lastFullscreenBackdropStyleAt >= 1000 / 20;
+  if (document.body.dataset.backgroundStyle === 'themed' && backdropStyleDue) {
+    if (stageOutputActive) lastFullscreenBackdropStyleAt = time;
     const posterDriftX = Math.sin(time * 0.00019) * (1.2 + posterEnergy * 2.2);
     const posterDriftY = Math.cos(time * 0.00016) * (0.8 + posterEnergy * 1.5);
     const posterSwingX = Math.sin(time * 0.0022) * (1.1 + posterEnergy * 2.7);
@@ -2814,6 +4189,96 @@ function animate(time) {
     || currentTheme.id === 'industrial-metal';
   document.documentElement.style.setProperty('--distortion', (playbackActive && distortedGenre ? metrics.rhythmPulse : 0).toFixed(3));
   renderSyncedLyrics(time);
+  const nextRenderPerformanceContext = stageOutputActive
+    ? `fullscreen:${stageOutputTextVisible ? fullscreenLayoutMode : 'textless'}:${currentTheme.id}`
+    : `desktop:${layoutMode}:${currentTheme.id}`;
+  if (animationActive && !document.hidden
+    && nextRenderPerformanceContext !== renderPerformanceContext) {
+    renderPerformanceContext = nextRenderPerformanceContext;
+    renderPerformanceStartedAt = 0;
+    renderPerformanceWarmupUntil = time + 1200;
+    renderFrameIntervals = [];
+    renderDurations = [];
+    renderWorkDurations = [];
+    adaptiveLowFpsWindows = 0;
+    adaptiveHighFpsWindows = 0;
+    adaptiveResolutionScale = adaptiveResolutionProfiles.get(renderPerformanceContext) || 1;
+    visual.setOutputResolutionScale(adaptiveResolutionScale);
+  }
+  if (animationActive && !document.hidden) {
+    if (time >= renderPerformanceWarmupUntil) {
+      if (!renderPerformanceStartedAt) renderPerformanceStartedAt = time;
+      renderFrameIntervals.push(rawFrameIntervalMs);
+      renderDurations.push(visualRenderDuration);
+      renderWorkDurations.push(performance.now() - frameWorkStartedAt);
+      if (time - renderPerformanceStartedAt >= 2000) {
+      const percentile = (values, ratio) => {
+        const sorted = [...values].sort((left, right) => left - right);
+        return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * ratio))] || 0;
+      };
+      const average = (values) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+      const fps = 1000 / Math.max(0.01, average(renderFrameIntervals));
+      const frameP95 = percentile(renderFrameIntervals, 0.95);
+      const renderAverage = average(renderDurations);
+      const renderP95 = percentile(renderDurations, 0.95);
+      const workP95 = percentile(renderWorkDurations, 0.95);
+      const resolutionLevels = stageOutputActive
+        ? [1, 0.9, 0.82, 0.76]
+        : [1, 0.9, 0.82];
+      const gpuLimitedDrop = fps < 57.5 && frameP95 >= 25 && workP95 < 14;
+      const comfortablyStable = fps > 58 && frameP95 < 20.5;
+
+      adaptiveLowFpsWindows = gpuLimitedDrop ? adaptiveLowFpsWindows + 1 : 0;
+      adaptiveHighFpsWindows = comfortablyStable ? adaptiveHighFpsWindows + 1 : 0;
+
+      if (adaptiveLowFpsWindows >= 2) {
+        const nextScale = resolutionLevels.find((level) => level < adaptiveResolutionScale - 0.005);
+        if (nextScale != null) {
+          adaptiveResolutionScale = nextScale;
+          visual.setOutputResolutionScale(nextScale);
+          adaptiveResolutionProfiles.set(renderPerformanceContext, nextScale);
+        }
+        adaptiveLowFpsWindows = 0;
+        adaptiveHighFpsWindows = 0;
+      } else if (adaptiveHighFpsWindows >= 20 && adaptiveResolutionScale < 0.995) {
+        const nextScale = [...resolutionLevels]
+          .reverse()
+          .find((level) => level > adaptiveResolutionScale + 0.005);
+        if (nextScale != null) {
+          adaptiveResolutionScale = nextScale;
+          visual.setOutputResolutionScale(nextScale);
+          adaptiveResolutionProfiles.set(renderPerformanceContext, nextScale);
+        }
+        adaptiveLowFpsWindows = 0;
+        adaptiveHighFpsWindows = 0;
+      }
+
+      window.genrePolice.reportRenderPerformance({
+        theme: currentTheme.id,
+        fullscreen: stageOutputActive,
+        fps,
+        frameP95,
+        renderAverage,
+        renderP95,
+        workP95,
+        resolutionScale: visual.effectiveResolutionScale,
+        pixelWidth: canvas.width,
+        pixelHeight: canvas.height
+      });
+        renderPerformanceStartedAt = time;
+        renderFrameIntervals = [];
+        renderDurations = [];
+        renderWorkDurations = [];
+      }
+    }
+  } else if (renderPerformanceStartedAt || renderPerformanceContext) {
+    renderPerformanceStartedAt = 0;
+    renderPerformanceWarmupUntil = 0;
+    renderPerformanceContext = '';
+    renderFrameIntervals = [];
+    renderDurations = [];
+    renderWorkDurations = [];
+  }
   requestAnimationFrame(animate);
 }
 
@@ -2827,10 +4292,23 @@ audio.addEventListener('outputdevicechange', ({ detail }) => {
   window.genrePolice.notifyAudioOutputDeviceChanged(detail);
 });
 
+audio.addEventListener('audiosourceschange', ({ detail }) => {
+  if (detail?.sourceId) captureAudioSourceId = detail.sourceId;
+  void refreshCaptureAudioSources(detail?.sources);
+  updateDiagnosticsUi();
+});
+
+audio.addEventListener('audiosourcefallback', () => {
+  captureAudioSourceId = 'system';
+  window.genrePolice.setConfig({ audioSourceId: captureAudioSourceId }).catch(() => {});
+  void refreshCaptureAudioSources();
+});
+
 window.genrePolice.onNowPlaying((metadata) => {
   const nextKey = metadataKey(metadata);
   const currentKey = metadataKey(currentMetadata);
   const changedTrack = Boolean(nextKey && nextKey !== currentKey);
+  if (changedTrack) closeGenreQuickPanel();
   // A completed metadata/genre request can carry the old position captured
   // when that request began. Keep the continuous clock for the same track.
   syncPlaybackClock(metadata, performance.now(), { force: changedTrack, reconcile: false });
@@ -2838,7 +4316,10 @@ window.genrePolice.onNowPlaying((metadata) => {
   if (metadata?.source) currentMediaSource = metadata.source;
   updateGenreCorrectionUi();
   updateDiagnosticsUi();
-  if (!demoTheme) transitionTo(metadata);
+  if (!demoTheme) {
+    const subtleGenreUpdate = Boolean(metadata?.audioGenreUpdate && !changedTrack);
+    transitionTo(metadata, subtleGenreUpdate, subtleGenreUpdate);
+  }
   else if (metadata?.artwork && currentDisplayContent?.artwork !== metadata.artwork) {
     currentDisplayContent.artwork = metadata.artwork;
     setArtwork(metadata.artwork);
@@ -2872,8 +4353,7 @@ window.genrePolice.onDemoTheme((theme) => {
     hardcoreTanoc: Boolean(theme.captureTanoc),
     genre: {
       ...theme,
-      label: genre,
-      note: theme.id === 'moombahcore' ? '(NOT DUBSTEP)' : ''
+      label: genre
     },
     genreSource: 'VISUAL DEMO',
     artwork: theme.captureArtwork || currentMetadata?.artwork || '',
@@ -2969,6 +4449,9 @@ async function requestMediaControl(action, button) {
 previousTrackButton.addEventListener('click', () => requestMediaControl('previous', previousTrackButton));
 playPauseButton.addEventListener('click', () => requestMediaControl('toggle', playPauseButton));
 nextTrackButton.addEventListener('click', () => requestMediaControl('next', nextTrackButton));
+fullscreenPreviousTrackButton.addEventListener('click', () => requestMediaControl('previous', fullscreenPreviousTrackButton));
+fullscreenPlayPauseButton.addEventListener('click', () => requestMediaControl('toggle', fullscreenPlayPauseButton));
+fullscreenNextTrackButton.addEventListener('click', () => requestMediaControl('next', fullscreenNextTrackButton));
 neteaseSmtcToastClose.addEventListener('click', dismissNeteaseSmtcToast);
 lyricSweepToggle.addEventListener('click', () => {
   setLyricSweepEnabled(!lyricSweepEnabled, { persist: true });
@@ -2985,6 +4468,9 @@ posterEnglishFontToggle.addEventListener('click', () => {
 capsuleEnglishFontToggle.addEventListener('click', () => {
   setCapsuleCondensedEnglish(!capsuleCondensedEnglish, { persist: true });
 });
+fullscreenEnglishFontToggle.addEventListener('click', () => {
+  setFullscreenCondensedEnglish(!fullscreenCondensedEnglish, { persist: true });
+});
 capsuleThemedBackgroundToggle.addEventListener('click', () => {
   setCapsuleThemedBackground(!capsuleThemedBackground, { persist: true });
 });
@@ -2994,8 +4480,30 @@ posterThemedBackgroundToggle.addEventListener('click', () => {
 onlineLookupToggle.addEventListener('click', () => {
   setOnlineGenreLookupEnabled(!onlineGenreLookupEnabled, { persist: true });
 });
+artistGenreReferenceToggle.addEventListener('click', () => {
+  setArtistGenreReferenceEnabled(!artistGenreReferenceEnabled, { persist: true });
+});
+localGenreModelToggle.addEventListener('click', () => {
+  if (!localGenreModelToggle.disabled) {
+    setLocalGenreModelEnabled(!localGenreModelEnabled, { persist: true });
+  }
+});
+dynamicGenreDetectionToggle.addEventListener('click', () => {
+  setDynamicGenreDetectionEnabled(!dynamicGenreDetectionEnabled, { persist: true });
+});
 alwaysOnTopToggle.addEventListener('click', () => {
   setAlwaysOnTopEnabled(!alwaysOnTopEnabled, { persist: true });
+});
+desktopLayerToggle.addEventListener('click', () => {
+  if (!desktopLayerToggle.disabled) {
+    setDesktopLayerEnabled(!desktopLayerEnabled, { persist: true });
+  }
+});
+recordingQuickButtonToggle.addEventListener('click', () => {
+  setRecordingQuickButtonVisible(!recordingQuickButtonVisible, { persist: true });
+});
+snapshotQuickButtonToggle.addEventListener('click', () => {
+  setSnapshotQuickButtonVisible(!snapshotQuickButtonVisible, { persist: true });
 });
 mousePassthroughToggle.addEventListener('click', () => {
   setMousePassthroughEnabled(!mousePassthroughEnabled, { persist: true });
@@ -3062,11 +4570,19 @@ layoutModeOptions.forEach((option) => {
 motionModeOptions.forEach((option) => {
   option.addEventListener('click', () => setMotionMode(option.dataset.motionMode, { persist: true }));
 });
+visualResponseOptions.forEach((option) => {
+  option.addEventListener('click', () => {
+    setVisualResponseMode(option.dataset.visualResponse, { persist: true });
+  });
+});
 idleBehaviorOptions.forEach((option) => {
   option.addEventListener('click', () => setIdleBehavior(option.dataset.idleBehavior, { persist: true }));
 });
 idleFrameLimitToggle.addEventListener('click', () => {
   setIdleFrameLimitEnabled(!idleFrameLimitEnabled, { persist: true });
+});
+showFpsToggle.addEventListener('click', () => {
+  setShowFps(!showFps, { persist: true });
 });
 rhythmModelToggle.addEventListener('click', () => {
   setRhythmModelEnabled(!rhythmModelEnabled, { persist: true });
@@ -3090,8 +4606,50 @@ layoutModeGroup.addEventListener('keydown', (event) => {
 motionModeGroup.addEventListener('keydown', (event) => {
   handleRadioSegmentKey(event, motionModeOptions, (next) => setMotionMode(next.dataset.motionMode, { persist: true }));
 });
+visualResponseGroup.addEventListener('keydown', (event) => {
+  handleRadioSegmentKey(event, visualResponseOptions, (next) => {
+    setVisualResponseMode(next.dataset.visualResponse, { persist: true });
+  });
+});
 idleBehaviorGroup.addEventListener('keydown', (event) => {
   handleRadioSegmentKey(event, idleBehaviorOptions, (next) => setIdleBehavior(next.dataset.idleBehavior, { persist: true }));
+});
+captureAudioSourceButton.addEventListener('click', () => {
+  const opening = captureAudioSourceMenu.hidden;
+  setCaptureAudioSourceMenuOpen(opening, { focus: opening });
+});
+captureAudioSourceButton.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  event.preventDefault();
+  setCaptureAudioSourceMenuOpen(true, { focus: true });
+});
+captureAudioSourceMenu.addEventListener('click', (event) => {
+  const option = event.target.closest('.audio-source-option');
+  if (option) void chooseCaptureAudioSource(option.dataset.audioSource);
+});
+captureAudioSourceMenu.addEventListener('keydown', (event) => {
+  const options = captureAudioSourceOptions();
+  const currentIndex = Math.max(0, options.indexOf(document.activeElement));
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setCaptureAudioSourceMenuOpen(false);
+    captureAudioSourceButton.focus();
+    return;
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    void chooseCaptureAudioSource(options[currentIndex]?.dataset.audioSource);
+    return;
+  }
+  const movement = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+  if (!movement && event.key !== 'Home' && event.key !== 'End') return;
+  event.preventDefault();
+  const nextIndex = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? options.length - 1
+      : (currentIndex + movement + options.length) % options.length;
+  options[nextIndex]?.focus();
 });
 mediaSourceButton.addEventListener('click', () => {
   const opening = mediaSourceMenu.hidden;
@@ -3323,12 +4881,80 @@ uiScaleMenu.addEventListener('keydown', (event) => {
 document.addEventListener('pointerdown', (event) => {
   if (!event.target.closest('.ui-scale-picker')) setScaleMenuOpen(false);
   if (!event.target.closest('.language-picker')) setLanguageMenuOpen(false);
+  if (!event.target.closest('.audio-source-picker')) setCaptureAudioSourceMenuOpen(false);
   if (!event.target.closest('.media-source-picker')) setMediaSourceMenuOpen(false);
   if (!event.target.closest('.custom-genre-visual-picker')) setCustomGenreVisualMenuOpen(false);
   if (!event.target.closest('.genre-artist-genre-picker')) setGenreArtistMenuOpen(false);
   if (!event.target.closest('.custom-genre-color-editor')
     && !event.target.closest('.custom-genre-color-value')) closeCustomGenreColorEditor();
   if (!event.target.closest('.genre-correction-picker')) closeGenreCorrectionSuggestions();
+  if (!genreQuickPanel.hidden
+    && !event.target.closest('#genre-quick-panel')
+    && !event.target.closest('#genre')) closeGenreQuickPanel();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !settings.hidden) {
+    event.preventDefault();
+    closeSettings();
+    return;
+  }
+  if (event.key === 'Escape' && !genreQuickPanel.hidden) {
+    event.preventDefault();
+    closeGenreQuickPanel();
+    genreLabel.focus();
+    return;
+  }
+  if (event.key === 'Escape' && stageOutputActive) {
+    event.preventDefault();
+    void window.genrePolice.setStageOutput(false);
+  }
+});
+genreLabel.addEventListener('click', openGenreQuickPanel);
+genreLabel.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  openGenreQuickPanel();
+});
+genreQuickClose.addEventListener('click', () => closeGenreQuickPanel());
+genreQuickUse.addEventListener('click', async () => {
+  if (!genreQuickSelectedId) return;
+  const selected = genreQuickData?.candidates?.find((candidate) => candidate.id === genreQuickSelectedId);
+  const result = await window.genrePolice.setTemporaryGenre(genreQuickSelectedId);
+  if (!result?.ok) {
+    genreQuickState.textContent = tr('genreQuick.failed');
+    return;
+  }
+  await refreshGenreQuickPanel();
+  genreQuickState.textContent = tr('genreQuick.locked', { genre: selected?.label || result.override?.label || '' });
+});
+genreQuickRemember.addEventListener('click', async () => {
+  if (!genreQuickSelectedId) return;
+  const selected = genreQuickData?.candidates?.find((candidate) => candidate.id === genreQuickSelectedId);
+  const result = await window.genrePolice.setGenreCorrection(genreQuickSelectedId);
+  if (!result?.ok) {
+    genreQuickState.textContent = tr('genreQuick.failed');
+    return;
+  }
+  await refreshGenreQuickPanel();
+  genreQuickState.textContent = tr('genreQuick.remembered', { genre: selected?.label || result.correction?.label || '' });
+});
+genreQuickUnlock.addEventListener('click', async () => {
+  const result = await window.genrePolice.clearTemporaryGenre();
+  if (!result?.ok) {
+    genreQuickState.textContent = tr('genreQuick.failed');
+    return;
+  }
+  await refreshGenreQuickPanel();
+  genreQuickState.textContent = tr('genreQuick.unlocked');
+});
+genreQuickMore.addEventListener('click', () => {
+  const option = correctionGenreOptions().find((item) => item.id === genreQuickSelectedId) || null;
+  closeGenreQuickPanel({ restoreHitTest: false });
+  openSettings({ focusCorrection: true });
+  if (option) {
+    genreCorrectionInput.value = option.label;
+    genreCorrectionInput.dataset.genreId = option.id;
+  }
 });
 genreCorrectionInput.addEventListener('focus', () => renderGenreCorrectionSuggestions(genreCorrectionInput.value));
 genreCorrectionInput.addEventListener('input', () => {
@@ -3541,6 +5167,7 @@ credentialsSave.addEventListener('click', async () => {
   }
 });
 diagnosticsPanel.addEventListener('toggle', () => {
+  setDiagnosticsRefreshing(diagnosticsPanel.open);
   if (diagnosticsPanel.open) updateDiagnosticsUi();
   requestAnimationFrame(updateSettingsScrollbar);
 });
@@ -3561,6 +5188,8 @@ diagnosticsExport.addEventListener('click', async () => {
     const result = await window.genrePolice.exportDiagnostics({
       audioStatus: audio.status,
       genreSource: currentMetadata?.genreSource || '',
+      genreUncertain: Boolean(currentMetadata?.genreUncertain),
+      genreUncertainReason: currentMetadata?.genreUncertainReason || '',
       genreEvidence: currentMetadata?.genreEvidence || null,
       genreSources: currentMetadata?.genreSources || [],
       lyricSource: currentMetadata?.lyrics?.source || ''
@@ -3574,6 +5203,34 @@ diagnosticsExport.addEventListener('click', async () => {
     diagnosticsExport.disabled = false;
   }
 });
+updateCheckButton.addEventListener('click', checkForUpdatesManually);
+updateViewButton.addEventListener('click', () => openAvailableUpdate());
+updateToastDismiss.addEventListener('click', () => {
+  const version = latestUpdateResult?.latestVersion || '';
+  hideUpdateToast({ clearPending: true });
+  if (version) window.genrePolice.dismissUpdate(version).catch(() => {});
+});
+updateToastView.addEventListener('click', () => openAvailableUpdate({ acknowledge: true }));
+stageOutputStartStop.addEventListener('click', () => void toggleStageOutput());
+stageOutputTextToggle.addEventListener('click', () => {
+  setStageOutputTextVisible(!stageOutputTextVisible, { persist: true });
+});
+fullscreenQuickButton.addEventListener('click', () => void toggleStageOutput());
+fullscreenSnapshotButton.addEventListener('click', () => void saveSnapshot());
+fullscreenRecordingButton.addEventListener('click', toggleRecording);
+fullscreenSettingsButton.addEventListener('click', () => void openSettingsFromFullscreen());
+fullscreenLayoutButton.addEventListener('click', () => {
+  setFullscreenLayoutMode(fullscreenLayoutMode === 'stacked' ? 'split' : 'stacked', { persist: true });
+});
+fullscreenTextButton.addEventListener('click', () => {
+  setStageOutputTextVisible(!stageOutputTextVisible, { persist: true });
+});
+fullscreenExitButton.addEventListener('click', () => void window.genrePolice.setStageOutput(false));
+recordingStartStop.addEventListener('click', toggleRecording);
+recordingQuickButton.addEventListener('click', toggleRecording);
+snapshotSaveButton.addEventListener('click', () => void saveSnapshot());
+snapshotQuickButton.addEventListener('click', () => void saveSnapshot());
+recordingToastClose.addEventListener('click', hideRecordingToast);
 document.querySelector('#settings-save').addEventListener('click', closeSettings);
 
 settingsScroll.addEventListener('scroll', updateSettingsScrollbar, { passive: true });
@@ -3611,15 +5268,24 @@ new ResizeObserver(updateSettingsScrollbar).observe(settingsScroll);
 new ResizeObserver(updateTitleOverflow).observe(titleLabel);
 
 window.addEventListener('pointermove', showControls, { passive: true });
-window.addEventListener('resize', updateSettingsScrollbar, { passive: true });
+window.addEventListener('resize', () => {
+  updateSettingsScrollbar();
+  updateStageOutputScale();
+  refreshPresentationTypography();
+}, { passive: true });
 window.addEventListener('pointerleave', () => hideControls(260));
 window.addEventListener('blur', () => hideControls(120));
 controls.addEventListener('pointerenter', clearControlsTimer);
 controls.addEventListener('pointerleave', showControls);
 transport.addEventListener('pointerenter', clearControlsTimer);
 transport.addEventListener('pointerleave', showControls);
+fullscreenControls.addEventListener('pointerenter', clearControlsTimer);
+fullscreenControls.addEventListener('pointerleave', showControls);
+fullscreenTransport.addEventListener('pointerenter', clearControlsTimer);
+fullscreenTransport.addEventListener('pointerleave', showControls);
 
 window.genrePolice.getConfig().then((config) => {
+  captureAudioSourceId = String(config.audioSourceId || 'system');
   preferredMediaSource = config.preferredMediaSource || '';
   ignoredMediaSources = Array.isArray(config.ignoredMediaSources) ? config.ignoredMediaSources : [];
   availableMediaSources = Array.isArray(config.availableMediaSources) ? config.availableMediaSources : [];
@@ -3628,26 +5294,43 @@ window.genrePolice.getConfig().then((config) => {
   customGenres = Array.isArray(config.customGenres) ? config.customGenres : [];
   genreArtistRules = Array.isArray(config.genreArtistRules) ? config.genreArtistRules : [];
   latestRhythmModelState = config.rhythmModelState || latestRhythmModelState;
+  latestAudioGenreModelState = config.audioGenreModelState || latestAudioGenreModelState;
   lastFmInput.value = config.lastFmApiKey || '';
   discogsTokenInput.value = config.discogsToken || '';
-  appVersionLabel.textContent = config.appVersion || '0.2.0';
+  appVersionLabel.textContent = config.appVersion || '0.3.0';
   genreOptions = Array.isArray(config.genreOptions) ? config.genreOptions : [];
   applyLanguage(config.language);
   setLyricsEnabled(config.lyricsEnabled !== false);
   setLyricTranslationEnabled(config.lyricTranslationEnabled !== false);
   setCapsuleCondensedEnglish(config.capsuleCondensedEnglish === true);
   setPosterCondensedEnglish(config.posterCondensedEnglish !== false);
+  setFullscreenCondensedEnglish(config.fullscreenCondensedEnglish === true);
   setCapsuleThemedBackground(config.capsuleThemedBackground !== false);
   setPosterThemedBackground(config.posterThemedBackground !== false);
   setLyricSweepEnabled(config.lyricSweepEnabled !== false);
   setOnlineGenreLookupEnabled(config.onlineGenreLookupEnabled !== false);
+  setArtistGenreReferenceEnabled(config.artistGenreReferenceEnabled !== false);
+  dynamicGenreDetectionEnabled = config.dynamicGenreDetectionEnabled === true;
+  setLocalGenreModelEnabled(config.localGenreModelEnabled !== false, {
+    available: config.localGenreModelAvailable !== false
+  });
+  setDynamicGenreDetectionEnabled(config.dynamicGenreDetectionEnabled === true);
   setAlwaysOnTopEnabled(config.alwaysOnTop === true);
+  setDesktopLayerEnabled(config.desktopLayer === true, {
+    available: config.desktopLayerAvailable !== false
+  });
+  setRecordingQuickButtonVisible(config.recordingQuickButtonVisible === true);
+  setSnapshotQuickButtonVisible(config.snapshotQuickButtonVisible === true);
+  setFullscreenLayoutMode(config.fullscreenLayoutMode);
+  setStageOutputTextVisible(config.stageOutputTextVisible !== false);
   setLaunchAtLoginEnabled(config.launchAtLogin === true, {
     supported: config.launchAtLoginSupported !== false
   });
   setMotionMode(config.motionMode);
+  setVisualResponseMode(config.visualResponseMode);
   setIdleBehavior(config.idleBehavior);
   setIdleFrameLimitEnabled(config.idleFrameLimitEnabled !== false);
+  setShowFps(config.showFps === true);
   setRhythmModelEnabled(config.rhythmModelEnabled !== false);
   renderMediaSourceSettings();
   resetCustomGenreEditor();
@@ -3657,13 +5340,50 @@ window.genrePolice.getConfig().then((config) => {
   applyLayoutMode(config.layoutMode);
   applyUiScale(config.uiScale);
   setInteractionState(config.clickThrough);
+  applyStageOutputState({ active: config.stageOutputActive === true });
   updateGenreCorrectionUi();
+  if (captureAudioSourceId === 'system') {
+    void refreshCaptureAudioSources();
+  } else {
+    void audio.setAudioSource(captureAudioSourceId).then((activeSourceId) => {
+      captureAudioSourceId = activeSourceId;
+      return refreshCaptureAudioSources();
+    }).catch(() => {
+      captureAudioSourceId = 'system';
+      return refreshCaptureAudioSources();
+    });
+  }
 });
-window.genrePolice.onLayoutMode((payload) => applyLayoutMode(payload?.mode));
+window.genrePolice.onLayoutMode((payload) => {
+  const requestedLayoutMode = payload?.mode === 'poster' || payload?.mode === 'stage' ? 'poster' : 'side';
+  if (stageOutputActive) {
+    stageOutputRestoreLayoutMode = requestedLayoutMode;
+    return;
+  }
+  if (requestedLayoutMode !== layoutMode) applyLayoutMode(requestedLayoutMode);
+});
+window.genrePolice.onStageOutputState(applyStageOutputState);
 window.genrePolice.onOpenSettings(() => openSettings());
 window.genrePolice.onOpenGenreCorrection(() => openSettings({ focusCorrection: true }));
+window.genrePolice.onRecordingCommand((command) => {
+  if (command === 'stop') {
+    if (recorder.state === 'recording') void recorder.stop();
+    return;
+  }
+  if (command === 'start' && recorder.state === 'idle') void recorder.start();
+});
+window.genrePolice.onRecordingControlsActivity((phase) => {
+  if (!recordingPresentationActive) return;
+  if (phase === 'enter') {
+    showControls();
+    return;
+  }
+  if (phase === 'leave') hideControls(260);
+});
+window.genrePolice.onUpdateStatus((result) => showUpdateToast(result));
 
 applyTheme(fallbackTheme);
+renderRecordingUi();
 genreLabel.dataset.text = genreLabel.textContent;
 transitionTo(null, true);
 audio.start();

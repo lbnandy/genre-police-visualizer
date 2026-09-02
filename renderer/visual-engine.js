@@ -31,6 +31,12 @@ function smoothstep(edge0, edge1, value) {
   return amount * amount * (3 - 2 * amount);
 }
 
+function fullscreenUsesCenteredScene() {
+  return document.body.dataset.stageOutput === 'true'
+    && (document.body.dataset.stageOutputText === 'false'
+      || document.body.dataset.fullscreenLayout === 'stacked');
+}
+
 export class VisualEngine {
   constructor(canvas) {
     this.canvas = canvas;
@@ -44,6 +50,8 @@ export class VisualEngine {
     this.width = 0;
     this.height = 0;
     this.dpr = 1;
+    this.outputResolutionScale = 1;
+    this.effectiveResolutionScale = 1;
     this.theme = null;
     this.trackContext = { genrePolice: false };
     this.particles = [];
@@ -132,11 +140,22 @@ export class VisualEngine {
   }
 
   resize() {
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
     // clientWidth/clientHeight stay in the selected layout's design coordinate
     // space even when the complete transparent stage is scaled by a preset.
     this.width = Math.max(1, this.canvas.clientWidth);
     this.height = Math.max(1, this.canvas.clientHeight);
+    const renderedWidth = this.canvas.getBoundingClientRect().width;
+    const outputScale = document.body.dataset.stageOutput === 'true'
+      ? Math.max(1, renderedWidth / this.width)
+      : 1;
+    // Fullscreen enlarges the fixed design canvas with a CSS transform. Match
+    // that transform in the backing store so it is not upscaled as a bitmap.
+    const nativeDpr = Math.min(3, (window.devicePixelRatio || 1) * outputScale);
+    // Keep CSS geometry and the HUD at native resolution. Only the animated
+    // canvas backing store may step down when sustained compositor pressure is
+    // detected; a 1x floor prevents small desktop layouts from becoming soft.
+    this.dpr = Math.max(1, nativeDpr * this.outputResolutionScale);
+    this.effectiveResolutionScale = this.dpr / nativeDpr;
     const layoutStyles = getComputedStyle(this.canvas);
     this.centerX = Number.parseFloat(layoutStyles.getPropertyValue('--visual-center-x'));
     this.centerY = Number.parseFloat(layoutStyles.getPropertyValue('--visual-center-y'));
@@ -154,7 +173,28 @@ export class VisualEngine {
     this.synthArtworkCanvas.height = this.canvas.height;
     this.synthCapsuleHorizonY = 0;
     this.synthCapsuleHorizonMeasuredAt = 0;
+    document.body.style.removeProperty('--synth-capsule-horizon-y');
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+    const fullscreenOutput = document.body.dataset.stageOutput === 'true';
+    const posterScene = document.body.dataset.layout === 'poster'
+      || fullscreenUsesCenteredScene();
+    if (!posterScene) {
+      const bounds = fullscreenOutput
+        ? { left: 0, top: 0, right: this.width, bottom: this.height, radius: 0 }
+        : { left: 54, top: 48, right: this.width - 108, bottom: this.height - 48, radius: 152 };
+      // Force the new layout now. Waiting for the animation loop would expose
+      // one frame of the 53% fallback before the progress rule is measured.
+      this.resolveSynthwaveHorizonY(bounds, false, performance.now());
+    }
+  }
+
+  setOutputResolutionScale(value) {
+    const next = clamp(Number(value) || 1, 0.75, 1);
+    if (Math.abs(next - this.outputResolutionScale) < 0.005) return false;
+    this.outputResolutionScale = next;
+    this.resize();
+    return true;
   }
 
   setTheme(theme) {
@@ -280,7 +320,7 @@ export class VisualEngine {
       (data[index - 2] || 0) + (data[index - 1] || 0) * 2
       + (data[index] || 0) * 3 + (data[index + 1] || 0) * 2 + (data[index + 2] || 0)
     ) / 9;
-    const spectrumGain = Math.max(1, Number(metrics.spectrumGain) || 1);
+    const spectrumGain = Math.max(0.5, Number(metrics.spectrumGain) || 1);
     return clamp(Math.pow(Math.max(0, average / 255 * spectrumGain - 0.018) / 0.982, 0.7));
   }
 
@@ -302,7 +342,7 @@ export class VisualEngine {
     const waveform = metrics.waveform;
     if (!waveform?.length) return Math.sin(ratio * TAU * 5) * 0.025;
     const index = Math.min(waveform.length - 1, Math.floor(ratio * waveform.length));
-    const waveformGain = Math.max(1, Number(metrics.waveformGain) || 1);
+    const waveformGain = Math.max(0.5, Number(metrics.waveformGain) || 1);
     if (!smoothing) return clamp(((waveform[index] || 128) - 128) / 128 * waveformGain, -1, 1);
     const radius = Math.max(1, Math.round(smoothing));
     let total = 0;
@@ -941,8 +981,11 @@ export class VisualEngine {
   drawBilibiliStock(metrics, time) {
     if (document.body.dataset.backgroundStyle !== 'themed') return;
     const ctx = this.ctx;
+    const fullscreenOutput = document.body.dataset.stageOutput === 'true';
     const posterLayout = document.body.dataset.layout === 'poster';
-    const bounds = posterLayout
+    const bounds = fullscreenOutput
+      ? { left: 0, top: 0, right: this.width, bottom: this.height, radius: 0 }
+      : posterLayout
       ? { left: 16, top: 16, right: this.width - 16, bottom: this.height - 16, radius: 24 }
       : { left: 54, top: 48, right: this.width - 108, bottom: this.height - 48, radius: 152 };
     const width = bounds.right - bounds.left;
@@ -1022,8 +1065,11 @@ export class VisualEngine {
           + this.bilibiliSectionDrive * 0.58
           + this.bilibiliTransientDrive * 0.5
       );
+      const fullscreenOutput = document.body.dataset.stageOutput === 'true';
       const posterLayout = document.body.dataset.layout === 'poster';
-      const bounds = posterLayout
+      const bounds = fullscreenOutput
+        ? { left: 0, top: 0, right: this.width, bottom: this.height, radius: 0 }
+        : posterLayout
         ? { left: 16, top: 16, right: this.width - 16, bottom: this.height - 16, radius: 24 }
         : { left: 54, top: 48, right: this.width - 108, bottom: this.height - 48, radius: 152 };
       const width = bounds.right - bounds.left;
@@ -1065,7 +1111,7 @@ export class VisualEngine {
       ctx.restore();
       return;
     }
-    if (theme.mode === 'trance' && !['classical', 'soundtrack'].includes(theme.id)) {
+    if (theme.mode === 'trance' && theme.family !== 'classical' && theme.id !== 'soundtrack') {
       // Trance lives in a slowly breathing color field. Avoid another visible
       // orbit here: its signature layer already carries the single hypnotic
       // path, while these offset glows create depth without line clutter.
@@ -1115,8 +1161,10 @@ export class VisualEngine {
   }
 
   resolveSynthwaveHorizonY(bounds, posterLayout, time) {
-    const fallbackY = bounds.top
-      + (bounds.bottom - bounds.top) * (posterLayout ? 0.35 : 0.53);
+    const fullscreenCentered = fullscreenUsesCenteredScene();
+    const fallbackY = fullscreenCentered
+      ? this.centerY + 22
+      : bounds.top + (bounds.bottom - bounds.top) * (posterLayout ? 0.39 : 0.53);
     if (posterLayout) {
       this.synthCapsuleHorizonMeasuredAt = 0;
       return fallbackY;
@@ -1148,10 +1196,14 @@ export class VisualEngine {
 
   drawSynthwaveHorizonScene(x, y, theme, metrics, time) {
     const ctx = this.ctx;
-    const posterLayout = document.body.dataset.layout === 'poster';
+    const fullscreenOutput = document.body.dataset.stageOutput === 'true';
+    const posterLayout = document.body.dataset.layout === 'poster'
+      || fullscreenUsesCenteredScene();
     const themedBackground = document.body.dataset.backgroundStyle === 'themed';
     if (!themedBackground) return;
-    const bounds = posterLayout
+    const bounds = fullscreenOutput
+      ? { left: 0, top: 0, right: this.width, bottom: this.height, radius: 0 }
+      : posterLayout
       ? { left: 16, top: 16, right: this.width - 16, bottom: this.height - 16, radius: 24 }
       : { left: 54, top: 48, right: this.width - 108, bottom: this.height - 48, radius: 152 };
     const horizonY = this.resolveSynthwaveHorizonY(bounds, posterLayout, time);
@@ -1923,44 +1975,89 @@ export class VisualEngine {
     else if (mode === 'hardcore') {
       const happy = theme.id === 'happy-hardcore';
       const uk = theme.id === 'uk-hardcore';
+      const gabber = theme.id === 'gabber';
+      const frenchcore = theme.id === 'frenchcore';
+      const industrial = theme.id === 'industrial-hardcore';
+      const uptempo = theme.id === 'uptempo-hardcore';
       const puzzy = theme.id === 'puzzycore';
       const gentle = happy || uk;
       const spectrumBins = gentle ? 48
         : puzzy ? 68
-          : theme.id === 'uptempo-hardcore' ? 64
-          : theme.id === 'frenchcore' || theme.id === 'industrial-hardcore' ? 60
-            : theme.id === 'gabber' ? 56 : 54;
+          : uptempo ? 64
+            : frenchcore ? 60
+              : gabber ? 52
+                : industrial ? 48 : 54;
       options = {
-        ...base, points: gentle ? 144 : spectrumBins >= 60 ? 156 : 144, spectrumBins, radius: gentle ? 61 : 63,
-        amplitude: gentle ? 69 : 70, thickness: gentle ? 31 : 17,
-        waveAmplitude: gentle ? 16 : 7, smoothBins: gentle ? 3 : 0,
-        lobes: gentle ? 8 : 0, lobeAmount: gentle ? 6 : 0,
-        spectralContrast: gentle ? 0.68 : 0.88, contrastPower: gentle ? 1.28 : 1.7,
-        spike: gentle ? 0 : puzzy ? 8.2 : theme.id === 'uptempo-hardcore' ? 7.2 : 5,
-        spikeThreshold: puzzy ? 0.34 : theme.id === 'uptempo-hardcore' ? 0.35 : 0.37,
-        serration: gentle ? 0 : puzzy ? 3.8 : theme.id === 'uptempo-hardcore' ? 4.2 : 2.7,
+        ...base,
+        points: gentle ? 144 : puzzy || uptempo || frenchcore ? 156 : industrial ? 132 : gabber ? 120 : 144,
+        spectrumBins,
+        radius: gentle ? 61 : industrial ? 65 : gabber ? 64 : 63,
+        amplitude: gentle ? 69 : industrial ? 60 : gabber ? 64 : frenchcore ? 67 : 70,
+        thickness: gentle ? 31 : industrial ? 25 : gabber ? 22 : frenchcore ? 19 : 17,
+        waveAmplitude: gentle ? 16 : frenchcore ? 10 : industrial ? 4 : gabber ? 5 : 7,
+        smoothBins: gentle ? 3 : frenchcore ? 2 : industrial ? 1 : 0,
+        waveSmooth: gentle ? 0 : frenchcore ? 5 : 0,
+        smoothPath: gentle || frenchcore,
+        facets: gabber ? 12 : industrial ? 10 : 0,
+        sectorBins: gabber ? 2 : industrial ? 3 : 0,
+        step: gabber ? 0.055 : industrial ? 0.07 : 0,
+        lobes: gentle ? 8 : frenchcore ? 12 : 0,
+        lobeAmount: gentle ? 6 : frenchcore ? 3.8 : 0,
+        fracture: industrial ? 6.2 : 0,
+        spectralContrast: gentle ? 0.68 : frenchcore ? 0.76 : industrial ? 0.82 : 0.88,
+        contrastPower: gentle ? 1.28 : frenchcore ? 1.46 : industrial ? 1.58 : 1.7,
+        spike: gentle ? 0 : puzzy ? 8.2 : uptempo ? 7.2 : industrial ? 3.2 : gabber ? 3.8 : frenchcore ? 4.2 : 5,
+        spikeThreshold: puzzy ? 0.34 : uptempo ? 0.35 : industrial ? 0.42 : gabber ? 0.4 : frenchcore ? 0.39 : 0.37,
+        serration: gentle ? 0 : puzzy ? 3.8 : uptempo ? 4.2 : industrial ? 1.2 : gabber ? 1.6 : frenchcore ? 1.5 : 2.7,
         ribs: false, nodes: gentle, chroma: !gentle, echoes: gentle ? 1 : 0,
-        peakBoost: gentle ? 0.6 : puzzy ? 1.32 : 1.24, catEarDip: gentle ? 0.13 : 0.36,
+        peakBoost: gentle ? 0.6 : puzzy ? 1.32 : industrial ? 1.06 : gabber ? 1.14 : frenchcore ? 1.1 : 1.24,
+        catEarDip: gentle ? 0.13 : industrial ? 0.28 : 0.36,
         lowWeight: gentle ? 1 : 1.15, highWeight: gentle ? 1 : 0.92,
-        contactCompression: gentle ? 3.2 : puzzy ? 5.4 : 4.9,
-        pulseRadius: gentle ? 4.5 : puzzy ? 7.4 : 6.3,
-        innerFollow: gentle ? 0.72 : 0.16,
+        contactCompression: gentle ? 3.2 : puzzy ? 5.4 : industrial ? 4 : gabber ? 4.5 : frenchcore ? 4.3 : 4.9,
+        pulseRadius: gentle ? 4.5 : puzzy ? 7.4 : industrial ? 5.2 : gabber ? 5.5 : frenchcore ? 5.6 : 6.3,
+        innerFollow: gentle ? 0.72 : industrial ? 0.22 : gabber ? 0.2 : frenchcore ? 0.3 : 0.16,
         ridgeDepths: [], hideInnerEdge: true,
-        material: gentle ? 'bubble' : 'razor'
+        material: gentle ? 'bubble' : industrial ? 'steel' : gabber ? 'facet' : 'razor'
       };
     }
-    else if (mode === 'hardstyle') options = {
-      ...base, points: theme.id === 'rawstyle' ? 112 : 104,
-      spectrumBins: theme.id === 'rawstyle' ? 50 : theme.id === 'euphoric-hardstyle' ? 42 : 46,
-      radius: 66, amplitude: 63, thickness: 23, waveAmplitude: 7,
-      facets: theme.id === 'rawstyle' ? 14 : 18, sectorBins: 2, step: 0.055,
-      serration: theme.id === 'rawstyle' ? 3.3 : 0.9, ribs: false,
-      chroma: true, echoes: 0, peakBoost: 1.05, catEarDip: 0.3,
-      lowWeight: 1.14, spectralContrast: 0.84, contrastPower: 1.58,
-      contactCompression: theme.id === 'rawstyle' ? 4.2 : 3.5,
-      pulseRadius: theme.id === 'rawstyle' ? 5.8 : 4.8,
-      innerFollow: 0.28, ridgeDepths: [], hideInnerEdge: true, material: 'facet'
-    };
+    else if (mode === 'hardstyle') {
+      const raw = theme.id === 'rawstyle';
+      const euphoric = theme.id === 'euphoric-hardstyle';
+      options = {
+        ...base,
+        points: raw ? 120 : euphoric ? 144 : 104,
+        spectrumBins: raw ? 50 : euphoric ? 42 : 46,
+        radius: 66,
+        amplitude: raw ? 66 : euphoric ? 58 : 63,
+        thickness: raw ? 20 : euphoric ? 30 : 23,
+        waveAmplitude: raw ? 6 : euphoric ? 12 : 7,
+        smoothBins: euphoric ? 3 : 0,
+        waveSmooth: euphoric ? 10 : 0,
+        smoothPath: euphoric,
+        facets: raw ? 14 : euphoric ? 0 : 18,
+        sectorBins: euphoric ? 0 : 2,
+        step: raw ? 0.05 : euphoric ? 0 : 0.055,
+        lobes: euphoric ? 6 : 0,
+        lobeAmount: euphoric ? 4.6 : 0,
+        fracture: raw ? 3.4 : 0,
+        spike: raw ? 2.6 : 0,
+        spikeThreshold: raw ? 0.4 : 0.42,
+        serration: raw ? 4.2 : euphoric ? 0 : 0.9,
+        ribs: false,
+        chroma: !euphoric,
+        echoes: euphoric ? 1 : 0,
+        peakBoost: raw ? 1.18 : euphoric ? 0.72 : 1.05,
+        catEarDip: raw ? 0.34 : euphoric ? 0.16 : 0.3,
+        lowWeight: raw ? 1.18 : euphoric ? 1.04 : 1.14,
+        spectralContrast: raw ? 0.9 : euphoric ? 0.64 : 0.84,
+        contrastPower: raw ? 1.7 : euphoric ? 1.3 : 1.58,
+        contactCompression: raw ? 4.2 : euphoric ? 2.8 : 3.5,
+        pulseRadius: raw ? 5.8 : euphoric ? 4.2 : 4.8,
+        innerFollow: raw ? 0.2 : euphoric ? 0.62 : 0.28,
+        ridgeDepths: [], hideInnerEdge: true,
+        material: euphoric ? 'bubble' : 'facet'
+      };
+    }
     else if (mode === 'latin') {
       options = {
         ...base,
@@ -2000,6 +2097,15 @@ export class VisualEngine {
       const techHouse = theme.id === 'tech-house';
       const complex = theme.id === 'complextro';
       const bigRoom = theme.id === 'big-room-house';
+      const deepHouse = theme.id === 'deep-house';
+      const melodicHouse = theme.id === 'melodic-house';
+      const tropicalHouse = theme.id === 'tropical-house';
+      const afroHouse = theme.id === 'afro-house';
+      const amapiano = theme.id === 'amapiano';
+      const frenchHouse = theme.id === 'french-house';
+      const discoHouse = theme.id === 'disco-house';
+      const hardHouse = theme.id === 'hard-house';
+      const acidHouse = theme.id === 'acid-house';
       const electroBins = complex ? 56
         : theme.id === 'electro-house' ? 48
           : ['fidget-house', 'melbourne-bounce'].includes(theme.id) ? 46
@@ -2093,34 +2199,76 @@ export class VisualEngine {
         innerFollow: 0.76,
         material: 'liquid'
       } : {
-        ...base, points: future ? 144 : bassHouse ? 136 : smoothHouse ? 148 : 132, spectrumBins: regularBins,
-        radius: future ? 68 : bassHouse ? 66 : 69, amplitude: future ? 52 : bassHouse ? 61 : 46,
-        thickness: future ? 34 : bassHouse ? 37 : 31, waveAmplitude: future ? 12 : bassHouse ? 10 : 15,
-        smoothBins: future ? 2 : bassHouse ? 1 : smoothHouse ? 4 : detailedHouse ? 2 : 3,
-        waveSmooth: future ? 11 : bassHouse ? 6 : smoothHouse ? 13 : detailedHouse ? 8 : 10, smoothPath: true,
+        ...base,
+        points: future ? 144 : bassHouse ? 136 : discoHouse ? 144 : hardHouse ? 116 : amapiano ? 128 : smoothHouse ? 148 : 132,
+        spectrumBins: amapiano ? 34 : hardHouse ? 46 : discoHouse ? 44 : regularBins,
+        radius: future ? 68 : bassHouse ? 66 : amapiano ? 67 : hardHouse ? 65 : 69,
+        amplitude: future ? 52
+          : bassHouse ? 61
+            : hardHouse ? 61
+              : amapiano ? 57
+                : afroHouse ? 51
+                  : discoHouse ? 52
+                    : frenchHouse ? 49
+                      : acidHouse ? 54
+                        : melodicHouse ? 48
+                          : deepHouse ? 41 : 46,
+        thickness: future ? 34 : bassHouse ? 37 : deepHouse ? 35 : melodicHouse ? 36 : amapiano ? 34 : hardHouse ? 25 : 31,
+        waveAmplitude: future ? 12 : bassHouse ? 10 : deepHouse ? 11 : melodicHouse ? 14 : amapiano ? 9 : hardHouse ? 8 : 15,
+        smoothBins: future ? 2 : bassHouse ? 1 : hardHouse || acidHouse ? 1 : amapiano ? 2 : smoothHouse ? 4 : 3,
+        waveSmooth: future ? 11 : bassHouse ? 6 : hardHouse ? 4 : acidHouse ? 5 : amapiano ? 7 : smoothHouse ? 13 : 10,
+        smoothPath: !hardHouse,
         radialSmooth: bassHouse
           ? { window: 2, passes: 2, blend: 0.6 }
-          : { window: smoothHouse ? 4 : 3, passes: 2, blend: future ? 0.78 : smoothHouse ? 0.8 : 0.72 },
+          : hardHouse
+            ? false
+            : { window: smoothHouse ? 4 : amapiano ? 2 : 3, passes: 2, blend: future ? 0.78 : deepHouse ? 0.86 : melodicHouse ? 0.82 : smoothHouse ? 0.76 : 0.72 },
+        sectorBins: hardHouse ? 3 : amapiano ? 4 : acidHouse ? 2 : 0,
+        step: hardHouse ? 0.06 : amapiano ? 0.045 : acidHouse ? 0.04 : 0,
+        facets: discoHouse ? 14 : hardHouse ? 12 : 0,
+        serration: hardHouse ? 2.8 : acidHouse ? 1.15 : 0,
         broadWave: future
           ? { amount: 4.1, lobes: 4, speed: 0.00072 }
           : bassHouse
             ? { amount: 3.6, lobes: 4, speed: 0.00068 }
-          : theme.id === 'tropical-house'
-            ? { amount: 2.3, lobes: 4, speed: 0.00046 }
-            : { amount: 2.2, lobes: 2, speed: 0.0005 },
-        spectralContrast: future ? 0.8 : bassHouse ? 0.86 : theme.id === 'tropical-house' ? 0.68 : 0.66,
-        contrastPower: future ? 1.58 : bassHouse ? 1.62 : theme.id === 'tropical-house' ? 1.4 : 1.38,
-        lobes: future || bassHouse ? 4 : theme.id === 'tropical-house' ? 4 : 0,
-        lobeAmount: future ? 4.4 : bassHouse ? 3.1 : theme.id === 'tropical-house' ? 2.7 : 0,
-        echoes: future || bassHouse ? 1 : 2, echoSpacing: future || bassHouse ? 4 : 3,
-        ribs: bassHouse, ribStride: bassHouse ? 5 : 0,
-        nodes: false, peakBoost: future ? 0.68 : bassHouse ? 0.84 : 0.58, catEarDip: 0.16,
-        contactCompression: future ? 2.7 : bassHouse ? 2.35 : 0,
-        pulseRadius: future ? 7.2 : bassHouse ? 6.4 : 4.5,
-        lowWeight: bassHouse ? 1.22 : 1,
-        highWeight: bassHouse ? 0.86 : 1,
-        innerFollow: future ? 0.7 : bassHouse ? 0.46 : 0.64,
-        material: future ? 'chrome' : bassHouse ? 'bass' : 'liquid'
+            : tropicalHouse
+              ? { amount: 2.8, lobes: 4, speed: 0.00042 }
+              : afroHouse
+                ? { amount: 3.2, lobes: 5, speed: 0.00055 }
+                : amapiano
+                  ? { amount: 3.5, lobes: 3, speed: 0.00072 }
+                  : melodicHouse
+                    ? { amount: 3.3, lobes: 3, speed: 0.00032 }
+                    : deepHouse
+                      ? { amount: 2.5, lobes: 2, speed: 0.00024 }
+                      : frenchHouse
+                        ? { amount: 2.9, lobes: 2, speed: 0.00062 }
+                        : { amount: 2.2, lobes: 2, speed: 0.0005 },
+        spectralContrast: future ? 0.8 : bassHouse ? 0.86 : hardHouse ? 0.88 : amapiano ? 0.76 : tropicalHouse ? 0.66 : deepHouse ? 0.58 : 0.68,
+        contrastPower: future ? 1.58 : bassHouse ? 1.62 : hardHouse ? 1.68 : amapiano ? 1.5 : tropicalHouse ? 1.38 : deepHouse ? 1.28 : 1.42,
+        lobes: future || bassHouse ? 4 : tropicalHouse ? 4 : afroHouse ? 5 : amapiano ? 3 : melodicHouse ? 3 : discoHouse ? 8 : 0,
+        lobeAmount: future ? 4.4 : bassHouse ? 3.1 : tropicalHouse ? 2.8 : afroHouse ? 3.4 : amapiano ? 3.8 : melodicHouse ? 3.2 : discoHouse ? 2.4 : 0,
+        lobePhase: afroHouse ? 0.46 : amapiano ? 0.7 : 0,
+        echoes: future || bassHouse || hardHouse || amapiano ? 1 : deepHouse ? 2 : 2,
+        echoSpacing: future || bassHouse ? 4 : deepHouse ? 4.5 : 3,
+        ribs: bassHouse || afroHouse || amapiano || hardHouse,
+        ribStride: bassHouse ? 5 : afroHouse ? 8 : amapiano ? 6 : hardHouse ? 4 : 0,
+        nodes: discoHouse,
+        peakBoost: future ? 0.68 : bassHouse ? 0.84 : hardHouse ? 0.9 : amapiano ? 0.76 : discoHouse ? 0.66 : deepHouse ? 0.48 : 0.58,
+        catEarDip: 0.16,
+        contactCompression: future ? 2.7 : bassHouse ? 2.35 : hardHouse ? 2.2 : amapiano ? 1.8 : deepHouse ? 0.25 : 0,
+        pulseRadius: future ? 7.2 : bassHouse ? 6.4 : hardHouse ? 6.5 : amapiano ? 5.8 : 4.5,
+        lowWeight: bassHouse ? 1.22 : amapiano ? 1.3 : afroHouse ? 1.12 : deepHouse ? 1.08 : 1,
+        highWeight: bassHouse ? 0.86 : amapiano ? 0.78 : hardHouse ? 0.92 : deepHouse ? 0.86 : 1,
+        innerFollow: future ? 0.7 : bassHouse ? 0.46 : deepHouse ? 0.8 : melodicHouse ? 0.76 : amapiano ? 0.42 : hardHouse ? 0.34 : 0.64,
+        material: future ? 'chrome'
+          : bassHouse ? 'bass'
+            : discoHouse ? 'chrome'
+              : frenchHouse ? 'glass'
+                : hardHouse ? 'facet'
+                  : amapiano ? 'bass'
+                    : deepHouse ? 'glass'
+                      : melodicHouse ? 'plush' : 'liquid'
       };
     }
     else if (mode === 'future-bass' || mode === 'kawaii-bass') {
@@ -2159,45 +2307,116 @@ export class VisualEngine {
     }
     else if (mode === 'dubstep') {
       const umbrellaBass = theme.id === 'bass-music';
-      const melodicBass = ['melodic-dubstep', 'colour-bass'].includes(theme.id);
-      const detailedBass = ['brostep', 'deathstep', 'riddim', 'future-riddim'].includes(theme.id);
+      const classicDubstep = theme.id === 'dubstep';
+      const brostep = theme.id === 'brostep';
+      const deathstep = theme.id === 'deathstep';
+      const riddim = theme.id === 'riddim';
+      const futureRiddim = theme.id === 'future-riddim';
+      const colourBass = theme.id === 'colour-bass';
+      const melodicDubstep = theme.id === 'melodic-dubstep';
+      const moombahcore = theme.id === 'moombahcore';
+      const smoothBass = melodicDubstep || colourBass || futureRiddim;
       options = {
-      ...base, points: umbrellaBass ? 148 : melodicBass ? 156 : detailedBass ? 120 : 108,
-      spectrumBins: umbrellaBass ? 42 : melodicBass ? 54 : detailedBass ? 52 : 48,
-      radius: umbrellaBass ? 62 : melodicBass ? 61 : 62,
-      amplitude: umbrellaBass ? 66 : 69,
-      thickness: umbrellaBass ? 38 : melodicBass ? (theme.id === 'colour-bass' ? 35 : 37) : 24,
-      waveAmplitude: umbrellaBass ? 11 : melodicBass ? 15 : 9,
-      smoothBins: umbrellaBass ? 2 : melodicBass ? (theme.id === 'colour-bass' ? 2 : 3) : 0,
-      waveSmooth: umbrellaBass ? 9 : melodicBass ? 11 : 0,
-      smoothPath: umbrellaBass || melodicBass,
-      radialSmooth: umbrellaBass ? { window: 2, passes: 2, blend: 0.64 } : melodicBass ? {
-        window: 2,
-        passes: 2,
-        blend: theme.id === 'colour-bass' ? 0.68 : 0.66
-      } : false,
-      sectorBins: umbrellaBass || melodicBass ? 0 : theme.id === 'riddim' ? 4 : 2,
-      step: umbrellaBass || melodicBass ? 0 : theme.id === 'riddim' ? 0.085 : 0.05,
-      wobble: umbrellaBass ? 3.4 : melodicBass ? (theme.id === 'colour-bass' ? 1 : 0.85) : 6.5,
-      wobbleRate: umbrellaBass ? 3 : theme.id === 'riddim' ? 4 : 3,
-      broadWave: umbrellaBass ? {
-        amount: 3.4, lobes: 5, speed: 0.00064
-      } : melodicBass ? {
-        amount: theme.id === 'colour-bass' ? 2.8 : 2.6,
-        lobes: theme.id === 'colour-bass' ? 7 : 6,
-        speed: theme.id === 'colour-bass' ? 0.0009 : 0.00072
-      } : false,
-      lobes: melodicBass ? (theme.id === 'colour-bass' ? 8 : 6) : 0,
-      lobeAmount: melodicBass ? (theme.id === 'colour-bass' ? 6.8 : 6.2) : 0,
-      chroma: ['brostep', 'deathstep'].includes(theme.id), ribs: true, ribStride: umbrellaBass ? 5 : 4,
-      peakBoost: umbrellaBass ? 0.72 : melodicBass ? (theme.id === 'colour-bass' ? 0.62 : 0.58) : 1.08,
-      spectralContrast: umbrellaBass ? 0.78 : melodicBass ? (theme.id === 'colour-bass' ? 0.84 : 0.8) : 0.88,
-      contrastPower: umbrellaBass ? 1.48 : melodicBass ? (theme.id === 'colour-bass' ? 1.52 : 1.47) : 1.68,
-      catEarDip: umbrellaBass ? 0.15 : melodicBass ? 0.12 : 0.28,
-      lowWeight: umbrellaBass ? 1.24 : melodicBass ? 1.04 : 1.12,
-      highWeight: umbrellaBass ? 0.84 : melodicBass ? 1 : 0.9,
-      innerFollow: umbrellaBass ? 0.62 : melodicBass ? (theme.id === 'colour-bass' ? 0.68 : 0.72) : 0.31,
-      material: umbrellaBass ? 'bass' : melodicBass ? (theme.id === 'colour-bass' ? 'membrane' : 'plush') : 'glitch'
+        ...base,
+        points: umbrellaBass ? 148
+          : colourBass ? 176
+            : melodicDubstep ? 168
+              : futureRiddim ? 144
+                : moombahcore ? 132
+                  : riddim ? 112
+                    : deathstep ? 108 : 120,
+        spectrumBins: umbrellaBass ? 42
+          : colourBass ? 60
+            : melodicDubstep ? 48
+              : futureRiddim ? 46
+                : riddim ? 34
+                  : deathstep ? 58 : 52,
+        radius: smoothBass ? 64 : 62,
+        amplitude: umbrellaBass ? 66 : melodicDubstep ? 68 : colourBass ? 72 : futureRiddim ? 72 : deathstep ? 74 : 69,
+        thickness: umbrellaBass ? 38
+          : melodicDubstep ? 39
+            : colourBass ? 34
+              : futureRiddim ? 31
+                : deathstep ? 21 : 24,
+        waveAmplitude: umbrellaBass ? 11 : melodicDubstep ? 14 : colourBass ? 17 : futureRiddim ? 12 : 9,
+        smoothBins: umbrellaBass ? 2 : melodicDubstep ? 4 : colourBass ? 2 : futureRiddim ? 2 : 0,
+        waveSmooth: umbrellaBass ? 9 : melodicDubstep ? 13 : colourBass ? 9 : futureRiddim ? 7 : 0,
+        smoothPath: umbrellaBass || smoothBass,
+        radialSmooth: umbrellaBass
+          ? { window: 2, passes: 2, blend: 0.64 }
+          : melodicDubstep
+            ? { window: 3, passes: 2, blend: 0.78 }
+            : colourBass
+              ? { window: 2, passes: 2, blend: 0.62 }
+              : futureRiddim
+                ? { window: 1, passes: 1, blend: 0.38 }
+                : false,
+        sectorBins: umbrellaBass || melodicDubstep || colourBass ? 0 : riddim ? 7 : futureRiddim ? 5 : deathstep ? 2 : 3,
+        step: umbrellaBass || melodicDubstep || colourBass ? 0 : riddim ? 0.1 : futureRiddim ? 0.065 : deathstep ? 0.04 : 0.052,
+        facets: riddim ? 16 : futureRiddim ? 12 : deathstep ? 18 : 0,
+        fracture: deathstep ? 8.8 : brostep ? 3.8 : 0,
+        serration: deathstep ? 5.4 : brostep ? 3.4 : classicDubstep ? 1.2 : 0,
+        wobble: umbrellaBass ? 3.4
+          : colourBass ? 1.2
+            : melodicDubstep ? 0.75
+              : futureRiddim ? 2.5
+                : riddim ? 2.1
+                  : brostep ? 7.8
+                    : deathstep ? 4.8
+                      : moombahcore ? 4.2 : 5.8,
+        wobbleRate: umbrellaBass ? 3 : riddim ? 4 : futureRiddim ? 4 : moombahcore ? 3 : 3,
+        broadWave: umbrellaBass
+          ? { amount: 3.4, lobes: 5, speed: 0.00064 }
+          : colourBass
+            ? { amount: 3.4, lobes: 9, speed: 0.00094 }
+            : melodicDubstep
+              ? { amount: 3, lobes: 5, speed: 0.00048 }
+              : futureRiddim
+                ? { amount: 2.4, lobes: 4, speed: 0.00058 }
+                : moombahcore
+                  ? { amount: 3.6, lobes: 3, speed: 0.00082 }
+                  : false,
+        lobes: colourBass ? 9 : melodicDubstep ? 5 : futureRiddim ? 4 : moombahcore ? 3 : 0,
+        lobeAmount: colourBass ? 7.4 : melodicDubstep ? 5.6 : futureRiddim ? 3.2 : moombahcore ? 2.8 : 0,
+        lobePhase: moombahcore ? 0.55 : 0,
+        chroma: brostep || deathstep || colourBass,
+        ribs: !melodicDubstep && !colourBass,
+        ribStride: umbrellaBass ? 5 : riddim ? 7 : futureRiddim ? 6 : moombahcore ? 6 : 4,
+        peakBoost: umbrellaBass ? 0.72
+          : melodicDubstep ? 0.52
+            : colourBass ? 0.66
+              : riddim ? 0.88
+                : futureRiddim ? 0.72
+                  : deathstep ? 1.18 : 1.08,
+        spectralContrast: umbrellaBass ? 0.78
+          : melodicDubstep ? 0.72
+            : colourBass ? 0.86
+              : riddim ? 0.82
+                : futureRiddim ? 0.8
+                  : deathstep ? 0.94 : 0.88,
+        contrastPower: umbrellaBass ? 1.48
+          : melodicDubstep ? 1.36
+            : colourBass ? 1.54
+              : riddim ? 1.46
+                : futureRiddim ? 1.5
+                  : deathstep ? 1.82 : 1.68,
+        catEarDip: umbrellaBass ? 0.15 : smoothBass ? 0.12 : deathstep ? 0.34 : 0.28,
+        lowWeight: umbrellaBass ? 1.24 : melodicDubstep ? 1.02 : colourBass ? 1.03 : riddim ? 1.2 : 1.12,
+        highWeight: umbrellaBass ? 0.84 : melodicDubstep ? 0.94 : colourBass ? 1.08 : deathstep ? 1.02 : 0.9,
+        innerFollow: umbrellaBass ? 0.62
+          : melodicDubstep ? 0.76
+            : colourBass ? 0.69
+              : futureRiddim ? 0.58
+                : riddim ? 0.22
+                  : deathstep ? 0.18 : 0.31,
+        material: umbrellaBass ? 'bass'
+          : melodicDubstep ? 'plush'
+            : colourBass ? 'glass'
+              : futureRiddim ? 'bubble'
+                : riddim ? 'facet'
+                  : deathstep ? 'razor'
+                    : brostep ? 'glitch'
+                      : moombahcore ? 'bass' : 'steel'
       };
     }
     else if (mode === 'trap') {
@@ -2266,8 +2485,19 @@ export class VisualEngine {
         lowWeight: basslineGarage ? 1.42 : speedGarage ? 1.28 : futureGarage ? 1.05 : 1.2,
         midBoost: twoStepGarage ? 0.12 : futureGarage ? 0.08 : 0.06,
         highWeight: futureGarage ? 0.88 : twoStepGarage ? 1.04 : heavyGarage ? 0.92 : 1,
-        ribs: true,
-        ribStride: futureGarage ? 9 : heavyGarage ? 6 : 7,
+        // The side-to-side shuffle belt is the family signature. Dense radial
+        // ribs made the still silhouette read as a generic shield, so only the
+        // four-floor branches retain a few drive braces.
+        ribs: heavyGarage,
+        ribStride: basslineGarage ? 11 : 9,
+        ridgeDepths: futureGarage
+          ? [0.52]
+          : twoStepGarage
+            ? [0.32, 0.7]
+            : basslineGarage ? [0.2, 0.62] : speedGarage ? [0.28, 0.68] : [0.34, 0.7],
+        ridgeAlphaScale: futureGarage ? 0.48 : twoStepGarage ? 0.68 : heavyGarage ? 0.8 : 0.7,
+        fillAlphaScale: futureGarage ? 0.62 : twoStepGarage ? 0.76 : basslineGarage ? 0.94 : 0.84,
+        edgeWidthScale: futureGarage ? 0.78 : basslineGarage ? 1.15 : speedGarage ? 1.06 : 0.94,
         nodes: false,
         // UKG's identity comes from the sideways shuffled belt below. Extra
         // concentric echoes made it read like Hip-Hop/Phonk with new colors.
@@ -2295,6 +2525,9 @@ export class VisualEngine {
       const liquid = theme.id === 'liquid-dnb';
       const drumstep = theme.id === 'drumstep';
       const neuro = theme.id === 'neurofunk';
+      const dancefloor = theme.id === 'dancefloor-dnb';
+      const jumpUp = theme.id === 'jump-up-dnb';
+      const jungle = theme.id === 'jungle';
       const hyperDetailed = ['neurofunk', 'jump-up-dnb', 'jungle', 'drumstep'].includes(theme.id);
       options = drumstep ? {
       ...base,
@@ -2333,55 +2566,92 @@ export class VisualEngine {
       pulseRadius: 2.4,
       material: 'glitch'
       } : {
-      ...base, points: liquid ? 168 : neuro ? 184 : hyperDetailed ? 176 : 164,
-      spectrumBins: liquid ? 44 : neuro ? 60 : hyperDetailed ? 58 : theme.id === 'dancefloor-dnb' ? 52 : 50,
+      ...base,
+      points: liquid ? 168 : neuro ? 184 : jungle ? 196 : jumpUp ? 152 : dancefloor ? 172 : hyperDetailed ? 176 : 164,
+      spectrumBins: liquid ? 44 : neuro ? 60 : jungle ? 64 : jumpUp ? 46 : dancefloor ? 52 : hyperDetailed ? 58 : 50,
       // Neurofunk uses the same compact vanishing aperture as its DnB and
       // Drumstep relatives, leaving more room for the biomechanical tunnel.
-      radius: liquid ? 61 : neuro ? 53 : 55, amplitude: liquid ? 44 : neuro ? 36 : 39,
-      thickness: liquid ? 25 : neuro ? 17.5 : 20,
-      waveAmplitude: liquid ? 11 : neuro ? 3 : 4, smoothBins: liquid ? 4 : neuro ? 1 : 2,
-      waveSmooth: liquid ? 14 : neuro ? 4 : 7, smoothPath: true,
+      radius: liquid ? 61 : neuro ? 53 : jumpUp ? 57 : jungle ? 54 : 55,
+      amplitude: liquid ? 44 : neuro ? 36 : jumpUp ? 43 : jungle ? 38 : dancefloor ? 40 : 39,
+      thickness: liquid ? 25 : neuro ? 17.5 : jungle ? 15.5 : jumpUp ? 19 : dancefloor ? 22 : 20,
+      waveAmplitude: liquid ? 11 : neuro ? 3 : jungle ? 2.5 : jumpUp ? 4.5 : dancefloor ? 5 : 4,
+      smoothBins: liquid ? 4 : neuro ? 1 : jungle ? 0 : jumpUp ? 1 : 2,
+      waveSmooth: liquid ? 14 : neuro ? 4 : jungle ? 2 : jumpUp ? 4 : dancefloor ? 9 : 7,
+      smoothPath: !jungle,
       radialSmooth: liquid
         ? { window: 4, passes: 2, blend: 0.82 }
         : neuro ? { window: 1, passes: 1, blend: 0.42 }
-          : { window: 2, passes: 2, blend: 0.64 },
-      spectralContrast: liquid ? 0.66 : neuro ? 0.83 : 0.72,
-      contrastPower: liquid ? 1.34 : neuro ? 1.62 : 1.42,
-      highWeight: liquid ? 1.02 : neuro ? 1.24 : 1.2,
-      midBoost: liquid ? 0.07 : neuro ? 0.16 : 0.1, ribs: false,
-      nodes: false, echoes: 1, echoSpacing: liquid ? 4 : neuro ? 4.2 : 5,
-      peakBoost: liquid ? 0.68 : neuro ? 0.9 : 0.76,
+          : jungle ? false
+            : jumpUp ? { window: 1, passes: 1, blend: 0.48 }
+              : dancefloor ? { window: 3, passes: 2, blend: 0.72 }
+                : { window: 2, passes: 2, blend: 0.64 },
+      sectorBins: jungle ? 1 : jumpUp ? 3 : dancefloor ? 4 : 2,
+      step: jungle ? 0.026 : jumpUp ? 0.052 : dancefloor ? 0.02 : 0,
+      spectralContrast: liquid ? 0.66 : neuro ? 0.83 : jungle ? 0.88 : jumpUp ? 0.8 : dancefloor ? 0.7 : 0.72,
+      contrastPower: liquid ? 1.34 : neuro ? 1.62 : jungle ? 1.72 : jumpUp ? 1.58 : dancefloor ? 1.38 : 1.42,
+      lowWeight: liquid ? 1.02 : neuro ? 1.18 : jumpUp ? 1.38 : jungle ? 1.08 : 1.12,
+      highWeight: liquid ? 1.02 : neuro ? 1.24 : jungle ? 1.38 : jumpUp ? 0.98 : dancefloor ? 1.17 : 1.2,
+      midBoost: liquid ? 0.07 : neuro ? 0.16 : jungle ? 0.12 : jumpUp ? 0.08 : dancefloor ? 0.13 : 0.1,
+      ribs: jungle,
+      ribStride: jungle ? 3 : 6,
+      nodes: false, echoes: liquid ? 2 : 1, echoSpacing: liquid ? 4 : neuro ? 4.2 : jungle ? 3.5 : 5,
+      peakBoost: liquid ? 0.68 : neuro ? 0.9 : jungle ? 0.96 : jumpUp ? 0.88 : dancefloor ? 0.82 : 0.76,
       catEarDip: liquid ? 0.06 : neuro ? 0.04 : 0.08,
-      innerFollow: liquid ? 0.72 : neuro ? 0.5 : 0.68,
-      contactCompression: liquid ? 0.7 : neuro ? 2.15 : 1.8,
-      pulseRadius: liquid ? 0.35 : neuro ? -2.8 : -2.2,
-      material: liquid ? 'glass' : 'wire'
+      innerFollow: liquid ? 0.72 : neuro ? 0.5 : jungle ? 0.42 : jumpUp ? 0.48 : dancefloor ? 0.7 : 0.68,
+      contactCompression: liquid ? 0.7 : neuro ? 2.15 : jungle ? 2.35 : jumpUp ? 2.05 : dancefloor ? 1.45 : 1.8,
+      pulseRadius: liquid ? 0.35 : neuro ? -2.8 : jungle ? -3.1 : jumpUp ? -2.3 : dancefloor ? -1.4 : -2.2,
+      material: liquid ? 'glass' : dancefloor ? 'chrome' : jumpUp ? 'bass' : jungle ? 'glitch' : 'wire'
       };
     }
     else if (mode === 'techno') {
-      const hardTechno = ['hard-techno', 'industrial-techno'].includes(theme.id);
-      const softTechno = ['minimal-techno', 'melodic-techno'].includes(theme.id);
+      const hardTechno = theme.id === 'hard-techno';
+      const industrialTechno = theme.id === 'industrial-techno';
+      const acidTechno = theme.id === 'acid-techno';
+      const melodicTechno = theme.id === 'melodic-techno';
+      const minimalTechno = theme.id === 'minimal-techno';
       options = {
-      ...base, points: hardTechno ? 104 : softTechno ? 96 : 88,
-      spectrumBins: hardTechno ? 44 : theme.id === 'acid-techno' ? 40 : softTechno ? 34 : 36,
-      radius: 70, amplitude: hardTechno ? 53 : softTechno ? 44 : 48,
-      thickness: hardTechno ? 18 : softTechno ? 25 : 21, waveAmplitude: softTechno ? 9 : 5,
-      smoothBins: softTechno ? 2 : 0,
-      facets: hardTechno ? 28 : softTechno ? 20 : 24,
-      sectorBins: hardTechno ? 3 : 4, step: hardTechno ? 0.065 : 0.08,
-      ribs: true, ribStride: hardTechno ? 2 : 3,
-      spectralContrast: hardTechno ? 0.82 : softTechno ? 0.62 : 0.74,
-      contrastPower: hardTechno ? 1.7 : softTechno ? 1.42 : 1.62,
-      echoes: 1, peakBoost: hardTechno ? 0.72 : 0.55,
-      catEarDip: 0.22, innerFollow: softTechno ? 0.42 : 0.24, material: 'wire'
+      ...base,
+      points: industrialTechno ? 116 : acidTechno ? 132 : melodicTechno ? 144 : hardTechno ? 104 : minimalTechno ? 80 : 88,
+      spectrumBins: industrialTechno ? 52 : acidTechno ? 48 : hardTechno ? 44 : melodicTechno ? 42 : minimalTechno ? 28 : 36,
+      radius: 70,
+      amplitude: industrialTechno ? 55 : hardTechno ? 53 : acidTechno ? 48 : melodicTechno ? 43 : minimalTechno ? 38 : 48,
+      thickness: industrialTechno ? 15 : hardTechno ? 18 : acidTechno ? 19 : melodicTechno ? 30 : minimalTechno ? 20 : 21,
+      waveAmplitude: acidTechno ? 13 : melodicTechno ? 12 : minimalTechno ? 3.5 : industrialTechno ? 3 : 5,
+      smoothBins: melodicTechno ? 4 : acidTechno ? 2 : minimalTechno ? 5 : industrialTechno ? 0 : hardTechno ? 0 : 1,
+      waveSmooth: melodicTechno ? 15 : acidTechno ? 9 : minimalTechno ? 12 : industrialTechno ? 3 : hardTechno ? 5 : 7,
+      smoothPath: !industrialTechno,
+      radialSmooth: melodicTechno
+        ? { window: 4, passes: 2, blend: 0.82 }
+        : acidTechno ? { window: 2, passes: 2, blend: 0.62 }
+          : minimalTechno ? { window: 5, passes: 2, blend: 0.86 }
+            : industrialTechno ? false
+              : { window: 1, passes: 1, blend: 0.45 },
+      facets: industrialTechno ? 36 : hardTechno ? 28 : minimalTechno ? 12 : acidTechno || melodicTechno ? 0 : 24,
+      sectorBins: industrialTechno ? 2 : hardTechno ? 3 : acidTechno ? 2 : melodicTechno ? 6 : minimalTechno ? 8 : 4,
+      step: industrialTechno ? 0.09 : hardTechno ? 0.065 : minimalTechno ? 0.035 : acidTechno || melodicTechno ? 0 : 0.08,
+      ribs: industrialTechno || hardTechno || (!acidTechno && !melodicTechno && !minimalTechno),
+      ribStride: industrialTechno ? 2 : hardTechno ? 2 : 3,
+      spectralContrast: industrialTechno ? 0.9 : hardTechno ? 0.82 : acidTechno ? 0.76 : melodicTechno ? 0.58 : minimalTechno ? 0.5 : 0.74,
+      contrastPower: industrialTechno ? 1.82 : hardTechno ? 1.7 : acidTechno ? 1.48 : melodicTechno ? 1.28 : minimalTechno ? 1.24 : 1.62,
+      echoes: melodicTechno ? 2 : acidTechno ? 2 : minimalTechno ? 0 : 1,
+      echoSpacing: melodicTechno ? 5.5 : acidTechno ? 3.8 : 5,
+      peakBoost: industrialTechno ? 0.82 : hardTechno ? 0.72 : acidTechno ? 0.66 : melodicTechno ? 0.46 : minimalTechno ? 0.38 : 0.55,
+      catEarDip: minimalTechno ? 0.12 : 0.22,
+      innerFollow: melodicTechno ? 0.64 : acidTechno ? 0.5 : minimalTechno ? 0.48 : industrialTechno ? 0.18 : hardTechno ? 0.24 : 0.3,
+      material: industrialTechno ? 'glitch' : acidTechno ? 'liquid' : melodicTechno ? 'glass' : 'wire'
       };
     }
     else if (mode === 'trance') {
-      const orchestral = ['classical', 'soundtrack'].includes(theme.id);
+      const classicalFamily = theme.family === 'classical';
+      const orchestral = classicalFamily || theme.id === 'soundtrack';
       const synthwave = theme.id === 'synthwave';
       const drivingTrance = ['psytrance', 'tech-trance', 'hard-trance'].includes(theme.id);
       const vortexDirection = 1;
-      const spectrumBins = theme.id === 'classical' ? 28
+      const spectrumBins = theme.id === 'baroque' ? 38
+        : theme.id === 'romantic-classical' ? 30
+          : theme.id === 'opera' ? 32
+            : theme.id === 'modern-classical' ? 42
+              : theme.id === 'classical' ? 28
         : theme.id === 'soundtrack' ? 34
           : synthwave ? 32
           : drivingTrance ? 42
@@ -2413,11 +2683,11 @@ export class VisualEngine {
         : theme.id === 'uplifting-trance' ? 1.46
           : theme.id === 'synthwave' ? 1.5
             : drivingTrance ? 1.46 : theme.id === 'progressive-trance' ? 1.4 : 1.34,
-      echoes: orchestral ? 2 : synthwave ? 1 : 0, echoSpacing: 5, nodes: false, peakBoost: orchestral ? 0.48 : synthwave ? 0.52 : 0.34,
-      ridgeDepths: orchestral ? [0.24, 0.58] : [0.3, 0.66],
+      echoes: classicalFamily ? 0 : orchestral ? 2 : synthwave ? 1 : 0, echoSpacing: 5, nodes: false, peakBoost: orchestral ? 0.48 : synthwave ? 0.52 : 0.34,
+      ridgeDepths: classicalFamily ? [0.5] : orchestral ? [0.24, 0.58] : [0.3, 0.66],
       ridgeAlphaScale: orchestral ? 1 : synthwave ? 0.88 : 0.34,
       ridgeBlurAdd: orchestral ? 0 : synthwave ? 1 : 9,
-      hideInnerEdge: !orchestral && !synthwave,
+      hideInnerEdge: classicalFamily || (!orchestral && !synthwave),
       fillAlphaScale: orchestral ? 1 : synthwave ? 1.4 : 1.12,
       shadowAlphaScale: synthwave ? 1.55 : 1,
       edgeAlphaScale: orchestral ? 1 : synthwave ? 0.96 : 0.38,
@@ -2433,46 +2703,60 @@ export class VisualEngine {
     }
     else if (mode === 'pop' || mode === 'j-pop') {
       const kPop = theme.id === 'k-pop';
+      const cityPop = theme.id === 'city-pop';
+      const anime = theme.id === 'anime';
+      const vocaloid = theme.id === 'vocaloid';
       const jPopBins = theme.id === 'city-pop' ? 28
         : theme.id === 'vocaloid' ? 44
           : theme.id === 'anime' ? 40 : 36;
       const popBins = kPop ? 48 : theme.id === 'dance-pop' ? 38
         : theme.id === 'indie-pop' ? 28 : 30;
-      const smoothPop = ['city-pop', 'indie-pop'].includes(theme.id);
-      const popLobes = theme.id === 'vocaloid' ? 9
-        : theme.id === 'anime' ? 7
-          : theme.id === 'city-pop' ? 4
+      const smoothPop = cityPop || theme.id === 'indie-pop';
+      const popLobes = vocaloid ? 9
+        : anime ? 7
+          : cityPop ? 4
             : mode === 'j-pop' ? 6 : theme.id === 'dance-pop' || theme.id === 'k-pop' ? 6 : 4;
       options = {
-      ...base, points: mode === 'j-pop' ? 168 : kPop ? 176 : 156,
+      ...base, points: cityPop ? 152 : vocaloid ? 184 : anime ? 176 : mode === 'j-pop' ? 168 : kPop ? 176 : 156,
       spectrumBins: mode === 'j-pop' ? jPopBins : popBins,
-      radius: kPop ? 63 : 62, amplitude: mode === 'j-pop' ? 59 : kPop ? 58 : 54,
-      thickness: mode === 'j-pop' ? 34 : kPop ? 30 : 38,
-      waveAmplitude: mode === 'j-pop' ? 17 : kPop ? 14 : 15,
-      smoothBins: smoothPop ? 6 : theme.id === 'vocaloid' || theme.id === 'dance-pop' || kPop ? 3 : mode === 'j-pop' ? 4 : 5,
-      waveSmooth: smoothPop ? 18 : kPop ? 10 : mode === 'j-pop' ? 14 : 15, smoothPath: true,
-      radialSmooth: { window: smoothPop ? 6 : kPop ? 3 : mode === 'j-pop' ? 4 : 5, passes: kPop ? 1 : 2, blend: smoothPop ? 0.88 : kPop ? 0.68 : mode === 'j-pop' ? 0.8 : 0.84 },
-      broadWave: {
-        amount: theme.id === 'vocaloid' ? 2.2 : mode === 'j-pop' ? 2.65 : kPop ? 2.8 : 2.15,
-        lobes: theme.id === 'vocaloid' ? 7 : mode === 'j-pop' ? 5 : kPop ? 5 : 4,
-        speed: mode === 'j-pop' ? 0.00062 : kPop ? 0.0007 : 0.00048
+      radius: kPop ? 63 : 62,
+      amplitude: cityPop ? 52 : anime ? 63 : vocaloid ? 57 : mode === 'j-pop' ? 59 : kPop ? 58 : 54,
+      thickness: cityPop ? 39 : anime ? 31 : vocaloid ? 28 : mode === 'j-pop' ? 34 : kPop ? 30 : 38,
+      waveAmplitude: cityPop ? 13 : anime ? 20 : vocaloid ? 16 : mode === 'j-pop' ? 17 : kPop ? 14 : 15,
+      smoothBins: cityPop ? 7 : vocaloid ? 2 : anime ? 3 : theme.id === 'dance-pop' || kPop ? 3 : mode === 'j-pop' ? 4 : 5,
+      waveSmooth: cityPop ? 20 : vocaloid ? 8 : anime ? 10 : kPop ? 10 : mode === 'j-pop' ? 14 : 15, smoothPath: true,
+      radialSmooth: {
+        window: cityPop ? 7 : vocaloid ? 2 : anime || kPop ? 3 : mode === 'j-pop' ? 4 : 5,
+        passes: vocaloid || anime || kPop ? 1 : 2,
+        blend: cityPop ? 0.9 : vocaloid ? 0.58 : anime ? 0.66 : kPop ? 0.68 : mode === 'j-pop' ? 0.8 : 0.84
       },
-      spectralContrast: theme.id === 'vocaloid' ? 0.72
+      broadWave: {
+        amount: cityPop ? 1.75 : vocaloid ? 2.25 : anime ? 3.05 : mode === 'j-pop' ? 2.65 : kPop ? 2.8 : 2.15,
+        lobes: cityPop ? 4 : vocaloid ? 8 : anime ? 7 : mode === 'j-pop' ? 5 : kPop ? 5 : 4,
+        speed: cityPop ? 0.00032 : vocaloid ? 0.00084 : anime ? 0.00076 : mode === 'j-pop' ? 0.00062 : kPop ? 0.0007 : 0.00048
+      },
+      spectralContrast: vocaloid ? 0.8
+        : anime ? 0.74
+          : cityPop ? 0.46
         : theme.id === 'dance-pop' ? 0.68
           : kPop ? 0.78
             : mode === 'j-pop' ? 0.64 : 0.54,
-      contrastPower: theme.id === 'vocaloid' ? 1.38
+      contrastPower: vocaloid ? 1.52
+        : anime ? 1.42
+          : cityPop ? 1.12
         : theme.id === 'dance-pop' ? 1.34 : kPop ? 1.5
           : mode === 'j-pop' ? 1.28 : 1.18,
       lobes: popLobes,
-      lobeAmount: theme.id === 'vocaloid' ? 3.6
-        : theme.id === 'city-pop' ? 2.8
+      lobeAmount: vocaloid ? 3.45
+        : anime ? 4.45
+          : cityPop ? 2.35
           : mode === 'j-pop' ? 3.8
             : theme.id === 'dance-pop' ? 4.8 : kPop ? 4.2 : 3.1,
       echoes: kPop ? 1 : 0, nodes: false,
-      peakBoost: theme.id === 'vocaloid' ? 0.42 : mode === 'j-pop' ? 0.38 : kPop ? 0.72 : 0.3,
+      peakBoost: vocaloid ? 0.55 : anime ? 0.68 : cityPop ? 0.24 : mode === 'j-pop' ? 0.38 : kPop ? 0.72 : 0.3,
       catEarDip: 0.08,
-      innerFollow: mode === 'j-pop' ? 0.78 : 0.82, material: 'bubble'
+      innerFollow: cityPop ? 0.86 : vocaloid ? 0.7 : anime ? 0.75 : mode === 'j-pop' ? 0.78 : 0.82,
+      material: cityPop ? 'glass' : vocaloid ? 'chrome' : 'bubble'
       };
     }
     else if (mode === 'rock') options = {
@@ -2498,35 +2782,116 @@ export class VisualEngine {
       peakBoost: 1.08, spectralContrast: 0.86, contrastPower: 1.72,
       catEarDip: 0.3, innerFollow: 0.14, material: 'steel'
     };
-    else if (mode === 'hip-hop') {
-      const experimentalHipHop = theme.id === 'experimental-hip-hop';
+    else if (mode === 'ambient') {
+      const pureAmbient = theme.id === 'ambient';
+      const chillout = theme.id === 'chillout';
       options = {
         ...base,
-        points: experimentalHipHop ? 152 : 144,
-        spectrumBins: experimentalHipHop ? 46 : 40,
-        radius: experimentalHipHop ? 65 : 67,
-        amplitude: experimentalHipHop ? 58 : 56,
-        thickness: experimentalHipHop ? 30 : 34,
-        waveAmplitude: experimentalHipHop ? 11 : 14,
-        smoothBins: experimentalHipHop ? 2 : 3,
-        waveSmooth: experimentalHipHop ? 9 : 13,
+        points: pureAmbient ? 192 : chillout ? 176 : 168,
+        spectrumBins: pureAmbient ? 22 : chillout ? 28 : 34,
+        radius: pureAmbient ? 70 : 68,
+        amplitude: pureAmbient ? 31 : chillout ? 38 : 44,
+        thickness: pureAmbient ? 46 : chillout ? 40 : 34,
+        waveAmplitude: pureAmbient ? 24 : chillout ? 19 : 15,
+        smoothBins: pureAmbient ? 8 : chillout ? 6 : 5,
+        waveSmooth: pureAmbient ? 30 : chillout ? 25 : 20,
+        smoothPath: true,
+        radialSmooth: {
+          window: pureAmbient ? 8 : chillout ? 6 : 5,
+          passes: pureAmbient ? 4 : 3,
+          blend: pureAmbient ? 0.94 : chillout ? 0.9 : 0.84
+        },
+        broadWave: {
+          amount: pureAmbient ? 3.4 : chillout ? 2.7 : 2.35,
+          lobes: pureAmbient ? 2 : chillout ? 3 : 2,
+          speed: pureAmbient ? 0.0001 : chillout ? 0.0002 : 0.00027
+        },
+        spectralContrast: pureAmbient ? 0.24 : chillout ? 0.36 : 0.48,
+        contrastPower: pureAmbient ? 1.04 : chillout ? 1.12 : 1.24,
+        lowWeight: pureAmbient ? 0.82 : chillout ? 0.94 : 1.08,
+        highWeight: pureAmbient ? 0.58 : chillout ? 0.7 : 0.76,
+        midBoost: pureAmbient ? 0.08 : 0.05,
+        echoes: pureAmbient ? 3 : chillout ? 2 : 1,
+        echoSpacing: pureAmbient ? 4 : 3,
+        peakBoost: pureAmbient ? 0.12 : chillout ? 0.26 : 0.42,
+        contactCompression: pureAmbient ? 0.15 : chillout ? 0.45 : 0.8,
+        pulseRadius: pureAmbient ? 0.25 : chillout ? 0.7 : 1.2,
+        innerFollow: pureAmbient ? 0.92 : chillout ? 0.88 : 0.82,
+        material: pureAmbient ? 'glass' : chillout ? 'plush' : 'membrane'
+      };
+    }
+    else if (mode === 'experimental') {
+      const glitch = theme.id === 'glitch';
+      options = {
+        ...base,
+        points: glitch ? 136 : 164,
+        spectrumBins: glitch ? 64 : 56,
+        radius: glitch ? 65 : 67,
+        amplitude: glitch ? 57 : 50,
+        thickness: glitch ? 18 : 25,
+        waveAmplitude: glitch ? 7 : 12,
+        smoothBins: glitch ? 0 : 2,
+        waveSmooth: glitch ? 2 : 7,
+        smoothPath: !glitch,
+        radialSmooth: glitch
+          ? { window: 1, passes: 1, blend: 0.34 }
+          : { window: 2, passes: 1, blend: 0.58 },
+        broadWave: { amount: glitch ? 1.2 : 2.1, lobes: glitch ? 7 : 5, speed: glitch ? 0.00077 : 0.00041 },
+        facets: glitch ? 16 : 9,
+        sectorBins: glitch ? 2 : 3,
+        fracture: glitch ? 7.2 : 2.4,
+        serration: glitch ? 3.1 : 0.8,
+        spectralContrast: glitch ? 0.94 : 0.78,
+        contrastPower: glitch ? 1.78 : 1.5,
+        lowWeight: glitch ? 0.92 : 1.04,
+        highWeight: glitch ? 1.22 : 1.08,
+        echoes: glitch ? 0 : 1,
+        peakBoost: glitch ? 1.02 : 0.72,
+        contactCompression: glitch ? 2.2 : 1.25,
+        pulseRadius: glitch ? 2.8 : 1.7,
+        innerFollow: glitch ? 0.24 : 0.52,
+        material: 'glitch'
+      };
+    }
+    else if (mode === 'hip-hop') {
+      const experimentalHipHop = theme.id === 'experimental-hip-hop';
+      const instrumentalHipHop = theme.id === 'instrumental-hip-hop';
+      const lofiHipHop = theme.id === 'lo-fi-hip-hop';
+      options = {
+        ...base,
+        points: experimentalHipHop ? 152 : lofiHipHop ? 168 : 144,
+        spectrumBins: experimentalHipHop ? 46 : lofiHipHop ? 30 : instrumentalHipHop ? 36 : 40,
+        radius: experimentalHipHop ? 65 : lofiHipHop ? 69 : 67,
+        amplitude: experimentalHipHop ? 58 : lofiHipHop ? 44 : instrumentalHipHop ? 51 : 56,
+        thickness: experimentalHipHop ? 30 : lofiHipHop ? 42 : instrumentalHipHop ? 37 : 34,
+        waveAmplitude: experimentalHipHop ? 11 : lofiHipHop ? 19 : instrumentalHipHop ? 16 : 14,
+        smoothBins: experimentalHipHop ? 2 : lofiHipHop ? 6 : instrumentalHipHop ? 4 : 3,
+        waveSmooth: experimentalHipHop ? 9 : lofiHipHop ? 24 : instrumentalHipHop ? 17 : 13,
         smoothPath: true,
         radialSmooth: experimentalHipHop
           ? { window: 2, passes: 1, blend: 0.56 }
-          : { window: 3, passes: 2, blend: 0.72 },
+          : lofiHipHop
+            ? { window: 6, passes: 3, blend: 0.9 }
+            : instrumentalHipHop
+              ? { window: 4, passes: 2, blend: 0.8 }
+              : { window: 3, passes: 2, blend: 0.72 },
         broadWave: experimentalHipHop
           ? { amount: 2.2, lobes: 3, speed: 0.00047 }
-          : { amount: 2.55, lobes: 2, speed: 0.00032 },
-        lowWeight: 1.26, highWeight: experimentalHipHop ? 0.84 : 0.72, midBoost: 0.05,
-        spectralContrast: experimentalHipHop ? 0.76 : 0.64,
-        contrastPower: experimentalHipHop ? 1.5 : 1.36,
+          : lofiHipHop
+            ? { amount: 2.8, lobes: 2, speed: 0.00019 }
+            : { amount: 2.55, lobes: 2, speed: 0.00032 },
+        lowWeight: lofiHipHop ? 1.12 : 1.26,
+        highWeight: experimentalHipHop ? 0.84 : lofiHipHop ? 0.54 : 0.72,
+        midBoost: lofiHipHop ? 0.08 : 0.05,
+        spectralContrast: experimentalHipHop ? 0.76 : lofiHipHop ? 0.38 : instrumentalHipHop ? 0.54 : 0.64,
+        contrastPower: experimentalHipHop ? 1.5 : lofiHipHop ? 1.1 : instrumentalHipHop ? 1.24 : 1.36,
         // Standard Hip-Hop stays broad and low-slung; radial spokes belong to
         // the deliberately fractured Experimental Rap variant only.
         ribs: experimentalHipHop, ribStride: experimentalHipHop ? 5 : 7,
         echoes: 0, peakBoost: experimentalHipHop ? 0.74 : 0.66,
         catEarDip: 0.12, seamWidth: 0.08,
-        innerFollow: experimentalHipHop ? 0.52 : 0.64,
-        material: experimentalHipHop ? 'glitch' : 'bass'
+        innerFollow: experimentalHipHop ? 0.52 : lofiHipHop ? 0.88 : instrumentalHipHop ? 0.74 : 0.64,
+        material: experimentalHipHop ? 'glitch' : lofiHipHop ? 'plush' : instrumentalHipHop ? 'glass' : 'bass'
       };
     }
     else if (mode === 'phonk') {
@@ -2583,39 +2948,72 @@ export class VisualEngine {
     }
     else if (mode === 'rnb') {
       const acoustic = ['singer-songwriter', 'folk'].includes(theme.id);
-      const contemporaryRnb = theme.id === 'rnb';
-      const rnbBins = acoustic ? 28 : theme.id === 'jazz' ? 38 : theme.id === 'reggae' ? 42 : contemporaryRnb ? 34 : 32;
+      const rnbVisualIds = [
+        'rnb', 'contemporary-rnb', 'alternative-rnb', 'neo-soul',
+        'new-jack-swing', 'soul', 'gospel', 'funk', 'blues'
+      ];
+      const rnbFamily = rnbVisualIds.includes(theme.id);
+      const blues = theme.id === 'blues';
+      const contemporaryRnb = ['rnb', 'contemporary-rnb'].includes(theme.id);
+      const alternativeRnb = theme.id === 'alternative-rnb';
+      const neoSoul = theme.id === 'neo-soul';
+      const newJackSwing = theme.id === 'new-jack-swing';
+      const soul = theme.id === 'soul';
+      const gospel = theme.id === 'gospel';
+      const funk = theme.id === 'funk';
+      const jazzFamily = theme.family === 'jazz';
+      const bebop = theme.id === 'bebop';
+      const bossa = theme.id === 'bossa-nova';
+      const fusion = theme.id === 'jazz-fusion';
+      const rnbBins = acoustic ? 28
+        : blues ? 34
+        : bebop ? 46
+          : fusion ? 42
+            : bossa ? 30
+              : jazzFamily ? 38
+                : newJackSwing ? 46
+                  : funk ? 48
+                    : gospel ? 36
+                      : alternativeRnb ? 32
+                        : neoSoul || soul ? 30
+                          : theme.id === 'contemporary-rnb' ? 38
+                            : theme.id === 'reggae' ? 42
+                              : contemporaryRnb ? 34 : 32;
       options = {
       ...base,
-      points: contemporaryRnb ? 168 : 144,
+      points: rnbFamily || jazzFamily ? (newJackSwing || funk ? 156 : 168) : 144,
       spectrumBins: rnbBins,
-      radius: contemporaryRnb ? 68 : 70,
-      amplitude: contemporaryRnb ? 50 : 43,
-      thickness: contemporaryRnb ? 38 : 36,
-      waveAmplitude: contemporaryRnb ? 19 : 23,
-      smoothBins: acoustic ? 6 : theme.id === 'jazz' ? 3 : contemporaryRnb ? 4 : 5,
-      waveSmooth: acoustic ? 22 : contemporaryRnb ? 24 : 20,
+      radius: rnbFamily ? 68 : jazzFamily ? 69 : 70,
+      amplitude: newJackSwing || funk ? 54 : gospel ? 47 : rnbFamily ? 50 : bebop || fusion ? 48 : jazzFamily ? 45 : 43,
+      thickness: newJackSwing ? 30 : funk ? 28 : alternativeRnb ? 32 : rnbFamily ? 38 : jazzFamily ? 34 : 36,
+      waveAmplitude: newJackSwing ? 13 : funk ? 11 : neoSoul ? 21 : rnbFamily ? 19 : bossa ? 17 : jazzFamily ? 22 : 23,
+      smoothBins: acoustic ? 6 : bebop ? 2 : bossa ? 5 : fusion ? 3 : jazzFamily ? 3 : newJackSwing || funk ? 2 : neoSoul || soul ? 6 : rnbFamily ? 4 : 5,
+      waveSmooth: acoustic ? 22 : bossa ? 24 : neoSoul || soul || gospel ? 25 : newJackSwing || funk ? 11 : rnbFamily ? 22 : jazzFamily ? 17 : 20,
       smoothPath: true,
       radialSmooth: {
-        window: acoustic ? 5 : contemporaryRnb ? 5 : 4,
-        passes: contemporaryRnb ? 3 : 2,
-        blend: acoustic ? 0.86 : contemporaryRnb ? 0.84 : 0.82
+        window: acoustic ? 5 : newJackSwing || funk ? 2 : rnbFamily ? 5 : bebop ? 2 : jazzFamily ? 3 : 4,
+        passes: rnbFamily ? (newJackSwing || funk ? 1 : 3) : bossa ? 3 : 2,
+        blend: acoustic ? 0.86 : newJackSwing || funk ? 0.6 : rnbFamily ? 0.84 : jazzFamily ? 0.76 : 0.82
       },
-      broadWave: contemporaryRnb
-        ? { amount: 3.15, lobes: 3, speed: 0.00027 }
-        : { amount: 2.5, lobes: 2, speed: 0.00034 },
-      spectralContrast: contemporaryRnb ? 0.5 : 0.42,
-      contrastPower: contemporaryRnb ? 1.22 : 1.15,
-      lowWeight: contemporaryRnb ? 1.16 : 1,
-      highWeight: contemporaryRnb ? 0.74 : 1,
-      midBoost: contemporaryRnb ? 0.07 : 0,
-      echoes: contemporaryRnb ? 1 : 2,
-      peakBoost: contemporaryRnb ? 0.5 : 0.4,
+      broadWave: rnbFamily
+        ? { amount: neoSoul || soul ? 2.6 : newJackSwing ? 3.25 : funk ? 3.5 : 3.15, lobes: newJackSwing ? 4 : funk ? 3 : 3, speed: newJackSwing ? 0.00062 : funk ? 0.0007 : 0.00027 }
+        : jazzFamily
+          ? { amount: bossa ? 1.7 : 2.35, lobes: theme.id === 'swing-jazz' ? 3 : 2, speed: bossa ? 0.00022 : 0.00042 }
+          : { amount: 2.5, lobes: 2, speed: 0.00034 },
+      spectralContrast: newJackSwing || funk ? 0.72 : alternativeRnb ? 0.58 : rnbFamily ? 0.5 : bebop || fusion ? 0.58 : jazzFamily ? 0.48 : 0.42,
+      contrastPower: newJackSwing || funk ? 1.48 : alternativeRnb ? 1.34 : rnbFamily ? 1.22 : bebop ? 1.34 : jazzFamily ? 1.2 : 1.15,
+      lowWeight: funk ? 1.3 : newJackSwing ? 1.2 : rnbFamily ? 1.16 : bossa ? 0.9 : jazzFamily ? 1.04 : 1,
+      highWeight: gospel ? 1.08 : newJackSwing ? 0.92 : rnbFamily ? 0.76 : bebop || fusion ? 1.12 : jazzFamily ? 0.98 : 1,
+      midBoost: gospel ? 0.12 : rnbFamily ? 0.07 : jazzFamily ? 0.06 : 0,
+      echoes: rnbFamily ? 0 : jazzFamily ? 1 : 2,
+      ridgeDepths: rnbFamily ? [] : undefined,
+      peakBoost: newJackSwing || funk ? 0.7 : gospel ? 0.56 : rnbFamily ? 0.5 : bebop ? 0.62 : fusion ? 0.58 : jazzFamily ? 0.46 : 0.4,
       catEarDip: 0.08,
-      contactCompression: contemporaryRnb ? 1.25 : 0,
-      pulseRadius: contemporaryRnb ? 1.9 : 0,
-      innerFollow: contemporaryRnb ? 0.86 : 0.8,
-      material: 'glass'
+      contactCompression: newJackSwing || funk ? 1.8 : rnbFamily ? 1.25 : 0,
+      pulseRadius: newJackSwing ? 3.1 : funk ? 2.5 : rnbFamily ? 1.9 : 0,
+      hideInnerEdge: rnbFamily,
+      innerFollow: newJackSwing || funk ? 0.66 : rnbFamily ? 0.86 : jazzFamily ? 0.72 : 0.8,
+      material: newJackSwing ? 'chrome' : funk ? 'bass' : gospel ? 'plush' : 'glass'
       };
     }
     const topGap = genreTopFrequencyGap(theme);
@@ -2793,8 +3191,25 @@ export class VisualEngine {
     // rhythmic transient (hats, claps and bright arpeggio attacks included).
     const pulse = clamp(metrics.kickPulse || 0);
     const psychedelic = theme.id === 'psytrance';
+    const uplifting = theme.id === 'uplifting-trance';
     const progressive = theme.id === 'progressive-trance';
-    const vortexBrightnessScale = psychedelic ? 0.8 : 1;
+    const techTrance = theme.id === 'tech-trance';
+    const hardTrance = theme.id === 'hard-trance';
+    const vortexBrightnessScale = psychedelic ? 0.8
+      : uplifting ? 1.08
+        : progressive ? 0.9
+          : techTrance ? 0.94
+            : hardTrance ? 1.02 : 1;
+    const armWidthScale = psychedelic ? 0.86
+      : uplifting ? 1.22
+        : progressive ? 0.9
+          : techTrance ? 0.68
+            : hardTrance ? 1.2 : 1;
+    const dustFlowScale = psychedelic ? 1.16
+      : uplifting ? 0.92
+        : progressive ? 0.74
+          : techTrance ? 1.18
+            : hardTrance ? 1.28 : 1;
     const direction = 1;
     // Trance motion has two deliberately separate time scales. A sustained,
     // multiband section envelope drives the vortex; kickPulse below only flashes
@@ -2816,8 +3231,8 @@ export class VisualEngine {
     );
     const deltaMs = this.tranceLastAt ? clamp(time - this.tranceLastAt, 4, 36) : 16.667;
     this.tranceLastAt = time;
-    const attackMs = psychedelic ? 300 : progressive ? 560 : 380;
-    const releaseMs = psychedelic ? 780 : progressive ? 1450 : 1100;
+    const attackMs = psychedelic ? 300 : uplifting ? 430 : progressive ? 560 : techTrance ? 330 : hardTrance ? 285 : 380;
+    const releaseMs = psychedelic ? 780 : uplifting ? 1250 : progressive ? 1450 : techTrance ? 930 : hardTrance ? 760 : 1100;
     const responseMs = rawEnergy > this.tranceEnergy ? attackMs : releaseMs;
     const response = 1 - Math.exp(-deltaMs / responseMs);
     this.tranceEnergy += (rawEnergy - this.tranceEnergy) * response;
@@ -2831,8 +3246,8 @@ export class VisualEngine {
     // only, so the vortex does not jerk forward on every detected beat.
     const impactDrive = Math.pow(pulse, 0.72);
     const particleImpactLift = Math.pow(impactDrive, 0.68);
-    const flowSpeed = (psychedelic ? 0.00006 : progressive ? 0.000032 : 0.000042)
-      + Math.pow(sectionDrive, 1.55) * (psychedelic ? 0.00062 : progressive ? 0.00048 : 0.00055);
+    const flowSpeed = (psychedelic ? 0.00006 : uplifting ? 0.000036 : progressive ? 0.000032 : techTrance ? 0.000052 : hardTrance ? 0.000058 : 0.000042)
+      + Math.pow(sectionDrive, 1.55) * (psychedelic ? 0.00062 : uplifting ? 0.0005 : progressive ? 0.00048 : techTrance ? 0.00064 : hardTrance ? 0.00071 : 0.00055);
     // Keep an unbounded phase. Wrapping a phase and then scaling it by a
     // non-integer caused a visible jump at the loop boundary.
     this.tranceFlowPhase += deltaMs * flowSpeed;
@@ -2840,8 +3255,8 @@ export class VisualEngine {
     // Keep quiet sections drifting at the previous speed, then open a wider
     // nonlinear range at high energy so a climax visibly winds up the vortex.
     const rotationSurge = Math.pow(sectionDrive, 1.72);
-    const armRotationSpeed = (psychedelic ? 0.000034 : progressive ? 0.000017 : 0.000022)
-      + rotationSurge * (psychedelic ? 0.00076 : progressive ? 0.00058 : 0.00067);
+    const armRotationSpeed = (psychedelic ? 0.000034 : uplifting ? 0.000018 : progressive ? 0.000017 : techTrance ? 0.000027 : hardTrance ? 0.000031 : 0.000022)
+      + rotationSurge * (psychedelic ? 0.00076 : uplifting ? 0.00059 : progressive ? 0.00058 : techTrance ? 0.00072 : hardTrance ? 0.00078 : 0.00067);
     this.tranceArmPhase += deltaMs * armRotationSpeed;
 
     const wavePoints = spectrum?.outer || [];
@@ -2858,10 +3273,10 @@ export class VisualEngine {
     const horizon = 50;
     // A few density-wave families, each split into many short filaments, read
     // as a galaxy. Too many complete families overlap into either a fan or ring.
-    // Eight interlaced families yield four broad main arms in ordinary Trance;
-    // Psytrance keeps twelve families and the same four-arm backbone with more
-    // fine tributaries between them.
-    const armCount = psychedelic ? 12 : 8;
+    // Family count and arm body are the primary subtype cues: Uplifting opens
+    // into fewer broad streams, Tech Trance uses more narrow tributaries, and
+    // Psytrance retains the densest field. None changes the vortex direction.
+    const armCount = psychedelic ? 12 : uplifting ? 6 : techTrance ? 10 : 8;
     const armPhaseOffsets = Array.from({ length: armCount }, (_, index) => {
       const base = index / armCount;
       return (base + Math.sin(index * 2.17 + (psychedelic ? 0.7 : 0.2)) * 0.018 + 1) % 1;
@@ -2876,7 +3291,7 @@ export class VisualEngine {
     );
     const armBrightnessScale = vortexBrightnessScale;
     const armRotation = direction * this.tranceArmPhase;
-    const armCurl = progressive ? 3.25 : 3.65;
+    const armCurl = uplifting ? 3.36 : progressive ? 3.25 : techTrance ? 3.88 : hardTrance ? 3.5 : 3.65;
     const armColors = [theme.accent, theme.accent2, theme.hot];
 
     // The artwork is the dark aperture. One restrained glow behind the live
@@ -2917,9 +3332,9 @@ export class VisualEngine {
     };
 
     const laneProfiles = [
-      { offset: -1.15, width: 8.2, span: 0.84, blur: 2.2, alpha: 0.78, color: 'primary', phase: 0 },
-      { offset: 0, width: 5.2, span: 0.76, blur: 1.4, alpha: 0.7, color: 'hot', phase: 0.075 },
-      { offset: 1.1, width: 3.5, span: 0.68, blur: 0.9, alpha: 0.6, color: 'secondary', phase: 0.155 }
+      { offset: -1.15, width: 8.2 * armWidthScale, span: 0.84, blur: 2.2, alpha: 0.78, color: 'primary', phase: 0 },
+      { offset: 0, width: 5.2 * armWidthScale, span: 0.76, blur: 1.4, alpha: 0.7, color: 'hot', phase: 0.075 },
+      { offset: 1.1, width: 3.5 * armWidthScale, span: 0.68, blur: 0.9, alpha: 0.6, color: 'secondary', phase: 0.155 }
     ];
     const profileColor = (profile, armIndex) => {
       if (profile.color === 'hot') {
@@ -3072,7 +3487,7 @@ export class VisualEngine {
           traceCachedBand(
             armIndex,
             laneOffset,
-            (psychedelic ? 7.2 : 8.4) * armWeight * (laneIndex === 1 ? 0.7 : 1)
+            (psychedelic ? 7.2 : 8.4) * armWidthScale * armWeight * (laneIndex === 1 ? 0.7 : 1)
           );
           const fill = cacheCtx.createRadialGradient(0, 0, 24, 0, 0, 134);
           fill.addColorStop(0, rgba(color, 0.025));
@@ -3090,7 +3505,8 @@ export class VisualEngine {
 
         // Several incomplete hairline streams imply rotation without outlining
         // an entire sector. Their different start/end points break fan symmetry.
-        for (let filament = 0; filament < 4; filament += 1) {
+        const filamentCount = psychedelic ? 5 : techTrance ? 7 : hardTrance ? 4 : uplifting ? 3 : 4;
+        for (let filament = 0; filament < filamentCount; filament += 1) {
           const seed = armIndex * 41.13 + filament * 17.91;
           const from = 0.08 + randomAt(seed) * 0.26;
           const to = Math.min(0.98, from + 0.34 + randomAt(seed + 2.3) * 0.4);
@@ -3110,7 +3526,8 @@ export class VisualEngine {
           stroke.addColorStop(1, rgba(color, 0));
           cacheCtx.filter = 'none';
           cacheCtx.strokeStyle = stroke;
-          cacheCtx.lineWidth = 0.55 + randomAt(seed + 8.2) * 1.15;
+          cacheCtx.lineWidth = (0.55 + randomAt(seed + 8.2) * 1.15)
+            * (techTrance ? 0.72 : uplifting ? 1.18 : hardTrance ? 1.08 : 1);
           cacheCtx.shadowColor = color;
           cacheCtx.shadowBlur = 3.4;
           cacheCtx.globalAlpha = 0.24 + randomAt(seed + 10.4) * 0.2;
@@ -3119,7 +3536,7 @@ export class VisualEngine {
 
         // The visible arm is primarily a density wave of irregular points, as
         // in procedural galaxy renderers, rather than one continuous surface.
-        const grainCount = psychedelic ? 47 : 40;
+        const grainCount = psychedelic ? 47 : uplifting ? 46 : progressive ? 32 : techTrance ? 35 : hardTrance ? 42 : 40;
         for (let grain = 0; grain < grainCount; grain += 1) {
           const seed = armIndex * 97.17 + grain * 19.73;
           // Stratify both distance and lane placement, then add restrained
@@ -3234,6 +3651,78 @@ export class VisualEngine {
     ctx.fill();
     ctx.restore();
 
+    // Subgenre accents grow from the live spiral field. Uplifting carries long
+    // luminous crests, while Tech and Hard Trance use short mechanical gates
+    // and compression teeth attached directly to their arm streamlines.
+    if (uplifting) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.lineCap = 'round';
+      for (let armIndex = 0; armIndex < armCount; armIndex += 2) {
+        const crest = ctx.createRadialGradient(0, 0, horizon - 2, 0, 0, 112);
+        crest.addColorStop(0, rgba(theme.hot, 0.22 + sectionDrive * 0.08));
+        crest.addColorStop(0.55, rgba(theme.accent, 0.18 + sectionDrive * 0.07));
+        crest.addColorStop(1, rgba(theme.accent2, 0));
+        ctx.strokeStyle = crest;
+        ctx.lineWidth = 2.2 + sectionDrive * 0.8;
+        ctx.shadowColor = theme.accent;
+        ctx.shadowBlur = 11 + sectionDrive * 5;
+        ctx.globalAlpha = 0.5;
+        traceArmLine(armIndex, -0.35, 0.18, 0.88, 34);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    if (techTrance || hardTrance) {
+      const drawArmGate = (armIndex, travel, halfLength, color, alpha) => {
+        const point = armPointAt(armIndex, travel, 0);
+        const before = armPointAt(armIndex, Math.max(0, travel - 0.012), 0);
+        const after = armPointAt(armIndex, Math.min(1, travel + 0.012), 0);
+        const px = Math.cos(point.angle) * point.radius;
+        const py = Math.sin(point.angle) * point.radius;
+        const bx = Math.cos(before.angle) * before.radius;
+        const by = Math.sin(before.angle) * before.radius;
+        const ax = Math.cos(after.angle) * after.radius;
+        const ay = Math.sin(after.angle) * after.radius;
+        const tangentLength = Math.max(0.001, Math.hypot(ax - bx, ay - by));
+        const nx = -(ay - by) / tangentLength;
+        const ny = (ax - bx) / tangentLength;
+        ctx.strokeStyle = rgba(color, alpha);
+        ctx.lineWidth = techTrance ? 1.02 : 1.28;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = color;
+        ctx.shadowBlur = techTrance ? 5 : 8;
+        ctx.beginPath();
+        ctx.moveTo(px - nx * halfLength, py - ny * halfLength);
+        ctx.lineTo(px + nx * halfLength, py + ny * halfLength);
+        ctx.stroke();
+      };
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      for (let armIndex = 0; armIndex < armCount; armIndex += 1) {
+        if (techTrance) {
+          const travel = 0.3 + (armIndex % 3) * 0.15;
+          drawArmGate(
+            armIndex,
+            travel,
+            4.1 + (armIndex % 2) * 0.9,
+            armIndex % 2 ? theme.accent2 : theme.accent,
+            0.24 + metrics.high * 0.15 + pulse * 0.1
+          );
+        } else {
+          drawArmGate(
+            armIndex,
+            0.2 + (armIndex % 2) * 0.045,
+            4.5 + pulse * 2.1,
+            armIndex % 2 ? theme.hot : theme.accent,
+            0.27 + sectionDrive * 0.12 + pulse * 0.2
+          );
+        }
+      }
+      ctx.restore();
+    }
+
     // Each arm is a family of broad and fine streams with different offsets,
     // widths and phases. Their overlapping tapers look like fluid strands and
     // ensure no single filled wedge can read as a propeller blade.
@@ -3321,14 +3810,23 @@ export class VisualEngine {
     const vortexDrive = clamp(sectionDrive);
     const targetDust = psychedelic
       ? 34 + Math.round(Math.pow(vortexDrive, 1.42) * 166)
-      : 28 + Math.round(Math.pow(vortexDrive, 1.42) * 148);
+      : uplifting ? 32 + Math.round(Math.pow(vortexDrive, 1.42) * 156)
+        : progressive ? 22 + Math.round(Math.pow(vortexDrive, 1.42) * 112)
+          : techTrance ? 24 + Math.round(Math.pow(vortexDrive, 1.42) * 130)
+            : hardTrance ? 30 + Math.round(Math.pow(vortexDrive, 1.42) * 160)
+              : 28 + Math.round(Math.pow(vortexDrive, 1.42) * 148);
+    const dustScatter = psychedelic ? 0.32
+      : uplifting ? 0.3
+        : progressive ? 0.24
+          : techTrance ? 0.18
+            : hardTrance ? 0.22 : 0.26;
     while (this.tranceDust.length < targetDust) {
       const armIndex = Math.floor(Math.random() * armCount);
       this.tranceDust.push({
         progress: Math.random(),
         armIndex,
         laneOffset: Math.random() * 2 - 1,
-        angularScatter: (Math.random() * 2 - 1) * (psychedelic ? 0.32 : 0.26),
+        angularScatter: (Math.random() * 2 - 1) * dustScatter,
         radialScatter: (Math.random() * 2 - 1) * 11,
         depth: Math.random(),
         speed: 0.72 + Math.random() * 0.72,
@@ -3359,12 +3857,12 @@ export class VisualEngine {
     for (const dust of this.tranceDust) {
       const acceleration = 0.72 + dust.progress * dust.progress * 3.2;
       dust.progress += deltaMs * (0.000026 + Math.pow(sectionDrive, 1.68) * 0.00062)
-        * dust.speed * acceleration;
+        * dust.speed * acceleration * dustFlowScale;
       if (dust.progress >= 1) {
         dust.progress %= 1;
         dust.armIndex = Math.floor(Math.random() * armCount);
         dust.laneOffset = Math.random() * 2 - 1;
-        dust.angularScatter = (Math.random() * 2 - 1) * (psychedelic ? 0.32 : 0.26);
+        dust.angularScatter = (Math.random() * 2 - 1) * dustScatter;
         dust.radialScatter = (Math.random() * 2 - 1) * 11;
         dust.colorIndex = dust.armIndex;
         dust.depth = Math.random();
@@ -3833,10 +4331,16 @@ export class VisualEngine {
     ctx.save();
     ctx.translate(x, y);
     const integratedTranceFx = mode === 'trance'
-      && !['classical', 'soundtrack', 'synthwave'].includes(theme.id);
-    const integratedRnbFx = mode === 'rnb' && theme.id === 'rnb';
+      && theme.family !== 'classical'
+      && !['soundtrack', 'synthwave'].includes(theme.id);
+    const integratedRnbFx = mode === 'rnb' && [
+      'rnb', 'contemporary-rnb', 'alternative-rnb', 'neo-soul',
+      'new-jack-swing', 'soul', 'gospel', 'funk', 'blues'
+    ].includes(theme.id);
+    const integratedAmbientFx = mode === 'ambient';
+    const integratedExperimentalFx = mode === 'experimental';
     const integratedHipHopFx = mode === 'hip-hop'
-      && ['hip-hop', 'experimental-hip-hop'].includes(theme.id);
+      && ['hip-hop', 'experimental-hip-hop', 'instrumental-hip-hop', 'lo-fi-hip-hop'].includes(theme.id);
     const integratedPhonkFx = mode === 'phonk';
     const integratedEdmTrapFx = mode === 'trap'
       && ['trap-edm', 'festival-trap', 'hybrid-trap', 'hard-trap'].includes(theme.id);
@@ -3873,6 +4377,8 @@ export class VisualEngine {
     // with a spectrum-derived pressure chamber so it does not fight the shell.
     if (!['bilibili', 'hardcore', 'hardstyle', 'trance', 'garage', 'latin'].includes(mode)
       && !integratedRnbFx
+      && !integratedAmbientFx
+      && !integratedExperimentalFx
       && !integratedHipHopFx
       && !integratedPhonkFx
       && !integratedEdmTrapFx) {
@@ -3994,17 +4500,24 @@ export class VisualEngine {
       const hardcore = family === 'hardcore';
       const gentle = hardcore && ['happy-hardcore', 'uk-hardcore'].includes(theme.id);
       const puzzy = hardcore && theme.id === 'puzzycore';
+      const uptempo = hardcore && theme.id === 'uptempo-hardcore';
+      const gabber = hardcore && theme.id === 'gabber';
+      const frenchcore = hardcore && theme.id === 'frenchcore';
+      const industrial = hardcore && theme.id === 'industrial-hardcore';
       const raw = !hardcore && theme.id === 'rawstyle';
       const euphoric = !hardcore && theme.id === 'euphoric-hardstyle';
       const count = hardcore
-        ? gentle ? 8 : puzzy ? 12 : theme.id === 'uptempo-hardcore' ? 16 : 14
-        : raw ? 8 : 6;
+        ? gentle ? 8 : puzzy ? 12 : uptempo ? 16 : frenchcore ? 12 : industrial ? 10 : 14
+        : raw ? 8 : euphoric ? 5 : 6;
       const rotationSpeed = hardcore
         ? theme.id === 'happy-hardcore' ? -0.000026
           : gentle ? 0.00003
             : puzzy ? -0.00009
-              : theme.id === 'uptempo-hardcore' ? 0.000075 : 0.00006
-        : raw ? -0.000036 : -0.00003;
+              : uptempo ? 0.000075
+                : frenchcore ? 0.000082
+                  : industrial ? 0.000028
+                    : gabber ? 0.000046 : 0.00006
+        : raw ? -0.000036 : euphoric ? -0.000018 : -0.00003;
       const rotation = time * rotationSpeed + (hardcore ? 0 : Math.PI / count);
       // The arrow rail mirrors the same contact-compression/release motion as
       // the spectrum and chamber, while remaining a fixed-radius overlay that
@@ -4028,8 +4541,8 @@ export class VisualEngine {
           ? arrowIndex % 3 ? theme.accent : theme.accent2
           : arrowIndex % 2 ? theme.accent2 : theme.accent;
         if (hardcore) {
-          const length = (gentle ? 3 : puzzy ? 4.5 : 6)
-            + release * (gentle ? 9 : puzzy ? 23 : 19)
+          const length = (gentle ? 3 : puzzy ? 4.5 : industrial ? 7 : gabber ? 6.5 : frenchcore ? 5 : 6)
+            + release * (gentle ? 9 : puzzy ? 23 : industrial ? 14 : gabber ? 16 : frenchcore ? 17 : 19)
             + contact * (gentle ? 1.2 : 2.6)
             + (arrowIndex % 3 === 0 ? metrics.high * (gentle ? 5 : puzzy ? 10 : 7) : 0)
             + (!gentle && arrowIndex % 2 === 0 ? metrics.bass * 4 : 0);
@@ -4044,9 +4557,11 @@ export class VisualEngine {
             ctx.moveTo(Math.cos(angle) * railRadius, Math.sin(angle) * railRadius);
             ctx.lineTo(Math.cos(angle) * (railRadius + length), Math.sin(angle) * (railRadius + length));
           } else {
-            const halfBase = (puzzy ? 0.017 : 0.026) + release * (puzzy ? 0.01 : 0.014);
+            const halfBase = (puzzy ? 0.017 : industrial ? 0.04 : gabber ? 0.034 : frenchcore ? 0.022 : 0.026)
+              + release * (puzzy ? 0.01 : industrial ? 0.009 : gabber ? 0.011 : 0.014);
             const lean = (arrowIndex % 2 ? 1 : -1)
-              * ((puzzy ? 0.02 : 0.012) + release * (puzzy ? 0.03 : 0.022));
+              * ((puzzy ? 0.02 : industrial ? 0.006 : gabber ? 0.009 : frenchcore ? 0.018 : 0.012)
+                + release * (puzzy ? 0.03 : industrial ? 0.012 : gabber ? 0.016 : 0.022));
             const inner = railRadius - 1.5 - release * 0.65;
             const tip = railRadius + length;
             ctx.moveTo(Math.cos(angle - halfBase) * inner, Math.sin(angle - halfBase) * inner);
@@ -4055,11 +4570,16 @@ export class VisualEngine {
           }
           ctx.stroke();
         } else {
-          const wing = 0.055 + metrics.high * 0.025;
+          const wing = (raw ? 0.05 : euphoric ? 0.075 : 0.055) + metrics.high * (euphoric ? 0.015 : 0.025);
           const inner = railRadius - 1;
-          const tip = railRadius + 7 + release * 14 + contact * 2.1
+          const tip = railRadius + (euphoric ? 5 : 7) + release * (raw ? 16 : euphoric ? 10 : 14) + contact * 2.1
             + (arrowIndex % 2 ? 0 : metrics.bass * 6);
-          signatureStroke(color, 0.88 + release * 0.84 + contact * 0.18, 8, 0.14 + release * 0.22 + contact * 0.05);
+          signatureStroke(
+            color,
+            (euphoric ? 1.08 : 0.88) + release * (euphoric ? 0.62 : 0.84) + contact * 0.18,
+            euphoric ? 11 : 8,
+            (euphoric ? 0.17 : 0.14) + release * (euphoric ? 0.18 : 0.22) + contact * 0.05
+          );
           ctx.beginPath();
           ctx.moveTo(Math.cos(angle - wing) * inner, Math.sin(angle - wing) * inner);
           ctx.lineTo(Math.cos(angle) * tip, Math.sin(angle) * tip);
@@ -4433,6 +4953,14 @@ export class VisualEngine {
       const future = theme.id === 'future-house';
       const progressive = theme.id === 'progressive-house';
       const techHouse = theme.id === 'tech-house';
+      const deepHouse = theme.id === 'deep-house';
+      const melodicHouse = theme.id === 'melodic-house';
+      const tropicalHouse = theme.id === 'tropical-house';
+      const afroHouse = theme.id === 'afro-house';
+      const amapiano = theme.id === 'amapiano';
+      const frenchHouse = theme.id === 'french-house';
+      const discoHouse = theme.id === 'disco-house';
+      const hardHouse = theme.id === 'hard-house';
       const progressiveLayers = progressive ? this.progressiveHouseLayers : [0, 0, 0];
       const progressiveLift = progressive
         ? progressiveLayers.reduce((sum, value) => sum + value, 0) / progressiveLayers.length
@@ -5008,6 +5536,143 @@ export class VisualEngine {
           span: 0.4, reach: 10, width: 1.25, offset: -11, floor: 0.16, wobble: 3.8
         });
       }
+      if (deepHouse) {
+        const lowContour = spectrumShell({ scale: 0.86, detail: 0.28, offset: 1.5, smoothing: 8 });
+        const drift = ((time * 0.000018) % 1 + 1) % 1;
+        for (const [index, center] of [drift, (drift + 0.5) % 1].entries()) {
+          signatureStroke(
+            index ? theme.accent2 : theme.accent,
+            0.72 + metrics.bass * 0.48,
+            12 + metrics.bass * 8,
+            0.08 + metrics.bass * 0.13 + pulse * 0.035
+          );
+          strokeContourSegment(lowContour, center, 0.34);
+        }
+      } else if (melodicHouse) {
+        const phrase = time * 0.000055;
+        for (let voice = 0; voice < 3; voice += 1) {
+          const contour = spectrumShell({
+            scale: 0.82 + voice * 0.065,
+            detail: 0.22 + voice * 0.12,
+            offset: 1 + voice * 1.4,
+            smoothing: 8 - voice
+          });
+          const center = (phrase + voice * 0.31) % 1;
+          signatureStroke(
+            [theme.accent2, theme.hot, theme.accent][voice],
+            0.58 + metrics.mid * 0.44 + voice * 0.08,
+            9 + metrics.mid * 7,
+            0.06 + metrics.mid * 0.095 + pulse * 0.025
+          );
+          strokeContourSegment(contour, center, 0.34 + voice * 0.025);
+        }
+      } else if (tropicalHouse) {
+        const breezeContour = spectrumShell({ scale: 0.91, detail: 0.36, offset: 2.5, smoothing: 7 });
+        const breeze = ((time * 0.000032) % 1 + 1) % 1;
+        for (let current = 0; current < 3; current += 1) {
+          signatureStroke(
+            current === 1 ? theme.hot : current ? theme.accent2 : theme.accent,
+            0.62 + metrics.mid * 0.38,
+            10 + metrics.mid * 7,
+            0.065 + metrics.mid * 0.1 + pulse * 0.025
+          );
+          strokeContourSegment(breezeContour, (breeze + current / 3) % 1, 0.24);
+        }
+      } else if (afroHouse) {
+        const percussionDrive = clamp(metrics.mid * 0.38 + metrics.high * 0.25 + metrics.flux * 0.32 + pulse * 0.2);
+        const patternOffset = time / Math.max(260, beatPeriod) * 0.11;
+        for (let strike = 0; strike < 9; strike += 1) {
+          const uneven = strike / 9 * TAU + Math.sin(strike * 2.4) * 0.08 + patternOffset;
+          const point = localSpectrumPointAtAngle(uneven);
+          const pointRadius = Math.max(1, Math.hypot(point.x, point.y));
+          const radialX = point.x / pointRadius;
+          const radialY = point.y / pointRadius;
+          const hand = 0.5 + 0.5 * Math.sin(strike * 2.1 - time * 0.0042);
+          signatureStroke(
+            strike % 3 ? theme.accent : theme.accent2,
+            0.66 + hand * 0.72 + percussionDrive * 0.32,
+            7 + hand * 9,
+            0.065 + hand * 0.14 + percussionDrive * 0.08
+          );
+          ctx.beginPath();
+          ctx.moveTo(point.x - radialX * (7 + hand * 2), point.y - radialY * (7 + hand * 2));
+          ctx.lineTo(point.x + radialX * (2 + hand * 5), point.y + radialY * (2 + hand * 5));
+          ctx.stroke();
+        }
+      } else if (amapiano) {
+        const logDrive = clamp(metrics.bass * 0.54 + metrics.lowMid * 0.28 + (metrics.bassPulse || 0) * 0.62);
+        const shuffle = time / Math.max(280, beatPeriod) * 0.72;
+        for (let log = 0; log < 6; log += 1) {
+          const ratio = log / 5;
+          const angle = 0.12 * Math.PI + ratio * 0.76 * Math.PI;
+          const point = localSpectrumPointAtAngle(angle);
+          const pointRadius = Math.max(1, Math.hypot(point.x, point.y));
+          const radialX = point.x / pointRadius;
+          const radialY = point.y / pointRadius;
+          const roll = Math.max(0, Math.sin(shuffle - log * 1.18)) ** 2.1;
+          const length = 5 + logDrive * 7 + roll * 8;
+          signatureStroke(
+            log % 2 ? theme.accent2 : theme.accent,
+            1.15 + logDrive * 0.75 + roll * 0.55,
+            10 + logDrive * 10 + roll * 5,
+            0.11 + logDrive * 0.15 + roll * 0.15
+          );
+          ctx.beginPath();
+          ctx.moveTo(point.x - radialX * (length * 0.7), point.y - radialY * (length * 0.7));
+          ctx.lineTo(point.x + radialX * (length * 0.3), point.y + radialY * (length * 0.3));
+          ctx.stroke();
+        }
+      } else if (frenchHouse) {
+        const sweep = ((time * 0.000085) % 1 + 1) % 1;
+        for (let band = 0; band < 2; band += 1) {
+          const contour = spectrumShell({ scale: 0.84 + band * 0.1, detail: 0.34 + band * 0.18, offset: band * 2, smoothing: 6 });
+          signatureStroke(
+            band ? theme.hot : theme.accent,
+            0.78 + metrics.mid * 0.68,
+            11 + metrics.mid * 10,
+            0.08 + metrics.mid * 0.15 + pulse * 0.04
+          );
+          strokeContourSegment(contour, (sweep + band * 0.46) % 1, 0.31);
+        }
+      } else if (discoHouse) {
+        const mirrorContour = spectrumShell({ scale: 0.94, detail: 0.52, offset: 1.5, smoothing: 4 });
+        for (let mirror = 0; mirror < 8; mirror += 1) {
+          const index = Math.round(mirror / 8 * mirrorContour.length) % Math.max(1, mirrorContour.length);
+          const point = mirrorContour[index];
+          if (!point) continue;
+          const sparkle = 0.5 + 0.5 * Math.sin(time * 0.004 + mirror * 1.7);
+          ctx.fillStyle = rgba(mirror % 2 ? theme.hot : theme.accent, 0.12 + sparkle * 0.25 + pulse * 0.08);
+          ctx.shadowColor = mirror % 2 ? theme.hot : theme.accent2;
+          ctx.shadowBlur = 7 + sparkle * 10;
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, 0.8 + sparkle * 1.35, 0, TAU);
+          ctx.fill();
+        }
+      } else if (hardHouse) {
+        const strikePhase = time / Math.max(240, beatPeriod) * 2;
+        for (let strike = 0; strike < 8; strike += 1) {
+          const angle = strike / 8 * TAU;
+          const point = localSpectrumPointAtAngle(angle);
+          const pointRadius = Math.max(1, Math.hypot(point.x, point.y));
+          const radialX = point.x / pointRadius;
+          const radialY = point.y / pointRadius;
+          const active = Math.max(0, Math.cos(strikePhase * Math.PI - strike * Math.PI / 2)) ** 2.4;
+          signatureStroke(
+            strike % 2 ? theme.accent2 : theme.accent,
+            0.82 + active * 1.1 + pulse * 0.42,
+            7 + active * 10,
+            0.08 + active * 0.22 + pulse * 0.1
+          );
+          ctx.beginPath();
+          ctx.moveTo(point.x - radialX * 10, point.y - radialY * 10);
+          ctx.lineTo(point.x + radialX * (3 + active * 7), point.y + radialY * (3 + active * 7));
+          ctx.stroke();
+        }
+      } else if (acid) {
+        const acidContour = spectrumShell({ scale: 0.9, detail: 0.68, offset: 1.5, smoothing: 3 });
+        signatureStroke(theme.accent, 0.92 + metrics.mid * 0.68, 12, 0.1 + metrics.mid * 0.18 + pulse * 0.06);
+        strokeContourSegment(acidContour, ((time * 0.00012) % 1 + 1) % 1, 0.28);
+      }
       if (electro) {
         const electroRiff = ['electro-house', 'complextro'].includes(theme.id);
         if (electroRiff) {
@@ -5420,8 +6085,140 @@ export class VisualEngine {
           ctx.fill();
         }
       }
+    } else if (mode === 'ambient') {
+      const pureAmbient = theme.id === 'ambient';
+      const chillout = theme.id === 'chillout';
+      const air = clamp(metrics.volume * 0.3 + metrics.mid * 0.38 + metrics.high * 0.16);
+      const warmth = clamp(metrics.bass * 0.38 + metrics.lowMid * 0.42 + pulse * 0.08);
+      const outerField = spectrumShell({
+        scale: pureAmbient ? 1.015 : 1,
+        detail: pureAmbient ? 0.22 : chillout ? 0.34 : 0.46,
+        offset: 2 + air * (pureAmbient ? 2.2 : 3.8),
+        smoothing: pureAmbient ? 10 : chillout ? 8 : 6
+      });
+      if (outerField.length) {
+        if (pureAmbient) {
+          // Ambient is a continuous space rather than a beat diagram. Three
+          // slowly separating pressure contours respond to long-term tone.
+          for (let layer = 0; layer < 3; layer += 1) {
+            const drift = Math.sin(time * 0.00012 + layer * 1.9) * (0.8 + layer * 0.45);
+            const field = outerField.map((point) => {
+              const angle = Math.atan2(point.y, point.x);
+              const sourceRadius = Math.hypot(point.x, point.y);
+              const breathe = Math.sin(angle * 2 - time * 0.00016 + layer * 1.3)
+                * (1.2 + air * 2.8);
+              const layerRadius = sourceRadius * (0.78 + layer * 0.105) + breathe;
+              return {
+                x: Math.cos(angle) * layerRadius + drift,
+                y: Math.sin(angle) * layerRadius - drift * 0.35
+              };
+            });
+            signatureStroke(
+              layer === 1 ? theme.accent2 : layer === 2 ? theme.hot : theme.accent,
+              0.7 + air * 0.42,
+              13 + layer * 4,
+              0.065 + air * 0.09 + layer * 0.018
+            );
+            this.tracePoints(field, true, true);
+            ctx.stroke();
+          }
+        } else if (chillout) {
+          // Chillout uses three long, open horizon-like phrases. The gaps keep
+          // it airier than Downtempo's explicit loop and beat pockets.
+          const breeze = Math.sin(time * 0.00024) * 0.08;
+          [
+            { center: -2.3, span: 1.12, color: theme.accent2 },
+            { center: -0.15, span: 0.86, color: theme.hot },
+            { center: 1.75, span: 1.04, color: theme.accent }
+          ].forEach((phrase, index) => {
+            signatureStroke(
+              phrase.color,
+              0.82 + air * 0.52,
+              11 + air * 9,
+              0.09 + air * 0.14
+            );
+            strokeAngularContour(outerField, phrase.center + breeze * (index - 1), phrase.span);
+          });
+        } else {
+          // Downtempo keeps a recognisable slow beat loop, with unequal spaces
+          // and warm low-frequency emphasis rather than a club four-on-floor.
+          const pattern = [1, 0.26, 0.58, 0.2, 0.78, 0.32, 0.52, 0.18];
+          const travel = (time / Math.max(3200, beatPeriod * 8)) % 1;
+          const active = Math.floor(travel * pattern.length) % pattern.length;
+          pattern.forEach((weight, step) => {
+            const center = (step + 0.5) / pattern.length;
+            const isActive = step === active ? 1 : 0;
+            signatureStroke(
+              step % 3 === 0 ? theme.accent : step % 2 ? theme.accent2 : theme.hot,
+              0.72 + warmth * 0.55 + isActive * 0.42,
+              8 + isActive * 7,
+              0.07 + weight * warmth * 0.12 + isActive * 0.13
+            );
+            strokeContourSegment(outerField, center, 0.072 + weight * 0.018);
+          });
+        }
+      }
+    } else if (mode === 'experimental') {
+      const glitch = theme.id === 'glitch';
+      const detail = clamp(metrics.mid * 0.34 + metrics.high * 0.34 + metrics.bodyFlux * 0.8 + metrics.presenceFlux * 0.55);
+      const outerCode = spectrumContour({
+        scale: 1,
+        offset: 1 + detail * 1.8,
+        lobes: glitch ? 7 : 5,
+        waveAmount: glitch ? 0.8 : 1.4
+      });
+      if (outerCode.length) {
+        if (glitch) {
+          // Glitch exposes discontinuity itself: a few live-contour packets
+          // briefly lose registration, without turning the whole card into a
+          // flashing RGB fault effect.
+          const packets = [0.03, 0.14, 0.31, 0.47, 0.7, 0.86];
+          const activePacket = Math.floor(time / 190) % packets.length;
+          packets.forEach((center, index) => {
+            const active = index === activePacket ? 1 : 0;
+            const shift = active * (1.5 + detail * 2.2) * (index % 2 ? -1 : 1);
+            const shifted = outerCode.map((point) => ({ x: point.x + shift, y: point.y - shift * 0.32 }));
+            const color = index % 3 === 0 ? theme.hot : index % 2 ? theme.accent2 : theme.accent;
+            signatureStroke(color, 0.72 + detail * 0.72 + active * 0.55, 6 + active * 5, 0.1 + detail * 0.15 + active * 0.14);
+            strokeContourSegment(shifted, center, 0.045 + (index % 2) * 0.018);
+            if (active) {
+              const point = shifted[Math.floor(center * shifted.length) % shifted.length];
+              ctx.fillStyle = rgba(color, 0.12 + detail * 0.16);
+              ctx.shadowColor = color;
+              ctx.shadowBlur = 7;
+              ctx.fillRect(point.x - 3.5, point.y - 1.1, 7 + detail * 5, 2.2);
+            }
+          });
+        } else {
+          // IDM's structure is coherent but deliberately non-repeating: two
+          // coprime step groups cross the same live contour at different rates.
+          const groups = [5, 7];
+          groups.forEach((steps, group) => {
+            const phase = (time / (group ? 4100 : 3300)) % 1;
+            for (let step = 0; step < steps; step += 1) {
+              const center = (step / steps + phase * (group ? -0.19 : 0.16) + 1) % 1;
+              const accent = Math.max(0, Math.sin((phase - step / steps) * TAU));
+              signatureStroke(
+                group ? theme.accent2 : step % 2 ? theme.hot : theme.accent,
+                0.62 + detail * 0.5 + accent * 0.34,
+                7 + accent * 6,
+                0.075 + detail * 0.11 + accent * 0.08
+              );
+              strokeContourSegment(outerCode, center, group ? 0.038 : 0.052);
+            }
+          });
+        }
+      }
     } else if (mode === 'rnb') {
       if (integratedRnbFx) {
+        const blues = theme.id === 'blues';
+        const contemporaryRnb = ['rnb', 'contemporary-rnb'].includes(theme.id);
+        const alternativeRnb = theme.id === 'alternative-rnb';
+        const neoSoul = theme.id === 'neo-soul';
+        const newJackSwing = theme.id === 'new-jack-swing';
+        const soul = theme.id === 'soul';
+        const gospel = theme.id === 'gospel';
+        const funk = theme.id === 'funk';
         const bassDrive = clamp(
           metrics.bass * 0.47
             + metrics.lowMid * 0.29
@@ -5437,17 +6234,21 @@ export class VisualEngine {
             + vocalDrive * 0.2
             + pulse * 0.42
         );
-        const flowPhase = time * (0.00048 + bassDrive * 0.0002);
-        const sway = Math.sin(time * 0.00027) * 0.035;
+        const flowPhase = time * (
+          (newJackSwing ? 0.00082 : funk ? 0.00094 : neoSoul ? 0.00032 : 0.00048)
+            + bassDrive * (funk ? 0.00032 : 0.0002)
+        );
+        const sway = Math.sin(time * (neoSoul || soul ? 0.0002 : 0.00027))
+          * (alternativeRnb ? 0.055 : neoSoul ? 0.045 : 0.035);
         const outerBase = spectrumShell({
           scale: 0.985,
-          detail: 0.56,
-          offset: 2 + bassDrive * 3.4 + vocalDrive * 1.2,
-          smoothing: 5
+          detail: newJackSwing || funk ? 0.72 : alternativeRnb ? 0.48 : neoSoul || soul ? 0.38 : 0.56,
+          offset: 2 + bassDrive * (funk ? 4.8 : 3.4) + vocalDrive * (gospel ? 2 : 1.2),
+          smoothing: newJackSwing || funk ? 3 : neoSoul || soul || gospel ? 7 : 5
         });
         const innerBase = spectrumShell({
-          scale: 0.73,
-          detail: 0.2,
+          scale: newJackSwing || funk ? 0.76 : 0.73,
+          detail: newJackSwing || funk ? 0.28 : 0.2,
           offset: 1 - pulse * 0.55,
           smoothing: 9
         });
@@ -5458,15 +6259,16 @@ export class VisualEngine {
           const bottomWeight = 0.3 + smoothstep(-0.2, 0.96, Math.sin(angle)) * 0.7;
           const vocalLift = Math.pow(Math.max(0, -Math.sin(angle)), 1.65)
             * vocalDrive * (inner ? 0.65 : 2.7);
-          const syncopatedFlow = Math.sin(angle * 3 - flowPhase * 2.25 + voiceOffset)
-            * (0.3 + bassDrive * (inner ? 0.92 : 2.8))
+          const grooveLobes = newJackSwing ? 4 : funk ? 5 : 3;
+          const syncopatedFlow = Math.sin(angle * grooveLobes - flowPhase * (funk ? 3.1 : 2.25) + voiceOffset)
+            * (0.3 + bassDrive * (inner ? 0.92 : funk ? 3.8 : 2.8))
             * bottomWeight;
           const harmonicFlow = Math.sin(angle * 2 + flowPhase * 1.15 + voiceOffset * 1.7)
             * (0.2 + vocalDrive * (inner ? 0.52 : 1.28));
           const shapedRadius = sourceRadius + vocalLift + syncopatedFlow + harmonicFlow;
           const shapedAngle = angle + sway + Math.sin(angle - flowPhase + index * 0.002) * grooveDrive * 0.006;
           const rawX = Math.cos(shapedAngle) * shapedRadius * (1.018 + vocalDrive * 0.008);
-          const rawY = Math.sin(shapedAngle) * shapedRadius * 0.89;
+          const rawY = Math.sin(shapedAngle) * shapedRadius * (gospel ? 0.94 : alternativeRnb ? 0.84 : 0.89);
           const lateralGlide = Math.sin(angle * 2 - flowPhase * 1.35 + voiceOffset * 0.9)
             * vocalDrive * (inner ? 0.42 : 1.45);
           return { x: rawX + lateralGlide, y: rawY };
@@ -5475,19 +6277,10 @@ export class VisualEngine {
         const outer = outerBase.map((point, index) => shapeVelvetPoint(point, index, false));
         const inner = innerBase.map((point, index) => shapeVelvetPoint(point, index, true));
         if (outer.length && inner.length) {
-          const velvetFill = ctx.createLinearGradient(-radius, -radius * 0.45, radius, radius * 0.55);
-          velvetFill.addColorStop(0, rgba(theme.accent, 0.025 + vocalDrive * 0.055));
-          velvetFill.addColorStop(0.48, rgba(theme.hot, 0.018 + grooveDrive * 0.04));
-          velvetFill.addColorStop(1, rgba(theme.accent2, 0.028 + bassDrive * 0.065));
-          this.traceBand(outer, [...inner].reverse(), true);
-          ctx.fillStyle = velvetFill;
-          ctx.shadowColor = theme.accent;
-          ctx.shadowBlur = 10 + vocalDrive * 10;
-          ctx.fill('evenodd');
-
-          // Closely laminated harmony voices stay inside the live waveform
-          // band. Their slow phase differences read as expressive phrasing,
-          // not as three detached decorative rings.
+          // Harmony guides stay inside the live waveform band and feed the
+          // genre-specific phrase accents below. They are not painted as full
+          // loops: the base spectrum membrane alone defines the silhouette,
+          // while these paths only position the short subtype accents.
           const voices = [
             { depth: 0.3, color: theme.accent, phase: 0 },
             { depth: 0.54, color: theme.hot, phase: 1.8 },
@@ -5505,36 +6298,219 @@ export class VisualEngine {
             return { x: Math.cos(angle) * voiceRadius, y: Math.sin(angle) * voiceRadius };
           }));
 
-          voiceContours.forEach((contour, index) => {
-            const voice = voices[index];
-            signatureStroke(
-              voice.color,
-              0.46 + vocalDrive * 0.34 + (index === 1 ? grooveDrive * 0.18 : 0),
-              7 + vocalDrive * 7,
-              0.07 + vocalDrive * 0.095 + bassDrive * 0.045
-            );
-            this.tracePoints(contour, true, true);
-            ctx.stroke();
-          });
-
           // A pair of short highlights glides on the off-beat around the same
           // band. Pulse changes their presence rather than shaking the whole
           // structure, preserving R&B's laid-back pocket.
-          const grooveTravel = ((time / Math.max(2200, beatPeriod * 7.5)) + 0.08) % 1;
-          const grooveAccent = 0.24 + grooveDrive * 0.4 + pulse * 0.18;
-          [grooveTravel, (grooveTravel + 0.5) % 1].forEach((center, index) => {
-            signatureStroke(
-              index ? theme.accent2 : theme.hot,
-              1.05 + grooveDrive * 0.72,
-              12 + grooveDrive * 11,
-              grooveAccent
-            );
-            strokeContourSegment(voiceContours[index ? 2 : 1], center, 0.15 + bassDrive * 0.03);
-          });
+          if (blues) {
+            // Twelve uneven phrases travel around the same live contour. The
+            // repeated four-bar grouping suggests a blues form without adding
+            // a detached staff, equalizer, or decorative instrument drawing.
+            const barPosition = (time / Math.max(1850, beatPeriod * 5.5)) % 12;
+            for (let bar = 0; bar < 12; bar += 1) {
+              const distance = Math.min(Math.abs(barPosition - bar), 12 - Math.abs(barPosition - bar));
+              const active = Math.exp(-distance * distance * 2.6);
+              const center = (0.57 + bar / 12 * 0.72) % 1;
+              const turnaround = bar >= 8;
+              signatureStroke(
+                turnaround ? theme.accent2 : bar % 4 === 0 ? theme.hot : theme.accent,
+                0.72 + active * 0.7,
+                9 + active * 8,
+                0.075 + vocalDrive * 0.09 + active * 0.12
+              );
+              strokeContourSegment(voiceContours[bar % voiceContours.length], center, 0.055 + (bar % 3) * 0.012);
+            }
+          } else if (contemporaryRnb) {
+            const grooveTravel = ((time / Math.max(2200, beatPeriod * 7.5)) + 0.08) % 1;
+            const grooveAccent = 0.24 + grooveDrive * 0.4 + pulse * 0.18;
+            [grooveTravel, (grooveTravel + 0.5) % 1].forEach((center, index) => {
+              signatureStroke(
+                index ? theme.accent2 : theme.hot,
+                1.05 + grooveDrive * 0.72,
+                12 + grooveDrive * 11,
+                grooveAccent
+              );
+              strokeContourSegment(voiceContours[index ? 2 : 1], center, 0.15 + bassDrive * 0.03);
+            });
+          } else if (alternativeRnb) {
+            // Sparse, unequal fragments leave deliberate negative space around
+            // the vocal contour instead of resolving into a polished loop.
+            for (let fragment = 0; fragment < 5; fragment += 1) {
+              const center = ((time * (0.000024 + fragment * 0.000003) + fragment * 0.193) % 1 + 1) % 1;
+              signatureStroke(fragment % 2 ? theme.accent2 : theme.hot, 0.62 + vocalDrive * 0.5, 10, 0.065 + vocalDrive * 0.11);
+              strokeContourSegment(voiceContours[fragment % voiceContours.length], center, 0.07 + (fragment % 3) * 0.025);
+            }
+          } else if (neoSoul) {
+            // Long phrases arrive just behind the pulse, giving Neo Soul a
+            // relaxed pocket while remaining tied to the live spectrum.
+            const laidBack = ((time / Math.max(2600, beatPeriod * 9) - 0.045) % 1 + 1) % 1;
+            [0, 0.34, 0.68].forEach((offset, index) => {
+              signatureStroke(index === 1 ? theme.hot : index ? theme.accent2 : theme.accent, 0.7 + grooveDrive * 0.48, 11, 0.075 + grooveDrive * 0.12);
+              strokeContourSegment(voiceContours[index], (laidBack + offset) % 1, 0.22 - index * 0.025);
+            });
+          } else if (newJackSwing) {
+            // Eight gated steps combine drum-machine precision with a swung
+            // vocal pocket. Every gate bridges the two live harmony contours.
+            const stepPosition = (time / beatPeriod * 2) % 8;
+            for (let step = 0; step < 8; step += 1) {
+              const distance = Math.min(Math.abs(stepPosition - step), 8 - Math.abs(stepPosition - step));
+              const active = Math.exp(-distance * distance * 3.4);
+              const index = Math.round(step / 8 * outer.length) % outer.length;
+              const outerPoint = outer[index];
+              const innerPoint = inner[index];
+              signatureStroke(step % 2 ? theme.accent2 : theme.hot, 0.8 + active * 0.9, 7 + active * 10, 0.08 + active * 0.22 + grooveDrive * 0.07);
+              ctx.beginPath();
+              ctx.moveTo(innerPoint.x, innerPoint.y);
+              ctx.lineTo(outerPoint.x * (1 + active * 0.055), outerPoint.y * (1 + active * 0.055));
+              ctx.stroke();
+            }
+          } else if (soul) {
+            // Call and response alternates two broad phrases across the live
+            // band, leaving the centre open for the lead vocal.
+            const call = ((time / Math.max(2800, beatPeriod * 8)) % 1 + 1) % 1;
+            [call, (1 - call + 0.5) % 1].forEach((center, index) => {
+              signatureStroke(index ? theme.accent2 : theme.hot, 0.92 + vocalDrive * 0.64, 14, 0.1 + vocalDrive * 0.15);
+              strokeContourSegment(voiceContours[index ? 2 : 0], center, 0.27);
+            });
+          } else if (gospel) {
+            // Choir voices rise in a fan from the lower ensemble, brightening
+            // with midrange energy rather than behaving like kick rays.
+            for (let voice = 0; voice < 7; voice += 1) {
+              const ratio = 0.16 + voice / 6 * 0.68;
+              const index = Math.floor(ratio * outer.length) % outer.length;
+              const point = outer[index];
+              const lift = 5 + voice % 2 * 4 + vocalDrive * 10;
+              signatureStroke(voice % 2 ? theme.accent2 : theme.hot, 0.64 + vocalDrive * 0.52, 12, 0.07 + vocalDrive * 0.13);
+              ctx.beginPath();
+              ctx.moveTo(point.x * 0.78, point.y * 0.78);
+              ctx.quadraticCurveTo(point.x * 0.92, point.y - lift, point.x, point.y - lift * 0.45);
+              ctx.stroke();
+            }
+          } else if (funk) {
+            // Short syncopated chops land around the contour with one heavier
+            // downbeat, echoing bass slaps and clipped guitar on the one.
+            const stepPosition = (time / beatPeriod * 4) % 12;
+            for (let chop = 0; chop < 12; chop += 1) {
+              const distance = Math.min(Math.abs(stepPosition - chop), 12 - Math.abs(stepPosition - chop));
+              const active = Math.exp(-distance * distance * 4.2);
+              const index = Math.round(chop / 12 * outer.length) % outer.length;
+              const outerPoint = outer[index];
+              const innerPoint = inner[index];
+              const downbeat = chop % 4 === 0;
+              signatureStroke(downbeat ? theme.hot : chop % 2 ? theme.accent2 : theme.accent, 0.72 + active * 0.82 + (downbeat ? bassDrive * 0.4 : 0), 7 + active * 9, 0.07 + active * 0.2 + (downbeat ? bassDrive * 0.09 : 0));
+              ctx.beginPath();
+              ctx.moveTo(innerPoint.x, innerPoint.y);
+              ctx.lineTo(outerPoint.x * (1 + active * (downbeat ? 0.07 : 0.035)), outerPoint.y * (1 + active * (downbeat ? 0.07 : 0.035)));
+              ctx.stroke();
+            }
+          }
 
-          signatureStroke(theme.hot, 1.05 + vocalDrive * 0.52, 13, 0.13 + vocalDrive * 0.18);
-          this.tracePoints(outer, true, true);
+          // drawSpectrumVolume already owns the one complete live outline.
+          // Keeping a second closed contour here made every R&B-family visual
+          // read as two offset circles; the subtype phrases above now carry
+          // the groove language without duplicating that silhouette.
+        }
+      } else if (theme.family === 'jazz') {
+        const bebop = theme.id === 'bebop';
+        const swing = theme.id === 'swing-jazz';
+        const bossa = theme.id === 'bossa-nova';
+        const fusion = theme.id === 'jazz-fusion';
+        const improvDrive = clamp(metrics.mid * 0.42 + metrics.high * 0.25 + metrics.volume * 0.18 + pulse * 0.28);
+        const phraseContour = spectrumShell({
+          scale: 0.91,
+          detail: bebop ? 0.7 : fusion ? 0.58 : bossa ? 0.3 : 0.48,
+          offset: 4 + improvDrive * (bebop ? 5 : 3),
+          smoothing: bebop ? 2 : bossa ? 8 : 5
+        });
+        const phraseCount = bebop ? 7 : fusion ? 5 : swing ? 4 : bossa ? 3 : 4;
+        const phraseRate = bebop ? 0.00012 : fusion ? 0.000075 : swing ? 0.000055 : bossa ? 0.000028 : 0.000045;
+        const phraseSpan = bebop ? 0.08 : fusion ? 0.14 : swing ? 0.18 : bossa ? 0.23 : 0.17;
+        const colors = [theme.accent, theme.hot, theme.accent2];
+
+        // Improvised phrases travel over the live spectrum contour. Their
+        // unequal entries and lengths keep Jazz conversational, not looped.
+        for (let phrase = 0; phrase < phraseCount; phrase += 1) {
+          const stagger = phrase * (bebop ? 0.137 : 0.219);
+          const rubato = Math.sin(time * (0.00019 + phrase * 0.000011) + phrase * 1.73)
+            * (bebop ? 0.024 : bossa ? 0.012 : 0.018);
+          const center = ((time * phraseRate + stagger + rubato) % 1 + 1) % 1;
+          const span = phraseSpan * (0.72 + ((phrase * 7) % 5) * 0.09) + improvDrive * 0.018;
+          signatureStroke(
+            colors[phrase % colors.length],
+            0.7 + improvDrive * (bebop || fusion ? 0.78 : 0.52),
+            9 + improvDrive * 10,
+            0.075 + improvDrive * 0.13 + (phrase % 3 === 1 ? pulse * 0.055 : 0)
+          );
+          strokeContourSegment(phraseContour, center, span);
+        }
+
+        const pointAt = (ratio) => {
+          if (!phraseContour.length) return { x: 0, y: 0 };
+          const wrapped = ((ratio % 1) + 1) % 1;
+          return phraseContour[Math.floor(wrapped * phraseContour.length) % phraseContour.length];
+        };
+
+        if (bebop) {
+          // Short angled answers punctuate the rapidly changing horn line.
+          for (let note = 0; note < 8; note += 1) {
+            const ratio = time * 0.000095 + note * 0.119 + (note % 3) * 0.027;
+            const point = pointAt(ratio);
+            const angle = Math.atan2(point.y, point.x);
+            ctx.save();
+            ctx.translate(point.x, point.y);
+            ctx.rotate(angle + Math.PI / 2 + (note % 2 ? 0.34 : -0.22));
+            signatureStroke(note % 2 ? theme.accent2 : theme.hot, 0.8 + improvDrive * 0.68, 8, 0.08 + improvDrive * 0.12);
+            ctx.beginPath();
+            ctx.moveTo(-2.5, 0);
+            ctx.lineTo(2.5 + improvDrive * 3, 0);
+            ctx.stroke();
+            ctx.restore();
+          }
+        } else if (swing) {
+          // A weighted lower arc rocks in triplet-like groups while the live
+          // phrases above it remain free to answer off the beat.
+          const pendulum = Math.sin(time * 0.00125) * 0.12;
+          for (let beat = 0; beat < 6; beat += 1) {
+            const angle = Math.PI * (0.18 + beat * 0.128) + pendulum;
+            const inner = radius + 5 + (beat % 3 === 1 ? 3 : 0);
+            const outer = inner + 7 + (beat % 3 === 0 ? 5 : 0) + pulse * 3;
+            signatureStroke(beat % 3 === 1 ? theme.hot : theme.accent2, 0.75 + improvDrive * 0.45, 9, 0.08 + improvDrive * 0.1);
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner * 0.78);
+            ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer * 0.78);
+            ctx.stroke();
+          }
+        } else if (bossa) {
+          // Quiet guitar strings sit on the lower half of the spectrum and
+          // lean gently with the syncopated midrange instead of kick-pumping.
+          ctx.save();
+          ctx.rotate(-0.08 + Math.sin(time * 0.00024) * 0.025);
+          for (let string = 0; string < 6; string += 1) {
+            const y = radius * 0.35 + string * 6.2;
+            const half = Math.sqrt(Math.max(0, (radius + 18) ** 2 - y ** 2)) * 0.92;
+            signatureStroke(string % 2 ? theme.accent2 : theme.hot, 0.48 + metrics.mid * 0.42, 7, 0.055 + metrics.mid * 0.075);
+            ctx.beginPath();
+            ctx.moveTo(-half, y + Math.sin(time * 0.0011 + string) * 0.7);
+            ctx.quadraticCurveTo(0, y - metrics.mid * (2 + string * 0.2), half, y);
+            ctx.stroke();
+          }
+          ctx.restore();
+        } else if (fusion) {
+          // Electric instruments connect distant phrases into one harmonic
+          // circuit; the nodes remain samples of the same live contour.
+          const ratios = [0.05, 0.23, 0.41, 0.62, 0.82].map((offset) => offset + time * 0.000026);
+          const points = ratios.map(pointAt);
+          signatureStroke(theme.accent2, 0.8 + improvDrive * 0.7, 12, 0.09 + improvDrive * 0.14);
+          ctx.beginPath();
+          points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
           ctx.stroke();
+          points.forEach((point, index) => {
+            ctx.fillStyle = rgba(index % 2 ? theme.hot : theme.accent, 0.16 + improvDrive * 0.28);
+            ctx.shadowColor = index % 2 ? theme.hot : theme.accent;
+            ctx.shadowBlur = 8 + improvDrive * 8;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 1.2 + improvDrive * 1.4, 0, TAU);
+            ctx.fill();
+          });
         }
       } else {
         ctx.rotate(Math.sin(time * 0.00032) * 0.035);
@@ -5551,8 +6527,15 @@ export class VisualEngine {
       }
     } else if (mode === 'dubstep') {
       const umbrellaBass = theme.id === 'bass-music';
-      const riddimLike = ['riddim', 'future-riddim'].includes(theme.id);
-      const melodicBass = ['melodic-dubstep', 'colour-bass'].includes(theme.id);
+      const riddim = theme.id === 'riddim';
+      const futureRiddim = theme.id === 'future-riddim';
+      const colourBass = theme.id === 'colour-bass';
+      const melodicDubstep = theme.id === 'melodic-dubstep';
+      const brostep = theme.id === 'brostep';
+      const deathstep = theme.id === 'deathstep';
+      const moombahcore = theme.id === 'moombahcore';
+      const riddimLike = riddim || futureRiddim;
+      const melodicBass = melodicDubstep || colourBass;
       const wobbleDrive = clamp(metrics.bass * 0.52 + metrics.lowMid * 0.24 + (metrics.bassPulse || 0) * 0.68);
       if (umbrellaBass) {
         // Bass Music is an umbrella rather than a disguised Dubstep preset.
@@ -5616,30 +6599,44 @@ export class VisualEngine {
         const cadence = clamp(0.48 + hitEnvelope * 0.34 + twistEnvelope * 0.36 - pauseEnvelope * 0.18, 0.28, 1);
         ctx.save();
         ctx.globalAlpha *= cadence;
-        drawBasslineRail(riddimLike
-          ? { steps: 8, rate: 0.0046, phaseStep: 1.55, gatePower: 2.7, span: 0.31, reach: 16, width: 1.55, offset: -13, floor: 0.08, wobble: 5.2, reverse: true }
-          : melodicBass
-            ? { steps: 8, rate: 0.0028, phaseStep: 0.78, gatePower: 1.25, span: 0.54, reach: 12, width: 1.45, offset: -12, floor: 0.26, wobble: 1.5, reverse: true }
-            : { steps: 6, rate: 0.0024, phaseStep: 1.12, gatePower: 2.05, span: 0.4, reach: 16, width: 1.55, offset: -13, floor: 0.08, wobble: 3.6, reverse: true });
+        const railOptions = riddim
+          ? { steps: 8, rate: 0.0048, phaseStep: Math.PI / 2, gatePower: 3.15, span: 0.28, reach: 14, width: 1.65, offset: -13, floor: 0.06, wobble: 2.2, reverse: true }
+          : futureRiddim
+            ? { steps: 8, rate: 0.0034, phaseStep: Math.PI / 2, gatePower: 1.55, span: 0.44, reach: 12, width: 1.45, offset: -12, floor: 0.22, wobble: 2.1, reverse: true }
+            : colourBass
+              ? { steps: 10, rate: 0.0026, phaseStep: 0.72, gatePower: 1.2, span: 0.58, reach: 12, width: 1.35, offset: -11, floor: 0.3, wobble: 1.4, reverse: true }
+              : melodicDubstep
+                ? { steps: 6, rate: 0.0021, phaseStep: 0.7, gatePower: 1.1, span: 0.64, reach: 10, width: 1.4, offset: -11, floor: 0.34, wobble: 0.9, reverse: true }
+                : deathstep
+                  ? { steps: 12, rate: 0.0054, phaseStep: 1.86, gatePower: 2.65, span: 0.24, reach: 20, width: 1.45, offset: -14, floor: 0.04, wobble: 6.4, reverse: true }
+                  : brostep
+                    ? { steps: 6, rate: 0.0038, phaseStep: 1.18, gatePower: 2.25, span: 0.36, reach: 19, width: 1.65, offset: -13, floor: 0.06, wobble: 5.2, reverse: true }
+                    : moombahcore
+                      ? { steps: 6, rate: 0.0036, phaseStep: 1.82, gatePower: 1.9, span: 0.34, reach: 16, width: 1.55, offset: -12, floor: 0.1, wobble: 4.4 }
+                      : { steps: 6, rate: 0.0024, phaseStep: 1.12, gatePower: 2.05, span: 0.4, reach: 16, width: 1.55, offset: -13, floor: 0.08, wobble: 3.6, reverse: true };
+        drawBasslineRail(railOptions);
         ctx.restore();
         // Preserve the jaws, but phrase their motion as hit, modulated twist,
         // then a short pause instead of continuous undifferentiated motion.
         ctx.rotate(
-          Math.sin(time * 0.001) * (melodicBass ? 0.012 : 0.025)
-          + (halfTimeStep ? 1 : -1) * twistEnvelope * (melodicBass ? 0.008 : 0.019)
+          Math.sin(time * (moombahcore ? 0.00135 : 0.001)) * (melodicBass ? 0.01 : riddim ? 0.012 : deathstep ? 0.035 : 0.025)
+          + (halfTimeStep ? 1 : -1) * twistEnvelope * (melodicBass ? 0.007 : riddim ? 0.01 : deathstep ? 0.028 : 0.019)
         );
+        const jawOffsets = deathstep ? [-1.5, -0.5, 0.5, 1.5] : [-1, 0, 1];
         for (const side of [-1, 1]) {
-          for (let jaw = -1; jaw <= 1; jaw += 1) {
-            const yOffset = jaw * (melodicBass ? 15 : 13);
+          for (const jaw of jawOffsets) {
+            const yOffset = jaw * (melodicBass ? 15 : riddimLike ? 14 : deathstep ? 10 : 13);
             const innerX = side * (radius - 5);
             const hingeX = side * (radius + 7 + Math.abs(jaw) * 3);
             const motion = 0.5 + hitEnvelope * 0.14 + twistEnvelope * 0.46 - pauseEnvelope * 0.16;
-            const tipX = side * (radius + 12 + wobbleDrive * (riddimLike ? 17 : 12) * motion);
-            const bite = (1 - Math.abs(jaw) * 0.18) * (3 + wobbleDrive * 6 * motion);
+            const reach = deathstep ? 20 : brostep ? 17 : riddim ? 14 : futureRiddim ? 12 : melodicBass ? 9 : moombahcore ? 15 : 12;
+            const tipX = side * (radius + 12 + wobbleDrive * reach * motion);
+            const biteScale = deathstep ? 8.5 : brostep ? 7.5 : riddim ? 4.5 : melodicBass ? 4 : 6;
+            const bite = (1 - Math.abs(jaw) * (deathstep ? 0.1 : 0.18)) * (3 + wobbleDrive * biteScale * motion);
             signatureStroke(
               jaw ? theme.accent2 : theme.accent,
-              melodicBass ? 0.88 : 1.18,
-              11,
+              melodicBass ? 0.84 : deathstep ? 1.3 : riddim ? 1.05 : 1.18,
+              melodicBass ? 14 : deathstep ? 8 : 11,
               0.1 + wobbleDrive * 0.22 + pulse * 0.12 + twistEnvelope * 0.08 - pauseEnvelope * 0.035
             );
             ctx.beginPath();
@@ -5796,6 +6793,10 @@ export class VisualEngine {
       const speedGarage = theme.id === 'speed-garage';
       const basslineGarage = theme.id === 'bassline';
       const fourFloor = speedGarage || basslineGarage;
+      const gatePresence = twoStepGarage ? 1
+        : futureGarage ? 0.28
+          : speedGarage ? 0.48
+            : basslineGarage ? 0.42 : 0.72;
       const contact = metrics.rhythmNow
         ? clamp(metrics.rhythmStrength ?? metrics.impact ?? pulse)
         : pulse * 0.32;
@@ -5923,9 +6924,9 @@ export class VisualEngine {
           const gateY = (activity - 0.5) * (twoStepGarage ? 7 : 5.2);
           signatureStroke(
             color,
-            1.05 + shuffleDrive * 0.56 + activity * 0.58,
-            10 + shuffleDrive * 8 + activity * 7,
-            0.12 + shuffleDrive * 0.16 + activity * 0.2
+            0.48 + gatePresence * (0.57 + shuffleDrive * 0.56 + activity * 0.58),
+            7 + gatePresence * (3 + shuffleDrive * 8 + activity * 7),
+            gatePresence * (0.12 + shuffleDrive * 0.16 + activity * 0.2)
           );
           ctx.beginPath();
           ctx.moveTo(top.x, top.y);
@@ -5944,7 +6945,12 @@ export class VisualEngine {
           for (let notch = -1; notch <= 1; notch += 1) {
             const notchY = gateY + notch * 11;
             const length = 3.2 + activity * 3.6 + (notch === 0 ? shuffleDrive * 2.4 : 0);
-            signatureStroke(color, 0.64 + activity * 0.32, 6 + activity * 4, 0.075 + activity * 0.11);
+            signatureStroke(
+              color,
+              0.42 + gatePresence * (0.22 + activity * 0.32),
+              5 + gatePresence * (1 + activity * 4),
+              gatePresence * (0.075 + activity * 0.11)
+            );
             ctx.beginPath();
             ctx.moveTo(gateX - side * length * 0.5, notchY - 2.2);
             ctx.lineTo(gateX + side * length * 0.5, notchY + 2.2);
@@ -5991,18 +6997,83 @@ export class VisualEngine {
           );
         }
 
-        // Two broad inner pressure pockets make the low end feel sprung rather
-        // than merely loud. They stay attached to the same belt and trail the
-        // kick slots by the same swing timing.
-        if (fourFloor || futureGarage) {
-          [0.02, fourFloor ? 0.52 : 0.645].forEach((center, index) => {
+        if (twoStepGarage) {
+          // Two deliberately broken bridges mark the kick positions omitted
+          // by the canonical 2-step pattern. Each bridge still connects the
+          // two membrane seams, but its silent middle makes the missing beat
+          // readable without cutting a literal hole in the canvas.
+          [3 / 8, 7 / 8].forEach((center, restIndex) => {
+            const index = Math.round(center * outer.length) % outer.length;
+            const outerPoint = outer[index];
+            const innerPoint = inner[index];
+            if (!outerPoint || !innerPoint) return;
+            const pointAt = (ratio) => ({
+              x: innerPoint.x + (outerPoint.x - innerPoint.x) * ratio,
+              y: innerPoint.y + (outerPoint.y - innerPoint.y) * ratio
+            });
+            const nearInner = pointAt(0.34);
+            const nearOuter = pointAt(0.66);
+            signatureStroke(
+              restIndex ? theme.accent2 : theme.hot,
+              0.92 + shuffleDrive * 0.48,
+              8 + shuffleDrive * 7,
+              0.11 + shuffleDrive * 0.15
+            );
+            ctx.beginPath();
+            ctx.moveTo(innerPoint.x, innerPoint.y);
+            ctx.lineTo(nearInner.x, nearInner.y);
+            ctx.moveTo(nearOuter.x, nearOuter.y);
+            ctx.lineTo(outerPoint.x, outerPoint.y);
+            ctx.stroke();
+          });
+        } else if (speedGarage) {
+          // Four evenly spaced drive bridges expose Speed Garage's house kick
+          // chassis while the shuffled belt and off-beat steps remain visible.
+          for (let drive = 0; drive < 4; drive += 1) {
+            const center = (drive / 4 + 0.01) % 1;
+            const index = Math.round(center * outer.length) % outer.length;
+            const outerPoint = outer[index];
+            const innerPoint = inner[index];
+            if (!outerPoint || !innerPoint) continue;
+            signatureStroke(
+              drive % 2 ? theme.accent2 : theme.accent,
+              1 + bassDrive * 0.62 + contact * 0.35,
+              9 + bassDrive * 8 + contact * 5,
+              0.12 + bassDrive * 0.16 + contact * 0.11
+            );
+            ctx.beginPath();
+            ctx.moveTo(innerPoint.x, innerPoint.y);
+            ctx.lineTo(outerPoint.x, outerPoint.y);
+            ctx.stroke();
+            strokeContourSegment(outer, center, 0.09 + contact * 0.018);
+          }
+        } else if (futureGarage) {
+          // Sparse, long reflections keep the broken UKG timing but let it
+          // dissolve into atmosphere instead of reconstructing a hard grid.
+          [0.08, 0.43, 0.76].forEach((center, echoIndex) => {
+            signatureStroke(
+              echoIndex === 1 ? theme.accent : theme.accent2,
+              0.56 + shuffleDrive * 0.34,
+              13 + shuffleDrive * 8,
+              0.055 + shuffleDrive * 0.085
+            );
+            strokeContourSegment(echoIndex === 1 ? shuffleRail : inner, center, 0.2 + echoIndex * 0.025);
+          });
+        }
+
+        // Bassline keeps two broad opposing low-end chambers rather than the
+        // four narrow Speed Garage braces. Their alternating depth follows the
+        // wobble and keeps the 4x4 branch visibly heavier without becoming
+        // another Dubstep construction.
+        if (basslineGarage) {
+          [0.08, 0.58].forEach((center, index) => {
             signatureStroke(
               index ? theme.accent2 : theme.accent,
-              0.88 + bassDrive * (basslineGarage ? 1.35 : 0.92),
+              0.88 + bassDrive * 1.35,
               9 + bassDrive * 10,
-              0.07 + bassDrive * (basslineGarage ? 0.22 : 0.15)
+              0.07 + bassDrive * 0.22
             );
-            strokeContourSegment(inner, center, 0.16 + bassDrive * 0.025);
+            strokeContourSegment(inner, center, 0.22 + bassDrive * 0.035);
           });
         }
         ctx.restore();
@@ -6043,6 +7114,9 @@ export class VisualEngine {
       const liquid = theme.id === 'liquid-dnb';
       const drumstep = theme.id === 'drumstep';
       const neuro = theme.id === 'neurofunk';
+      const dancefloor = theme.id === 'dancefloor-dnb';
+      const jumpUp = theme.id === 'jump-up-dnb';
+      const jungle = theme.id === 'jungle';
       const aggressive = ['neurofunk', 'jump-up-dnb', 'drumstep'].includes(theme.id);
       const rhythmHit = metrics.rhythmNow
         ? clamp(metrics.rhythmStrength ?? metrics.impact ?? 0)
@@ -6080,8 +7154,15 @@ export class VisualEngine {
         relativeLift * 0.72,
         sectionDrive * 0.78
       )), 1.3);
+      const fullscreenOutput = document.body.dataset.stageOutput === 'true';
       const minimumLanes = liquid ? 5 : neuro ? 9 : drumstep ? 8 : aggressive ? 8 : 6;
-      const maximumLanes = liquid ? 17 : neuro ? 34 : drumstep ? 30 : aggressive ? 32 : 27;
+      const baseMaximumLanes = liquid ? 17 : neuro ? 34 : drumstep ? 30 : aggressive ? 32 : 27;
+      // Fullscreen makes every blurred streak several times more expensive.
+      // Preserve the same depth range and density envelope with fewer lanes;
+      // Neurofunk gets the strongest reduction because it also draws its
+      // biomechanical link chain and an impact core over each live packet.
+      const laneBudgetScale = fullscreenOutput ? (neuro ? 0.68 : 0.82) : 1;
+      const maximumLanes = Math.max(minimumLanes, Math.round(baseMaximumLanes * laneBudgetScale));
       const densityDrive = drumstep
         ? clamp(0.02 + energyDrive * 0.66 + drumDrive * 0.52 + impactSurge * 0.18)
         : clamp(0.025 + energyDrive * 0.88 + impactSurge * 0.3);
@@ -6161,6 +7242,88 @@ export class VisualEngine {
         (liquid ? 0.09 : 0.11) + travelDrive * 0.1 + impactSurge * 0.31
       );
       strokeSpectrumContour(portalRim, true);
+
+      if (dancefloor) {
+        // Four disciplined launch gates turn the shared DnB aperture into a
+        // bright, symmetrical main-stage structure.
+        const gatePulse = Math.exp(-beatPhase * 3.25);
+        for (let gate = 0; gate < 4; gate += 1) {
+          const angle = -Math.PI / 2 + gate * Math.PI / 2;
+          const anchor = localSpectrumPointAtAngle(angle);
+          const radiusAtGate = Math.max(1, Math.hypot(anchor.x, anchor.y));
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          const tangentX = -sin;
+          const tangentY = cos;
+          const extension = 8 + gatePulse * 4.5 + impactSurge * 3.5;
+          const halfWidth = 5.2 + gatePulse * 1.5;
+          const innerRadius = radiusAtGate * 0.92;
+          const outerRadius = radiusAtGate + extension;
+          const color = gate % 2 ? theme.accent2 : theme.accent;
+          ctx.beginPath();
+          ctx.moveTo(cos * innerRadius + tangentX * halfWidth, sin * innerRadius + tangentY * halfWidth);
+          ctx.lineTo(cos * outerRadius + tangentX * halfWidth * 0.58, sin * outerRadius + tangentY * halfWidth * 0.58);
+          ctx.lineTo(cos * (outerRadius + 2.4), sin * (outerRadius + 2.4));
+          ctx.lineTo(cos * outerRadius - tangentX * halfWidth * 0.58, sin * outerRadius - tangentY * halfWidth * 0.58);
+          ctx.lineTo(cos * innerRadius - tangentX * halfWidth, sin * innerRadius - tangentY * halfWidth);
+          signatureStroke(color, 0.9 + gatePulse * 0.48, 8 + gatePulse * 7, 0.12 + gatePulse * 0.2 + impactSurge * 0.12);
+          ctx.stroke();
+        }
+      }
+
+      if (jumpUp) {
+        // Alternating low-frequency answers sit on opposite sides of the
+        // portal, preserving the fast tunnel while making the bassline lead.
+        const callSide = Math.floor(time / Math.max(1, beatPeriod)) % 2 ? 1 : -1;
+        const callPulse = Math.exp(-beatPhase * 3.7);
+        const bassBody = clamp(metrics.bass * 0.52 + metrics.lowMid * 0.28 + (metrics.bassPulse || 0) * 0.5);
+        for (const side of [-1, 1]) {
+          const angle = side > 0 ? 0 : Math.PI;
+          const anchor = localSpectrumPointAtAngle(angle);
+          const active = side === callSide ? 1 : 0.36;
+          const extension = 7 + bassBody * 8 + callPulse * active * 10;
+          const height = 5 + bassBody * 4.5 + callPulse * active * 2.5;
+          const outerX = anchor.x + side * extension;
+          const color = side > 0 ? theme.accent : theme.accent2;
+          ctx.beginPath();
+          ctx.moveTo(anchor.x, anchor.y - height * 0.58);
+          ctx.quadraticCurveTo(anchor.x + side * extension * 0.45, anchor.y - height, outerX, anchor.y - height * 0.34);
+          ctx.lineTo(outerX + side * 2.8, anchor.y);
+          ctx.lineTo(outerX, anchor.y + height * 0.34);
+          ctx.quadraticCurveTo(anchor.x + side * extension * 0.45, anchor.y + height, anchor.x, anchor.y + height * 0.58);
+          ctx.closePath();
+          ctx.fillStyle = rgba(color, 0.04 + bassBody * 0.09 + callPulse * active * 0.11);
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 7 + callPulse * active * 12;
+          ctx.fill();
+          signatureStroke(color, 0.9 + callPulse * active * 0.72, 8 + callPulse * active * 10, 0.13 + bassBody * 0.14 + callPulse * active * 0.24);
+          ctx.stroke();
+        }
+      }
+
+      if (jungle) {
+        // Uneven, rapidly re-ordered slices evoke chopped Amen breaks without
+        // replacing the common forward motion with a separate badge.
+        const amenPattern = [1, 0.28, 0.74, 0.42, 0.92, 0.2, 0.58, 0.34, 0.84, 0.24, 0.68, 0.46];
+        const breakStep = Math.floor(time / Math.max(28, beatPeriod / 4));
+        for (let slice = 0; slice < amenPattern.length; slice += 1) {
+          const weight = amenPattern[(slice + breakStep) % amenPattern.length];
+          const center = (slice / amenPattern.length + time * 0.000012) % 1;
+          const width = 0.028 + weight * 0.018;
+          const color = slice % 3 === 1 ? theme.accent2 : slice % 3 === 2 ? theme.hot : theme.accent;
+          signatureStroke(color, 0.65 + weight * 0.7, 4 + weight * 7, 0.055 + weight * 0.14 + impactSurge * 0.08);
+          strokeContourSegment(portalRim, center, width);
+
+          const angle = center * TAU - Math.PI / 2;
+          const anchor = localSpectrumPointAtAngle(angle);
+          const radiusAtSlice = Math.max(1, Math.hypot(anchor.x, anchor.y));
+          const notch = 2.5 + weight * 6 + metrics.high * 3;
+          ctx.beginPath();
+          ctx.moveTo(anchor.x * 0.95, anchor.y * 0.95);
+          ctx.lineTo(Math.cos(angle) * (radiusAtSlice + notch), Math.sin(angle) * (radiusAtSlice + notch));
+          ctx.stroke();
+        }
+      }
 
       if (neuro) {
         // Neurofunk keeps the DnB portal and turns its inner edge into a
@@ -6380,13 +7543,22 @@ export class VisualEngine {
         const exitContraction = smoothstep(0.87, exitProgress, phase);
         const tail = baseTail + (head - baseTail) * exitContraction;
         const packet = [];
-        for (let sample = 0; sample <= 18; sample += 1) {
-          packet.push(warpPoint(tail + (head - tail) * sample / 18));
+        const packetSegments = fullscreenOutput ? 12 : 18;
+        for (let sample = 0; sample <= packetSegments; sample += 1) {
+          packet.push(warpPoint(tail + (head - tail) * sample / packetSegments));
         }
         const fadeIn = smoothstep(0, 0.055, phase);
         const fadeOut = 1 - smoothstep(0.9, exitProgress, phase);
         const fade = fadeIn * fadeOut;
-        lanes.push({ color, guide: [warpPoint(0), control, edge], packet, head, fade, visibility });
+        lanes.push({
+          color,
+          guide: [warpPoint(0), control, edge],
+          packet,
+          head,
+          fade,
+          visibility,
+          impactCore: !fullscreenOutput || lane % 2 === 0
+        });
       }
 
       // Clip only the travelling field. A line can continue mathematically
@@ -6441,7 +7613,7 @@ export class VisualEngine {
           ctx.lineTo(lane.packet[index].x, lane.packet[index].y);
         }
         ctx.stroke();
-        if (impactFlash > 0.01) {
+        if (impactFlash > 0.01 && lane.impactCore) {
           // Brighten the complete filament on impact without adding a larger
           // head or a thicker white core; its apparent width stays constant.
           const coreAlpha = clamp(
@@ -6476,67 +7648,73 @@ export class VisualEngine {
       ctx.arc(0, 0, viewRadius, 0, TAU);
       ctx.stroke();
     } else if (mode === 'techno') {
-      const hardTechno = ['hard-techno', 'industrial-techno'].includes(theme.id);
+      const hardTechno = theme.id === 'hard-techno';
+      const industrialTechno = theme.id === 'industrial-techno';
       const acidTechno = theme.id === 'acid-techno';
+      const melodicTechno = theme.id === 'melodic-techno';
       const minimalTechno = theme.id === 'minimal-techno';
-      const bracketCount = minimalTechno ? 4 : 8;
+      const forcefulTechno = hardTechno || industrialTechno;
+      const bracketCount = minimalTechno ? 4 : industrialTechno ? 12 : 8;
       const fourStep = Math.floor(time / beatPeriod) % 4;
       const slotsPerStep = bracketCount / 4;
       const sequenceSlot = fourStep * slotsPerStep;
-      const beatLatch = Math.exp(-beatPhase * (hardTechno ? 3.8 : 3.15));
+      const beatLatch = Math.exp(-beatPhase * (hardTechno ? 3.8 : industrialTechno ? 4.15 : 3.15));
       const textureTravel = ((time * (acidTechno ? -0.000018 : 0.000014)) % 1 + 1) % 1;
 
       // A narrow conveyor membrane turns the individual sequencer blocks into
       // one machine. It follows the live spectrum, compresses subtly on every
       // four-on-the-floor beat, and keeps the cold mechanical body coherent.
       const railOuter = spectrumShell({
-        scale: (hardTechno ? 0.992 : 0.982) - beatLatch * (hardTechno ? 0.011 : 0.008),
-        detail: hardTechno ? 0.22 : minimalTechno ? 0.08 : 0.14,
-        offset: hardTechno ? 2.7 : 2,
-        smoothing: hardTechno ? 3 : minimalTechno ? 8 : 5
+        scale: (hardTechno ? 0.992 : industrialTechno ? 0.986 : 0.982)
+          - beatLatch * (forcefulTechno ? 0.012 : 0.008),
+        detail: industrialTechno ? 0.38 : hardTechno ? 0.22 : melodicTechno ? 0.1 : minimalTechno ? 0.06 : 0.14,
+        offset: industrialTechno ? 3.1 : hardTechno ? 2.7 : 2,
+        smoothing: industrialTechno ? 1 : hardTechno ? 3 : melodicTechno ? 9 : minimalTechno ? 11 : 5
       });
       const railInner = spectrumShell({
-        scale: 0.845 - beatLatch * (hardTechno ? 0.014 : 0.01),
-        detail: hardTechno ? 0.12 : 0.06,
-        offset: 0.4,
-        smoothing: hardTechno ? 5 : 8
+        scale: (industrialTechno ? 0.82 : 0.845) - beatLatch * (forcefulTechno ? 0.014 : 0.01),
+        detail: industrialTechno ? 0.2 : hardTechno ? 0.12 : melodicTechno ? 0.04 : 0.06,
+        offset: industrialTechno ? -0.2 : 0.4,
+        smoothing: industrialTechno ? 2 : hardTechno ? 5 : melodicTechno ? 10 : 8
       });
 
-      ctx.rotate(time * (hardTechno ? 0.000042 : acidTechno ? -0.000034 : 0.000026));
+      ctx.rotate(time * (hardTechno ? 0.000042 : industrialTechno ? 0.000033 : acidTechno ? -0.000034 : melodicTechno ? 0.000018 : 0.000026));
       if (railOuter.length && railInner.length) {
         const railFill = ctx.createRadialGradient(0, 0, radius * 0.58, 0, 0, radius + 18);
         railFill.addColorStop(0, rgba(theme.accent2, minimalTechno ? 0.022 : 0.04));
-        railFill.addColorStop(0.58, rgba(theme.accent, (minimalTechno ? 0.04 : 0.065) + metrics.mid * (minimalTechno ? 0.045 : 0.065)));
-        railFill.addColorStop(1, rgba(theme.hot, (minimalTechno ? 0.024 : 0.045) + beatLatch * 0.045));
+        railFill.addColorStop(0.58, rgba(theme.accent, (minimalTechno ? 0.032 : melodicTechno ? 0.052 : 0.065) + metrics.mid * (minimalTechno ? 0.035 : 0.065)));
+        railFill.addColorStop(1, rgba(theme.hot, (minimalTechno ? 0.018 : industrialTechno ? 0.055 : 0.045) + beatLatch * 0.045));
         this.traceBand(railOuter, [...railInner].reverse(), true);
         ctx.fillStyle = railFill;
         ctx.fill('evenodd');
 
-        signatureStroke(theme.accent, hardTechno ? 1.12 : 0.92, hardTechno ? 9 : 7, 0.135 + metrics.mid * 0.105 + beatLatch * 0.075);
+        signatureStroke(theme.accent, industrialTechno ? 1.24 : hardTechno ? 1.12 : melodicTechno ? 0.72 : 0.92, industrialTechno ? 7 : hardTechno ? 9 : melodicTechno ? 12 : 7, 0.135 + metrics.mid * 0.105 + beatLatch * 0.075);
         this.tracePoints(railOuter, true, true);
         ctx.stroke();
-        signatureStroke(theme.accent2, hardTechno ? 0.92 : 0.76, 7, 0.1 + metrics.mid * 0.08 + beatLatch * 0.035);
+        signatureStroke(theme.accent2, industrialTechno ? 1.02 : hardTechno ? 0.92 : melodicTechno ? 0.66 : 0.76, industrialTechno ? 5 : melodicTechno ? 11 : 7, 0.1 + metrics.mid * 0.08 + beatLatch * 0.035);
         this.tracePoints(railInner, true, true);
         ctx.stroke();
 
         // Slow scan seams provide the small, continuous timbral evolution of
         // Techno without flashing a new random decoration every frame.
-        const textureCount = hardTechno ? 4 : minimalTechno ? 2 : 3;
+        const textureCount = industrialTechno ? 6 : hardTechno ? 4 : minimalTechno ? 2 : melodicTechno ? 3 : 3;
         for (let texture = 0; texture < textureCount; texture += 1) {
           const center = (textureTravel + texture / textureCount) % 1;
           signatureStroke(
             texture % 2 ? theme.accent2 : theme.hot,
-            hardTechno ? 0.92 : 0.76,
-            7,
+            industrialTechno ? 1.02 : hardTechno ? 0.92 : melodicTechno ? 0.66 : 0.76,
+            industrialTechno ? 5 : melodicTechno ? 10 : 7,
             (minimalTechno ? 0.06 : 0.09) + metrics.high * 0.105 + beatLatch * 0.035
           );
-          strokeContourSegment(railOuter, center, hardTechno ? 0.052 : 0.068);
+          strokeContourSegment(railOuter, center, industrialTechno ? 0.032 : hardTechno ? 0.052 : melodicTechno ? 0.1 : 0.068);
         }
       }
 
       for (let bracket = 0; bracket < bracketCount; bracket += 1) {
         const phase = time * 0.00022 + bracket * 1.37;
-        const angle = bracket / bracketCount * TAU + (acidTechno ? Math.sin(phase) * 0.012 : 0);
+        const angle = bracket / bracketCount * TAU
+          + (acidTechno ? Math.sin(phase) * 0.012 : 0)
+          + (industrialTechno ? Math.sin(bracket * 2.41 + 0.3) * 0.034 : 0);
         const membrane = localSpectrumPointAtAngle(angle);
         const membraneRadius = Math.max(1, Math.hypot(membrane.x, membrane.y));
         const slotDistance = (bracket - sequenceSlot + bracketCount) % bracketCount;
@@ -6547,18 +7725,23 @@ export class VisualEngine {
         const bandRadius = membraneRadius * (primaryDrive ? 0.975 : 0.87)
           + Math.sin(phase) * (minimalTechno ? 0.28 : 0.55)
           + (hardTechno ? (bracket % 2) * 1.15 : 0)
+          + (industrialTechno ? Math.sin(bracket * 4.83) * 3.2 : 0)
           + active * (0.7 + pulse * 0.55);
         const blockWidth = minimalTechno
           ? 16
           : primaryDrive
-            ? hardTechno ? 23 : acidTechno ? 21.5 : 21
-            : hardTechno ? 11.5 : 10.5;
-        const blockHeight = (minimalTechno ? 5.2 : primaryDrive ? hardTechno ? 8.3 : 7.3 : 3.25)
+            ? industrialTechno ? 17 + (bracket % 3) * 2.4 : hardTechno ? 23 : acidTechno ? 21.5 : melodicTechno ? 18 : 21
+            : industrialTechno ? 8 + (bracket % 2) * 2.5 : hardTechno ? 11.5 : melodicTechno ? 8.5 : 10.5;
+        const blockHeight = (minimalTechno ? 5.2 : primaryDrive ? industrialTechno ? 7.4 : hardTechno ? 8.3 : melodicTechno ? 5.8 : 7.3 : industrialTechno ? 4.1 : 3.25)
           + active * (2 + pulse * 1.25);
         const color = bracket % 2 ? theme.accent2 : theme.accent;
         ctx.save();
         ctx.rotate(angle + Math.PI / 2);
         ctx.translate(0, -bandRadius);
+        if (industrialTechno) {
+          const shear = Math.sin(bracket * 3.17) * 0.18;
+          ctx.transform(1, shear, shear * 0.18, 1, 0, 0);
+        }
         ctx.fillStyle = rgba(color,
           (minimalTechno ? 0.07 : primaryDrive ? 0.12 : 0.045)
           + metrics.mid * (primaryDrive ? 0.075 : 0.035)
@@ -6568,24 +7751,79 @@ export class VisualEngine {
         ctx.fillRect(-blockWidth * 0.5, -blockHeight * 0.5, blockWidth, blockHeight);
         signatureStroke(
           color,
-          hardTechno ? 1.18 : minimalTechno ? 0.82 : primaryDrive ? 1.04 : 0.78,
-          hardTechno ? 10 : primaryDrive ? 8 : 6,
+          industrialTechno ? 1.16 : hardTechno ? 1.18 : melodicTechno ? 0.72 : minimalTechno ? 0.82 : primaryDrive ? 1.04 : 0.78,
+          industrialTechno ? 7 : hardTechno ? 10 : melodicTechno ? 10 : primaryDrive ? 8 : 6,
           (minimalTechno ? 0.14 : primaryDrive ? 0.22 : 0.095) + active * 0.32 + metrics.mid * 0.1
         );
         ctx.strokeRect(-blockWidth * 0.5, -blockHeight * 0.5, blockWidth, blockHeight);
+        if (industrialTechno) {
+          signatureStroke(theme.hot, 0.72, 3, 0.13 + metrics.high * 0.1 + active * 0.18);
+          ctx.beginPath();
+          ctx.moveTo(-blockWidth * 0.34, blockHeight * 0.42);
+          ctx.lineTo(blockWidth * 0.27, -blockHeight * 0.42);
+          ctx.stroke();
+          ctx.fillStyle = rgba(theme.accent2, 0.26 + active * 0.22);
+          ctx.shadowBlur = 4;
+          ctx.fillRect(-blockWidth * 0.37, -1, 2, 2);
+          ctx.fillRect(blockWidth * 0.29, -1, 2, 2);
+        }
         if (primaryDrive) {
           // A short radial spindle distinguishes the four driving pistons from
           // the connector cells while keeping every part attached to the rail.
-          signatureStroke(color, hardTechno ? 1.05 : 0.88, 7, 0.105 + active * 0.2 + metrics.mid * 0.055);
+          signatureStroke(color, forcefulTechno ? 1.05 : melodicTechno ? 0.7 : 0.88, forcefulTechno ? 7 : melodicTechno ? 10 : 7, 0.105 + active * 0.2 + metrics.mid * 0.055);
           ctx.beginPath();
           ctx.moveTo(0, -blockHeight * 0.28);
-          ctx.lineTo(0, blockHeight * 0.5 + (hardTechno ? 5.4 : 4.5));
+          ctx.lineTo(0, blockHeight * 0.5 + (forcefulTechno ? 5.4 : melodicTechno ? 3.2 : 4.5));
           ctx.stroke();
         }
         ctx.restore();
       }
+
+      if (acidTechno) {
+        // Two continuous, phase-shifted resonance traces evoke the coupled
+        // cutoff/resonance motion of a 303 without abandoning the Techno rail.
+        for (let voice = 0; voice < 2; voice += 1) {
+          ctx.beginPath();
+          for (let pointIndex = 0; pointIndex <= 112; pointIndex += 1) {
+            const angle = pointIndex / 112 * TAU;
+            const membrane = localSpectrumPointAtAngle(angle);
+            const membraneRadius = Math.hypot(membrane.x, membrane.y);
+            const squelch = Math.sin(angle * 3 + time * 0.00115 + voice * 1.9)
+              * (2.1 + metrics.mid * 3.8);
+            const resonance = Math.sin(angle * 9 - time * 0.0017 + voice) * (0.5 + metrics.high * 1.2);
+            const lineRadius = membraneRadius * (0.78 - voice * 0.095) + squelch + resonance;
+            const px = Math.cos(angle) * lineRadius;
+            const py = Math.sin(angle) * lineRadius;
+            if (!pointIndex) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          signatureStroke(voice ? theme.accent2 : theme.accent, voice ? 0.78 : 1.08, 12, 0.18 + metrics.mid * 0.18 + pulse * 0.08);
+          ctx.stroke();
+        }
+      } else if (melodicTechno) {
+        // Slowly evolving partial contours form a harmonic stack. Each voice
+        // remains tied to the live spectrum instead of becoming a static ring.
+        for (let voice = 0; voice < 3; voice += 1) {
+          const contour = spectrumShell({
+            scale: 0.8 - voice * 0.095,
+            detail: 0.045 + voice * 0.018,
+            offset: Math.sin(time * (0.00042 + voice * 0.00007) + voice * 1.8) * 1.7,
+            smoothing: 11
+          });
+          signatureStroke(
+            voice === 1 ? theme.accent2 : voice === 2 ? theme.hot : theme.accent,
+            0.66 + voice * 0.08,
+            12 + voice * 2,
+            0.08 + metrics.mid * 0.1 + (2 - voice) * 0.022
+          );
+          const center = ((time * (0.000018 + voice * 0.000005) + voice * 0.31) % 1 + 1) % 1;
+          strokeContourSegment(contour, center, 0.2 + voice * 0.035);
+        }
+      }
     } else if (mode === 'trance') {
-      const orchestral = ['classical', 'soundtrack'].includes(theme.id);
+      const classicalFamily = theme.family === 'classical';
+      const orchestral = classicalFamily || theme.id === 'soundtrack';
       const synthwave = theme.id === 'synthwave';
       const psychedelic = theme.id === 'psytrance';
       const uplifting = theme.id === 'uplifting-trance';
@@ -6597,9 +7835,76 @@ export class VisualEngine {
         // Synthwave owns a full-width horizon background drawn before this
         // local signature pass. The foreground visualizer remains empty so the
         // sunset, masked artwork and road are the complete visual language.
+      } else if (classicalFamily) {
+        const baroque = theme.id === 'baroque';
+        const romantic = theme.id === 'romantic-classical';
+        const opera = theme.id === 'opera';
+        const modern = theme.id === 'modern-classical';
+        const ensembleDrive = clamp(metrics.mid * 0.48 + metrics.high * 0.2 + metrics.volume * 0.32);
+        const voiceCount = baroque ? 3 : modern ? 3 : romantic ? 2 : opera ? 3 : 2;
+
+        // Each contour is a live orchestral voice: related enough to read as
+        // one ensemble, but independently phrased instead of forming portals.
+        for (let voice = 0; voice < voiceCount; voice += 1) {
+          const contourRadius = radius + 2 + voice * (baroque ? 5.4 : modern ? 6.8 : 7.2);
+          const direction = voice % 2 ? -1 : 1;
+          const phrase = time * (modern ? 0.000032 : 0.000018) * direction + voice * 0.62;
+          const verticalScale = modern ? 0.82 + voice * 0.012 : romantic ? 0.7 + voice * 0.045 : opera ? 0.76 + voice * 0.025 : 0.74 + voice * 0.03;
+          const start = modern ? phrase : -Math.PI * (0.74 + voice * 0.035) + Math.sin(phrase) * 0.12;
+          const span = modern ? Math.PI * (0.72 + voice * 0.08) : Math.PI * (1.38 + ensembleDrive * 0.24);
+          ctx.save();
+          ctx.rotate((voice - (voiceCount - 1) / 2) * (baroque ? 0.17 : modern ? 0.11 : 0.075));
+          if (modern) ctx.setLineDash([5 + voice * 1.5, 9 - voice]);
+          signatureStroke(
+            voice % 3 === 1 ? theme.accent2 : voice % 3 === 2 ? theme.hot : theme.accent,
+            (modern ? 0.62 : 0.7) + ensembleDrive * (romantic ? 0.7 : 0.42),
+            11 + ensembleDrive * 8,
+            0.07 + ensembleDrive * (romantic || opera ? 0.16 : 0.1)
+          );
+          ctx.beginPath();
+          ctx.ellipse(0, (voice - (voiceCount - 1) / 2) * 1.8, contourRadius, contourRadius * verticalScale, phrase * 0.12, start, start + span);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        if (baroque) {
+          // Counterpoint enters in paired, interlocking figures.
+          for (let entry = 0; entry < 8; entry += 1) {
+            const angle = entry * TAU / 8 + Math.sin(time * 0.00018 + entry) * 0.07;
+            const inner = radius - 4 + (entry % 2) * 5;
+            const outer = radius + 18 + (entry % 3) * 4 + ensembleDrive * 3;
+            signatureStroke(entry % 2 ? theme.accent2 : theme.hot, 0.55 + ensembleDrive * 0.3, 7, 0.07 + ensembleDrive * 0.08);
+            ctx.beginPath();
+            ctx.arc(Math.cos(angle) * inner, Math.sin(angle) * inner * 0.78, 3 + entry % 2, angle + Math.PI * 0.7, angle + Math.PI * 1.55);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner * 0.78);
+            ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer * 0.78);
+            ctx.stroke();
+          }
+        } else if (romantic) {
+          // Broad crescendos lean beyond the ensemble without pulsing its scale.
+          for (const side of [-1, 1]) {
+            signatureStroke(side > 0 ? theme.accent : theme.accent2, 1.1 + ensembleDrive * 0.9, 18, 0.1 + ensembleDrive * 0.16);
+            ctx.beginPath();
+            ctx.ellipse(side * 5, 2, radius + 28 + ensembleDrive * 8, radius * 0.66, side * 0.13, side > 0 ? -1.42 : 1.7, side > 0 ? 0.56 : 3.7);
+            ctx.stroke();
+          }
+        } else if (opera) {
+          // Mirrored vocal fans open from a common stage rather than orbiting.
+          for (const side of [-1, 1]) {
+            for (let line = 0; line < 3; line += 1) {
+              const spread = 0.34 + line * 0.2 + ensembleDrive * 0.06;
+              signatureStroke(line === 1 ? theme.hot : side > 0 ? theme.accent2 : theme.accent, 0.75 + ensembleDrive * 0.62, 14, 0.08 + ensembleDrive * 0.13);
+              ctx.beginPath();
+              ctx.arc(0, radius * 0.42, radius + 12 + line * 8, -Math.PI / 2 + side * 0.04, -Math.PI / 2 + side * spread, side < 0);
+              ctx.stroke();
+            }
+          }
+        }
       } else if (orchestral) {
-        // Classical and soundtrack share the glass material but keep their
-        // slower, neutral orbital treatment rather than inheriting EDM gates.
+        // Soundtrack keeps a neutral cinematic portal, distinct from the
+        // score-like voices used by the Classical family.
         for (let portal = 0; portal < 3; portal += 1) {
           const portalRadius = radius + 3 + portal * 9;
           const tilt = time * 0.000025 * (portal % 2 ? -1 : 1) + portal * 0.48;
@@ -6815,39 +8120,51 @@ export class VisualEngine {
         ctx.restore();
       }
     } else if (mode === 'j-pop') {
-      // J-Pop inherits Pop's clear repeating hook, then braids two extra
-      // spectrum-following melody lanes around it. The lanes stay attached to
-      // one membrane, so denser harmony reads as arrangement rather than as
-      // unrelated orbiting decorations.
+      // The broad J-Pop fallback keeps a balanced melody braid. Subgenres use
+      // that same live membrane as a shared base, then phrase it differently:
+      // City Pop rolls through smooth chord pockets, Anime launches brighter
+      // call-and-response arcs, and Vocaloid exposes a quantized syllable rail.
       const cityPop = theme.id === 'city-pop';
+      const anime = theme.id === 'anime';
+      const vocaloid = theme.id === 'vocaloid';
       const melodicDrive = clamp(
         metrics.mid * 0.43
         + metrics.high * 0.34
         + metrics.flux * 0.13
         + pulse * 0.2
       );
-      const melodyLobes = cityPop ? 4 : theme.id === 'vocaloid' ? 8 : theme.id === 'anime' ? 7 : 6;
-      const weave = Math.sin(time * 0.00034) * (cityPop ? 0.0035 : 0.0065);
+      const melodyLobes = cityPop ? 4 : vocaloid ? 8 : anime ? 7 : 6;
+      const weaveRate = cityPop ? 0.0002 : vocaloid ? 0.00052 : anime ? 0.00044 : 0.00034;
+      const weave = Math.sin(time * weaveRate) * (cityPop ? 0.003 : vocaloid ? 0.0045 : anime ? 0.0075 : 0.0065);
       const innerMelody = spectrumContour({
-        scale: 0.986,
-        offset: -1.2,
+        scale: cityPop ? 0.99 : vocaloid ? 0.982 : 0.986,
+        offset: cityPop ? -0.4 : vocaloid ? -1.8 : -1.2,
         phase: -weave,
         lobes: melodyLobes,
-        waveAmount: 0.32 + melodicDrive * (cityPop ? 0.55 : 0.78)
+        waveAmount: 0.32 + melodicDrive * (cityPop ? 0.48 : vocaloid ? 0.66 : anime ? 0.94 : 0.78),
+        teeth: vocaloid ? 12 : 0,
+        toothThreshold: 0.82,
+        toothAmount: vocaloid ? 0.7 + melodicDrive * 0.85 : 0
       });
       const hookMelody = spectrumContour({
         scale: 1.012,
-        offset: 0.8,
+        offset: cityPop ? 1.25 : anime ? 1.15 : 0.8,
         phase: weave * 0.35,
         lobes: melodyLobes,
-        waveAmount: 0.62 + melodicDrive * (cityPop ? 0.9 : 1.32)
+        waveAmount: 0.62 + melodicDrive * (cityPop ? 0.78 : vocaloid ? 1.12 : anime ? 1.58 : 1.32),
+        teeth: vocaloid ? 12 : 0,
+        toothThreshold: 0.78,
+        toothAmount: vocaloid ? 0.9 + melodicDrive * 1.15 : 0
       });
       const outerHarmony = spectrumContour({
-        scale: 1.039,
-        offset: 2.5,
+        scale: cityPop ? 1.045 : anime ? 1.048 : 1.039,
+        offset: cityPop ? 2.9 : anime ? 3.1 : 2.5,
         phase: weave,
         lobes: melodyLobes + (cityPop ? 0 : 1),
-        waveAmount: 0.86 + melodicDrive * (cityPop ? 1.18 : 1.78)
+        waveAmount: 0.86 + melodicDrive * (cityPop ? 1.02 : vocaloid ? 1.52 : anime ? 2.12 : 1.78),
+        teeth: vocaloid ? 12 : 0,
+        toothThreshold: 0.75,
+        toothAmount: vocaloid ? 1.15 + melodicDrive * 1.35 : 0
       });
       if (innerMelody.length && outerHarmony.length) {
         this.traceBand(outerHarmony, [...innerMelody].reverse(), true);
@@ -6861,15 +8178,16 @@ export class VisualEngine {
 
       const melodyLanes = cityPop
         ? [
-            { points: hookMelody, color: theme.accent, width: 0.86, alpha: 0.13, span: 0.105, offset: 0 },
-            { points: outerHarmony, color: theme.accent2, width: 1.04, alpha: 0.17, span: 0.075, offset: 0.34 }
+            { points: hookMelody, color: theme.hot, width: 0.92, alpha: 0.13, span: 0.15, offset: 0 },
+            { points: outerHarmony, color: theme.accent2, width: 1.02, alpha: 0.16, span: 0.12, offset: 0.46 }
           ]
         : [
-            { points: innerMelody, color: theme.accent, width: 0.62, alpha: 0.095, span: 0.085, offset: 0.62, reverse: true },
-            { points: hookMelody, color: theme.hot, width: 0.84, alpha: 0.13, span: 0.11, offset: 0 },
-            { points: outerHarmony, color: theme.accent2, width: 1.06, alpha: 0.17, span: 0.075, offset: 0.34 }
+            { points: innerMelody, color: theme.accent, width: vocaloid ? 0.72 : 0.62, alpha: vocaloid ? 0.12 : 0.095, span: vocaloid ? 0.055 : 0.085, offset: 0.62, reverse: true },
+            { points: hookMelody, color: theme.hot, width: anime ? 1.02 : 0.84, alpha: anime ? 0.17 : 0.13, span: anime ? 0.16 : vocaloid ? 0.072 : 0.11, offset: 0 },
+            { points: outerHarmony, color: theme.accent2, width: anime ? 1.18 : 1.06, alpha: anime ? 0.2 : 0.17, span: anime ? 0.11 : vocaloid ? 0.05 : 0.075, offset: 0.34 }
           ];
-      const phraseProgress = ((time * (cityPop ? 0.000078 : 0.000105)) % 1 + 1) % 1;
+      const phraseRate = cityPop ? 0.000052 : vocaloid ? 0.00016 : anime ? 0.000132 : 0.000105;
+      const phraseProgress = ((time * phraseRate) % 1 + 1) % 1;
       for (const [laneIndex, lane] of melodyLanes.entries()) {
         signatureStroke(
           lane.color,
@@ -6892,10 +8210,75 @@ export class VisualEngine {
         if (head) this.glowCircle(
           head.x,
           head.y,
-          1.15 + melodicDrive * 1.45,
+          1.15 + melodicDrive * (anime ? 1.9 : 1.45),
           lane.color,
-          0.09 + melodicDrive * 0.16
+          0.09 + melodicDrive * (anime ? 0.22 : 0.16)
         );
+      }
+
+      if (cityPop) {
+        // Four broad, syncopated chord pockets make the slower groove legible
+        // without turning the visual into a literal record-player motif.
+        const chordTravel = ((time * 0.000038) % 1 + 1) % 1;
+        for (let chord = 0; chord < 4; chord += 1) {
+          const center = (chord / 4 + 0.07) % 1;
+          const distance = Math.abs(chordTravel - center);
+          const wrapped = Math.min(distance, 1 - distance);
+          const active = Math.exp(-wrapped * wrapped * 54);
+          signatureStroke(
+            chord % 2 ? theme.accent2 : theme.hot,
+            0.82 + melodicDrive * 0.42 + active * 0.72,
+            10 + active * 9,
+            0.1 + melodicDrive * 0.1 + active * 0.18
+          );
+          strokeContourSegment(outerHarmony, center, 0.14 + active * 0.035);
+        }
+      } else if (anime) {
+        // Paired sweeps trade places like an opening sequence moving from setup
+        // to chorus. Their long spans keep Anime broad rather than pretending
+        // it has one fixed acoustic instrumentation.
+        const launch = ((time * 0.000115) % 1 + 1) % 1;
+        for (let arc = 0; arc < 3; arc += 1) {
+          const center = (launch + arc / 3) % 1;
+          const response = (1 - launch + arc / 3 + 0.12) % 1;
+          signatureStroke(
+            arc === 1 ? theme.hot : theme.accent2,
+            1.1 + melodicDrive * 0.72,
+            15 + melodicDrive * 12,
+            0.12 + melodicDrive * 0.22 + pulse * 0.07
+          );
+          strokeContourSegment(outerHarmony, center, 0.17 + melodicDrive * 0.025);
+          signatureStroke(
+            theme.accent,
+            0.72 + melodicDrive * 0.45,
+            10 + melodicDrive * 8,
+            0.08 + melodicDrive * 0.15
+          );
+          strokeContourSegment(innerMelody, response, 0.1);
+        }
+      } else if (vocaloid && outerHarmony.length) {
+        // Quantized ticks are anchored to the live contour so they read as
+        // programmed syllables and note gates, not detached UI decoration.
+        const activeStep = Math.floor(time / Math.max(90, beatPeriod / 4)) % 12;
+        for (let step = 0; step < 12; step += 1) {
+          const index = Math.round(step / 12 * outerHarmony.length) % outerHarmony.length;
+          const point = outerHarmony[index];
+          const next = outerHarmony[(index + 1) % outerHarmony.length];
+          if (!point || !next) continue;
+          const active = step === activeStep ? 1 : 0;
+          const angle = Math.atan2(next.y - point.y, next.x - point.x);
+          ctx.save();
+          ctx.translate(point.x, point.y);
+          ctx.rotate(angle);
+          ctx.fillStyle = rgba(
+            step % 3 === 0 ? theme.hot : step % 2 ? theme.accent2 : theme.accent,
+            0.12 + melodicDrive * 0.17 + active * 0.3
+          );
+          ctx.shadowColor = step % 2 ? theme.accent2 : theme.accent;
+          ctx.shadowBlur = 5 + melodicDrive * 5 + active * 10;
+          ctx.fillRect(-2.4 - active * 0.8, -0.65 - active * 0.25, 4.8 + active * 1.6, 1.3 + active * 0.5);
+          ctx.restore();
+        }
       }
     } else if (mode === 'pop') {
       if (theme.id === 'k-pop') {
@@ -7257,6 +8640,8 @@ export class VisualEngine {
     } else if (mode === 'hip-hop') {
       if (integratedHipHopFx) {
         const experimentalHipHop = theme.id === 'experimental-hip-hop';
+        const instrumentalHipHop = theme.id === 'instrumental-hip-hop';
+        const lofiHipHop = theme.id === 'lo-fi-hip-hop';
         const pocketDrive = clamp(
           metrics.bass * 0.44
             + metrics.lowMid * 0.27
@@ -7277,15 +8662,15 @@ export class VisualEngine {
         );
         const grooveOuter = spectrumShell({
           scale: 0.99,
-          detail: 0.7,
-          offset: 2 + pocketDrive * 2.8,
-          smoothing: 4
+          detail: lofiHipHop ? 0.38 : instrumentalHipHop ? 0.56 : 0.7,
+          offset: 2 + pocketDrive * (lofiHipHop ? 1.5 : instrumentalHipHop ? 2.2 : 2.8),
+          smoothing: lofiHipHop ? 8 : instrumentalHipHop ? 6 : 4
         });
         const grooveInner = spectrumShell({
-          scale: 0.72,
-          detail: 0.26,
+          scale: lofiHipHop ? 0.68 : 0.72,
+          detail: lofiHipHop ? 0.16 : instrumentalHipHop ? 0.22 : 0.26,
           offset: 0,
-          smoothing: 8
+          smoothing: lofiHipHop ? 11 : 8
         });
 
         if (grooveOuter.length && grooveInner.length) {
@@ -7310,6 +8695,66 @@ export class VisualEngine {
               { center: -0.62, span: 0.31 },
               { center: 1.35, span: 0.59 }
             ].forEach((cut) => strokeAngularContour(grooveOuter, cut.center + cutDrift, cut.span));
+          } else if (lofiHipHop) {
+            // Lo-Fi Hip-Hop is a worn tape loop: four long phrases wobble
+            // together while sparse oxide flecks live inside the spectrum.
+            const tapeWobble = Math.sin(time * 0.00072) * (0.8 + cadenceDrive * 1.1);
+            const tapeContour = grooveOuter.map((point) => {
+              const angle = Math.atan2(point.y, point.x);
+              const sourceRadius = Math.hypot(point.x, point.y) + Math.sin(angle * 2 + time * 0.00031) * 0.9;
+              return {
+                x: Math.cos(angle) * sourceRadius + tapeWobble,
+                y: Math.sin(angle) * sourceRadius - tapeWobble * 0.22
+              };
+            });
+            [
+              { center: 0.08, span: 0.16, color: theme.accent },
+              { center: 0.34, span: 0.12, color: theme.hot },
+              { center: 0.59, span: 0.18, color: theme.accent2 },
+              { center: 0.84, span: 0.1, color: theme.hot }
+            ].forEach((phrase, index) => {
+              const breathe = 0.5 + 0.5 * Math.sin(time * 0.00036 + index * 1.7);
+              signatureStroke(
+                phrase.color,
+                0.72 + groove * 0.5 + breathe * 0.2,
+                10 + breathe * 5,
+                0.075 + groove * 0.11 + breathe * 0.045
+              );
+              strokeContourSegment(tapeContour, phrase.center, phrase.span);
+            });
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            for (let grain = 0; grain < 10; grain += 1) {
+              const travel = (grain / 10 + time * 0.000006 * (grain % 2 ? 1 : -1) + 1) % 1;
+              const outerPoint = tapeContour[Math.floor(travel * tapeContour.length) % tapeContour.length];
+              const innerPoint = grooveInner[Math.floor(travel * grooveInner.length) % grooveInner.length];
+              const depth = 0.25 + (grain % 4) * 0.16;
+              const gx = innerPoint.x + (outerPoint.x - innerPoint.x) * depth;
+              const gy = innerPoint.y + (outerPoint.y - innerPoint.y) * depth;
+              ctx.fillStyle = rgba(grain % 3 ? theme.accent : theme.accent2, 0.035 + cadenceDrive * 0.045);
+              ctx.fillRect(gx - 1.4, gy - 0.55, 2.8 + (grain % 3), 1.1);
+            }
+            ctx.restore();
+          } else if (instrumentalHipHop) {
+            // Instrumental Hip-Hop puts composition and sampling in front:
+            // twelve curved pads circulate around one unbroken low-end loop.
+            const sampleContour = spectrumShell({ scale: 0.88, detail: 0.4, offset: 1, smoothing: 6 });
+            const sampleTravel = (time / Math.max(2400, beatPeriod * 6)) % 1;
+            const pattern = [1, 0.22, 0.5, 0.34, 0.82, 0.2, 0.62, 0.29, 0.74, 0.18, 0.46, 0.31];
+            const activePad = Math.floor(sampleTravel * pattern.length) % pattern.length;
+            pattern.forEach((weight, pad) => {
+              const active = pad === activePad ? 1 : 0;
+              const color = pad % 4 === 0 ? theme.accent : pad % 3 === 0 ? theme.hot : theme.accent2;
+              signatureStroke(
+                color,
+                0.72 + weight * groove * 0.68 + active * 0.54,
+                7 + active * 7,
+                0.07 + weight * groove * 0.13 + active * 0.14
+              );
+              strokeContourSegment(sampleContour, (pad + 0.5) / pattern.length, 0.052);
+            });
+            signatureStroke(theme.accent, 1.02 + pocketDrive * 0.7, 11, 0.11 + pocketDrive * 0.18);
+            strokeAngularContour(grooveOuter, Math.PI / 2, 1.28);
           } else {
             strokeAngularContour(grooveOuter, Math.PI / 2, Math.PI - 0.34);
           }
@@ -7419,9 +8864,12 @@ export class VisualEngine {
             const activePad = Math.floor(deckTravel * deckPattern.length) % deckPattern.length;
             const deckSpan = 1.76;
             const padCell = deckSpan / deckPattern.length;
+            // Leave a stable pocket between the sampler pads and the live
+            // outer edge, whose low-frequency peaks can grow substantially.
+            const deckRadiusScale = 0.84;
             const deckContour = grooveOuter.map((point) => ({
-              x: point.x * 0.9,
-              y: point.y * 0.9
+              x: point.x * deckRadiusScale,
+              y: point.y * deckRadiusScale
             }));
             signatureStroke(theme.accent2, 0.86 + cadenceDrive * 0.32, 7, 0.1 + cadenceDrive * 0.1);
             strokeAngularContour(deckContour, Math.PI / 2, deckSpan + 0.08);
@@ -7432,7 +8880,7 @@ export class VisualEngine {
               const oddSwing = pad % 2 ? 0.018 + groove * 0.012 : -0.004;
               const centerAngle = Math.PI / 2 - deckSpan / 2
                 + (pad + 0.5) * padCell + oddSwing;
-              const radialScale = 0.9 + active * (0.018 + groove * 0.012);
+              const radialScale = deckRadiusScale + active * (0.014 + groove * 0.009);
               const padContour = grooveOuter.map((point) => ({
                 x: point.x * radialScale,
                 y: point.y * radialScale
@@ -7656,6 +9104,12 @@ export class VisualEngine {
   applyImpactPostFx(x, y, theme, metrics) {
     const fx = resolveImpactFx(theme, metrics);
     if (fx.amount < 0.015 || !this.fxCtx) return;
+    // At fullscreen resolution this pass copies the entire transparent canvas,
+    // then replays it up to four more times for blur, echo, chroma and slices.
+    // The foreground already carries its impact through the live contour,
+    // shockwave, particles and text treatment, so the redundant full-frame
+    // post-process is reserved for the much smaller desktop layouts.
+    if (document.body.dataset.stageOutput === 'true') return;
     const width = this.canvas.width;
     const height = this.canvas.height;
     const pixelX = x * this.dpr;
@@ -7755,7 +9209,8 @@ export class VisualEngine {
     const strength = clamp(options.strength ?? metrics.rhythmStrength ?? metrics.impact ?? 0);
     const profile = genreMotionProfile(theme);
     const tranceInflow = theme.mode === 'trance'
-      && !['classical', 'soundtrack', 'synthwave'].includes(theme.id);
+      && theme.family !== 'classical'
+      && !['soundtrack', 'synthwave'].includes(theme.id);
     const tranceDirection = 1;
     const tranceArmCount = theme.id === 'psytrance' ? 12 : 8;
     const count = Number.isFinite(options.count)

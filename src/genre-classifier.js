@@ -80,8 +80,8 @@ const RULES = [
   ['future-garage', /\b(future garage)\b/i],
   ['speed-garage', /\b(speed garage)\b/i],
   ['two-step-garage', /\b(2[\s-]?step(?: garage)?|two[\s-]?step garage)\b/i],
-  ['bassline', /\b(?:uk )?bassline(?: house)?\b/i],
-  ['uk-garage', /\b(uk garage|ukg|dark garage)\b/i],
+  ['bassline', /\b(4x4[\s-]?bassline|niche[\s-]?bassline|(?:uk )?bassline(?: house)?)\b/i],
+  ['uk-garage', /\b(uk garage|ukg|dark garage|4x4 garage|garage 4x4)\b/i],
   ['big-beat', /\b(big beat)\b/i],
   ['breakbeat', /\b(breakbeat|breaks|nu skool breaks|progressive breaks)\b/i],
   ['nu-disco', /\b(nu[\s-]?disco|future funk)\b/i],
@@ -97,12 +97,20 @@ const RULES = [
   ['black-metal', /\b(black metal|blackgaze)\b/i],
   ['nu-metal', /\b(nu[\s-]?metal|rap metal)\b/i],
   ['metal', /(?:\b(?:thrash metal|heavy metal|power metal|doom metal|metal)\b|メタル)/i],
-  ['disco-funk', /\b(nu[\s-]?disco|disco|funk)\b/i],
+  ['disco-funk', /\b(nu[\s-]?disco|disco|boogie)\b/i],
   ['singer-songwriter', /(?:\b(?:singer[\s/-]?songwriter|acoustic pop)\b|シンガー[・\s-]?ソングライター)/i],
   ['country', /(?:\b(?:country(?: pop| rock)?|americana|bluegrass)\b|カントリー)/i],
   ['folk', /\b(indie folk|folk rock|folk|acoustic)\b/i],
-  ['jazz', /(?:\b(?:jazz|bebop|swing|bossa nova)\b|ジャズ)/i],
-  ['classical', /(?:\b(?:classical|orchestral|opera|chamber music|piano)\b|クラシック)/i],
+  ['jazz-fusion', /(?:\b(?:jazz[\s-]?(?:fusion|funk|rock)|fusion jazz)\b|ジャズ[・\s-]?(?:フュージョン|ファンク|ロック))/i],
+  ['bossa-nova', /(?:\bbossa[\s-]?nova\b|ボサノバ|ボサノヴァ)/i],
+  ['bebop', /(?:\b(?:be[\s-]?bop|hard bop|post bop)\b|^bop$|ビバップ|ハード[・\s-]?バップ)/i],
+  ['swing-jazz', /(?:\b(?:swing jazz|big band|swing music)\b|^swing$|スウィング(?:ジャズ)?|ビッグバンド)/i],
+  ['jazz', /(?:\b(?:jazz|cool jazz|free jazz|modal jazz|smooth jazz)\b|ジャズ)/i],
+  ['baroque', /(?:\bbaroque\b|バロック)/i],
+  ['romantic-classical', /(?:\b(?:romantic classical|romantic era|neo-romantic)\b|ロマン派)/i],
+  ['opera', /(?:\bopera\b|オペラ)/i],
+  ['modern-classical', /(?:\b(?:modern classical|contemporary classical|neo[\s-]?classical|post[\s-]?modern classical|minimalist classical)\b|^(?:contemporary|post[\s-]?modern)$|現代音楽|近現代クラシック|ネオクラシカル)/i],
+  ['classical', /(?:\b(?:classical|orchestral|chamber music|piano)\b|^(?:choral|impressionist|medieval|renaissance)$|クラシック|室内楽)/i],
   ['soundtrack', /(?:\b(?:soundtrack|film score|video game music|original score)\b|サウンドトラック|映画(?:音楽)?\s*[/／・]\s*ゲーム(?:音楽)?|映画音楽|ゲーム音楽)/i],
   ['latin', /(?:\b(?:latin(?: pop| urban| dance| music)?|reggaeton|salsa|bachata|merengue|cumbia|mambo)\b|ラテン|レゲトン|サルサ|バチャータ|メレンゲ|クンビア)/i],
   ['reggae', /(?:\b(?:reggae|dancehall|dub music)\b|レゲエ)/i],
@@ -115,12 +123,27 @@ const RULES = [
   ['dance-pop', /(?:\b(?:dance[\s-]?pop|electropop|synthpop|europop)\b|ダンス[・\s-]?ポップ)/i],
   ['indie-pop', /(?:\b(?:indie pop|bedroom pop|dream pop)\b|インディー[・\s-]?ポップ)/i],
   ['pop-rock', /(?:\b(?:pop rock|piano rock|power pop)\b|ポップ[・\s-]?ロック)/i],
+  ['lo-fi-hip-hop', /(?:\b(?:lo[\s-]?fi hip[\s-]?hop|lofi hip[\s-]?hop|lo[\s-]?fi beats?|chillhop)\b|ローファイ[・\s-]?ヒップホップ|チルホップ)/i],
+  ['instrumental-hip-hop', /(?:\binstrumental hip[\s-]?hop\b|インストゥルメンタル[・\s-]?ヒップホップ)/i],
   ['experimental-hip-hop', /(?:\b(?:experimental[\s-]+(?:hip[\s-]?hop|rap)|abstract[\s-]+hip[\s-]?hop|avant[\s-]?garde[\s-]+hip[\s-]?hop|industrial[\s-]+hip[\s-]?hop)\b|实验说唱|實驗說唱|实验嘻哈|實驗嘻哈|実験的ヒップホップ|エクスペリメンタル[・\s-]?ヒップホップ)/i],
-  ['hip-hop', /(?:\b(?:hip[\s-]?hop|rap|trap|grime)\b|ヒップホップ|ラップ)/i],
-  ['rnb', /(?:\b(?:r&b|rnb|rhythm and blues|neo soul|soul)\b|ソウル)/i],
+  ['hip-hop', /(?:\b(?:hip[\s-]?hop|rap|trap|grime|g[\s-]?funk)\b|ヒップホップ|ラップ)/i],
+  ['alternative-rnb', /\b(?:alternative|alt|experimental)[\s-]?(?:r&b|rnb)\b/i],
+  ['contemporary-rnb', /\b(?:contemporary|modern)[\s-]?(?:r&b|rnb)\b/i],
+  ['new-jack-swing', /\b(?:new jack swing|swingbeat|rnb[\s/-]?swing|r&b[\s/-]?swing)\b/i],
+  ['neo-soul', /\bneo[\s-]?soul\b/i],
+  ['gospel', /\b(?:gospel|contemporary christian)\b/i],
+  ['funk', /(?:^funk$|\b(?:p[.\s-]?funk|free funk)\b)/i],
+  ['soul', /\b(?:soul|uk street soul|northern soul|psychedelic soul)\b/i],
+  ['rnb', /\b(?:r&b|rnb|rhythm (?:and|&) blues)\b/i],
   ['pop', /(?:\bpop\b|ポップ)/i],
   ['alternative', /(?:\b(?:alternative rock|indie rock|garage rock|alternative|indie)\b|オルタナティブ)/i],
   ['rock', /(?:\b(?:hard rock|classic rock|punk rock|rock)\b|ロック)/i],
+  ['blues', /(?:\b(?:(?:boogie woogie|chicago|country|delta|electric|harmonica|jump|louisiana|modern electric|piano|texas) blues|blues)\b|ブルース)/i],
+  ['chillout', /(?:\b(?:chillout|chill-out)\b|チルアウト)/i],
+  ['downtempo', /(?:\b(?:downtempo|down-tempo|downbeat|trip[\s-]?hop)\b|ダウンテンポ|トリップ[・\s-]?ホップ)/i],
+  ['ambient', /(?:^(?:ambient|ambient music|dark ambient|space ambient|drone|drone ambient)$|アンビエント|環境音楽)/i],
+  ['idm', /(?:\b(?:idm|intelligent dance music|braindance|drill and bass)\b|インテリジェント[・\s-]?ダンス[・\s-]?ミュージック)/i],
+  ['glitch', /(?:^(?:glitch|microsound|lowercase|clicks and cuts)$|グリッチ|マイクロサウンド)/i],
   ['electronic', /(?:\b(?:electronic|electronica|dance|edm|electro)\b|クラブ|ダンス|エレクトロ(?:ニック)?)/i]
 ];
 
@@ -341,7 +364,10 @@ const ARTIST_HINTS = new Map(Object.entries({
   'green day': 'punk', 'radiohead': 'alternative', 'muse': 'alternative', 'nirvana': 'alternative',
   'the pinballs': 'rock', 'escape plan': 'rock',
   'foo fighters': 'rock', 'the killers': 'alternative',
-  'the weeknd': 'rnb', 'sza': 'rnb', 'frank ocean': 'rnb', 'beyoncé': 'rnb',
+  'the weeknd': 'alternative-rnb', 'frank ocean': 'alternative-rnb', 'fka twigs': 'alternative-rnb',
+  'sza': 'contemporary-rnb', 'beyoncé': 'contemporary-rnb', 'beyonce': 'contemporary-rnb',
+  'usher': 'contemporary-rnb', 'h.e.r.': 'contemporary-rnb', 'summer walker': 'contemporary-rnb',
+  'brent faiyaz': 'contemporary-rnb',
   'rihanna': 'pop', 'adele': 'pop', 'harry styles': 'pop', 'ed sheeran': 'pop',
   'hozier': 'folk', 'arctic monkeys': 'alternative', 'tame impala': 'alternative',
   'queen': 'rock', 'måneskin': 'rock',
@@ -405,8 +431,14 @@ const ARTIST_HINTS = new Map(Object.entries({
   'black sabbath': 'metal', 'judas priest': 'metal', 'slayer': 'metal', 'megadeth': 'metal',
   'pantera': 'metal', 'avenged sevenfold': 'metal',
   'hans zimmer': 'soundtrack', 'john williams': 'soundtrack', 'joe hisaishi': 'soundtrack', 'jaroslav beck': 'soundtrack',
+  'b.b. king': 'blues', 'bb king': 'blues', 'muddy waters': 'blues', 'robert johnson': 'blues',
+  'howlin wolf': 'blues', 'buddy guy': 'blues', 'john lee hooker': 'blues', 'stevie ray vaughan': 'blues',
   '久石譲': 'soundtrack', 'miles davis': 'jazz', 'john coltrane': 'jazz',
   'herbie hancock': 'jazz', 'tony bennett': 'jazz', 'jon batiste': 'jazz',
+  'charlie parker': 'bebop', 'dizzy gillespie': 'bebop', 'thelonious monk': 'bebop',
+  'count basie': 'swing-jazz', 'glenn miller': 'swing-jazz', 'benny goodman': 'swing-jazz',
+  'antonio carlos jobim': 'bossa-nova', 'joão gilberto': 'bossa-nova', 'joao gilberto': 'bossa-nova',
+  'weather report': 'jazz-fusion', 'mahavishnu orchestra': 'jazz-fusion', 'return to forever': 'jazz-fusion',
   'sarah brightman': 'classical', 'andrea bocelli': 'classical', 'bob marley': 'reggae',
 
   // Fill the formerly thin genre branches with established specialists.
@@ -443,6 +475,18 @@ const ARTIST_HINTS = new Map(Object.entries({
   'renegade system': 'hard-trance', 'lab4': 'hard-trance',
   'kavinsky': 'synthwave', 'the midnight': 'synthwave', 'fm-84': 'synthwave', 'gunship': 'synthwave', 'timecop1983': 'synthwave',
 
+  'brian eno': 'ambient', 'stars of the lid': 'ambient', 'harold budd': 'ambient',
+  'tim hecker': 'ambient', 'loscil': 'ambient', 'william basinski': 'ambient',
+  'bonobo': 'downtempo', 'tycho': 'downtempo', 'thievery corporation': 'downtempo',
+  'kruder & dorfmeister': 'downtempo', 'boards of canada': 'idm',
+  'zero 7': 'chillout', 'enigma': 'chillout', 'blank & jones': 'chillout',
+  'dj shadow': 'instrumental-hip-hop', 'j dilla': 'instrumental-hip-hop', 'nujabes': 'instrumental-hip-hop',
+  'rjd2': 'instrumental-hip-hop', 'madlib': 'instrumental-hip-hop',
+  'idealism': 'lo-fi-hip-hop', 'jinsang': 'lo-fi-hip-hop', 'potsu': 'lo-fi-hip-hop',
+  'eevee': 'lo-fi-hip-hop', 'saib': 'lo-fi-hip-hop', "l'indécis": 'lo-fi-hip-hop',
+  'aphex twin': 'idm', 'autechre': 'idm', 'squarepusher': 'idm', 'µ-ziq': 'idm', 'mu-ziq': 'idm',
+  'oval': 'glitch', 'alva noto': 'glitch', 'fennesz': 'glitch', 'ryoji ikeda': 'glitch',
+
   'the clash': 'punk', 'ramones': 'punk', 'sex pistols': 'punk', 'rancid': 'punk',
   'bad religion': 'punk', 'the offspring': 'punk',
   'bob dylan': 'folk', 'joan baez': 'folk', 'joni mitchell': 'folk', 'bon iver': 'folk',
@@ -451,8 +495,15 @@ const ARTIST_HINTS = new Map(Object.entries({
   'toots and the maytals': 'reggae', 'gregory isaacs': 'reggae',
   'neophyte': 'gabber', 'rotterdam terror corps': 'gabber', 'the stunned guys': 'gabber',
 
-  'chic': 'disco-funk', 'earth, wind & fire': 'disco-funk', 'kool & the gang': 'disco-funk',
-  'parliament': 'disco-funk', 'jamiroquai': 'disco-funk',
+  'chic': 'disco-funk',
+  'earth, wind & fire': 'funk', 'kool & the gang': 'funk', 'parliament': 'funk',
+  'james brown': 'funk', 'george clinton': 'funk', 'jamiroquai': 'funk',
+  'erykah badu': 'neo-soul', "d'angelo": 'neo-soul', 'jill scott': 'neo-soul', 'maxwell': 'neo-soul',
+  'teddy riley': 'new-jack-swing', 'guy': 'new-jack-swing', 'bell biv devoe': 'new-jack-swing',
+  'bobby brown': 'new-jack-swing', 'keith sweat': 'new-jack-swing',
+  'aretha franklin': 'soul', 'marvin gaye': 'soul', 'otis redding': 'soul',
+  'al green': 'soul', 'sam cooke': 'soul',
+  'kirk franklin': 'gospel', 'mahalia jackson': 'gospel', 'cece winans': 'gospel',
   'james taylor': 'singer-songwriter', 'carole king': 'singer-songwriter',
   'leonard cohen': 'singer-songwriter', 'damien rice': 'singer-songwriter',
   'johnny cash': 'country', 'dolly parton': 'country', 'willie nelson': 'country',
@@ -463,7 +514,14 @@ const ARTIST_HINTS = new Map(Object.entries({
   'immortal': 'black-metal', 'burzum': 'black-metal',
   'whitechapel': 'deathcore', 'chelsea grin': 'deathcore',
   'limp bizkit': 'nu-metal', 'papa roach': 'nu-metal',
-  'ludovico einaudi': 'classical', 'lang lang': 'classical', 'yuja wang': 'classical'
+  'johann sebastian bach': 'baroque', 'j. s. bach': 'baroque', 'j s bach': 'baroque', 'js bach': 'baroque',
+  'antonio vivaldi': 'baroque', 'george frideric handel': 'baroque',
+  'pyotr ilyich tchaikovsky': 'romantic-classical', 'tchaikovsky': 'romantic-classical',
+  'frédéric chopin': 'romantic-classical', 'frederic chopin': 'romantic-classical',
+  'sergei rachmaninoff': 'romantic-classical', 'gustav mahler': 'romantic-classical',
+  'maria callas': 'opera', 'luciano pavarotti': 'opera', 'renée fleming': 'opera', 'renee fleming': 'opera',
+  'max richter': 'modern-classical', 'philip glass': 'modern-classical', 'steve reich': 'modern-classical',
+  'ludovico einaudi': 'modern-classical', 'lang lang': 'classical', 'yuja wang': 'classical'
 }).map(([artist, id]) => [normalize(artist), id]));
 
 // Apple Music localizes a number of Western artist names on the Japanese
@@ -748,7 +806,16 @@ function ruleMatch(value) {
   return null;
 }
 
-function classifyGenre({ tags = [], artist = '', title = '' } = {}) {
+function refinesGenre(candidateId, currentId) {
+  if (!candidateId || !currentId || candidateId === currentId) return false;
+  const candidate = themeFor(candidateId);
+  const current = themeFor(currentId);
+  if (candidate.family === current.family || candidate.parent === current.label) return true;
+  if (currentId === 'hard-dance' && ['hardcore', 'hardstyle'].includes(candidate.mode)) return true;
+  return currentId === 'bass-music' && candidate.mode === 'dubstep';
+}
+
+function classifyGenre({ tags = [], artist = '', title = '', useArtistMapping = true } = {}) {
   // ASMR is a content mode rather than a conventional music genre. Explicit
   // title/artist signals therefore override storefront genre metadata.
   const asmrSignal = `${artist}\n${title}`.match(ASMR_SIGNAL_PATTERN);
@@ -760,27 +827,8 @@ function classifyGenre({ tags = [], artist = '', title = '' } = {}) {
       confidence: 0.98
     };
   }
-  // Bangarang is deliberately treated as a track-level case. Skrillex's
-  // catalog spans several bass styles, so this must not become an artist hint.
-  const normalizedTitle = normalize(title);
-  const trackArtists = normalize(artist)
-    .split(/\s+(?:feat\.?|ft\.?|vs\.?)\s+|\s*[,&/]\s+|\s+x\s+/i)
-    .map(canonicalArtist)
-    .filter(Boolean);
-  const bangarang = /\bbangarang\b/i.test(normalizedTitle)
-    && trackArtists.some((value) => value === 'skrillex'
-      || /(?:^|[^a-z0-9])skrillex(?:$|[^a-z0-9])/i.test(value));
-  if (bangarang) {
-    return {
-      id: 'moombahcore',
-      ...themeFor('moombahcore'),
-      note: '(NOT DUBSTEP)',
-      matched: 'track:skrillex/bangarang',
-      confidence: 0.99
-    };
-  }
   const cleanArtist = normalize(artist).replace(/\s+(?:feat\.?|ft\.?).*$/, '').trim();
-  const hintMatch = artistHint(cleanArtist);
+  const hintMatch = useArtistMapping ? artistHint(cleanArtist) : null;
   const rankedTagResults = tags
     .filter(Boolean)
     .map(canonicalizeGenreLabel)
@@ -796,18 +844,18 @@ function classifyGenre({ tags = [], artist = '', title = '' } = {}) {
       tagResult = candidate;
       continue;
     }
-    const currentTheme = themeFor(tagResult.id);
-    const candidateTheme = themeFor(candidate.id);
-    const refinesCurrent = candidateTheme.family === currentTheme.family
-      || candidateTheme.parent === currentTheme.label;
-    if (refinesCurrent && candidate.id !== tagResult.id) tagResult = candidate;
+    if (refinesGenre(candidate.id, tagResult.id)) tagResult = candidate;
   }
   const titleResult = ruleMatch(title);
-  const artistRefinesBroadHardcore = Boolean(
+  const hintTheme = hintMatch ? themeFor(hintMatch.id) : null;
+  const artistRefinesBroadHardDance = Boolean(
     hintMatch
     && tagResult
-    && ['hard-dance', 'hardcore', 'uptempo-hardcore'].includes(tagResult.id)
-    && themeFor(hintMatch.id).mode === 'hardcore'
+    && (
+      (tagResult.id === 'hard-dance' && ['hardcore', 'hardstyle'].includes(hintTheme.mode))
+      || (['hardcore', 'uptempo-hardcore'].includes(tagResult.id) && hintTheme.mode === 'hardcore')
+      || (tagResult.id === 'hardstyle' && hintTheme.mode === 'hardstyle')
+    )
     && hintMatch.id !== tagResult.id
   );
   const artistRefinesBroadPhonk = Boolean(
@@ -820,8 +868,84 @@ function classifyGenre({ tags = [], artist = '', title = '' } = {}) {
   const artistRefinesBroadHipHop = Boolean(
     hintMatch
     && tagResult
-    && tagResult.id === 'hip-hop'
-    && hintMatch.id === 'experimental-hip-hop'
+    && ['hip-hop', 'instrumental-hip-hop'].includes(tagResult.id)
+    && ['experimental-hip-hop', 'instrumental-hip-hop', 'lo-fi-hip-hop'].includes(hintMatch.id)
+    && hintMatch.id !== tagResult.id
+  );
+  const artistRefinesBroadDubstep = Boolean(
+    hintMatch
+    && tagResult
+    && hintMatch.id !== tagResult.id
+    && (
+      (tagResult.id === 'bass-music' && hintTheme.mode === 'dubstep' && hintMatch.id !== 'bass-music')
+      || (tagResult.id === 'dubstep' && hintTheme.family === 'dubstep' && hintMatch.id !== 'dubstep')
+      || (tagResult.id === 'riddim' && hintMatch.id === 'future-riddim')
+    )
+  );
+  const artistRefinesBroadHouse = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'house'
+    && hintTheme.family === 'house'
+    && hintMatch.id !== 'house'
+  );
+  const artistRefinesBroadDnb = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'drum-bass'
+    && hintTheme.family === 'drum-bass'
+    && hintMatch.id !== 'drum-bass'
+  );
+  const artistRefinesBroadGarage = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'uk-garage'
+    && hintTheme.family === 'garage'
+    && hintMatch.id !== 'uk-garage'
+  );
+  const artistRefinesBroadTechno = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'techno'
+    && hintTheme.family === 'techno'
+    && hintMatch.id !== 'techno'
+  );
+  const artistRefinesBroadTrance = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'trance'
+    && hintTheme.family === 'trance'
+    && hintMatch.id !== 'trance'
+  );
+  const artistRefinesBroadJpop = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'j-pop'
+    && hintTheme.family === 'j-pop'
+    && hintMatch.id !== 'j-pop'
+  );
+  const artistRefinesBroadJazz = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'jazz'
+    && hintTheme.family === 'jazz'
+    && hintMatch.id !== 'jazz'
+  );
+  const artistRefinesBroadClassical = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'classical'
+    && hintTheme.family === 'classical'
+    && hintMatch.id !== 'classical'
+  );
+  const artistRefinesBroadRnb = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'rnb'
+    && [
+      'contemporary-rnb', 'alternative-rnb', 'neo-soul', 'new-jack-swing',
+      'soul', 'gospel', 'funk'
+    ].includes(hintMatch.id)
   );
 
   // A concrete queried/embedded tag wins. Artist mappings only refine empty
@@ -830,16 +954,23 @@ function classifyGenre({ tags = [], artist = '', title = '' } = {}) {
   let confidence;
   if (tagResult
     && !ARTIST_FALLBACK_RULE_IDS.has(tagResult.id)
-    && !artistRefinesBroadHardcore
+    && !artistRefinesBroadHardDance
     && !artistRefinesBroadPhonk
-    && !artistRefinesBroadHipHop) {
+    && !artistRefinesBroadHipHop
+    && !artistRefinesBroadDubstep
+    && !artistRefinesBroadHouse
+    && !artistRefinesBroadDnb
+    && !artistRefinesBroadGarage
+    && !artistRefinesBroadTechno
+    && !artistRefinesBroadTrance
+    && !artistRefinesBroadJpop
+    && !artistRefinesBroadJazz
+    && !artistRefinesBroadClassical
+    && !artistRefinesBroadRnb) {
     selected = tagResult;
     confidence = 0.9;
   } else if (hintMatch && titleResult && titleResult.id !== hintMatch.id) {
-    const hintTheme = themeFor(hintMatch.id);
-    const titleTheme = themeFor(titleResult.id);
-    const titleRefinesArtist = titleTheme.family === hintTheme.family
-      || titleTheme.parent === hintTheme.label;
+    const titleRefinesArtist = refinesGenre(titleResult.id, hintMatch.id);
     if (titleRefinesArtist) {
       selected = { ...titleResult, matched: `title:${titleResult.matched}` };
       confidence = 0.8;

@@ -12,10 +12,14 @@ export class AudioEngine extends EventTarget {
     this.context = null;
     this.rhythmContext = null;
     this.rhythmSource = null;
+    this.genreContext = null;
+    this.genreSource = null;
     this.analyser = null;
     this.beatAnalyser = null;
     this.rhythmWorklet = null;
     this.rhythmMute = null;
+    this.genreWorklet = null;
+    this.genreMute = null;
     this.stream = null;
     this.frequency = null;
     this.beatFrequency = null;
@@ -45,24 +49,67 @@ export class AudioEngine extends EventTarget {
     this.outputSignature = '';
     this.deviceRestartTimer = 0;
     this.devicePollTimer = 0;
+    this.audioSourceId = 'system';
     this.rhythmModelEnabled = true;
+    this.localGenreModelEnabled = true;
     this.installOutputDeviceMonitor();
   }
 
   installOutputDeviceMonitor() {
     const devices = navigator.mediaDevices;
     if (!devices?.enumerateDevices) return;
-    devices.addEventListener?.('devicechange', () => {
-      this.scheduleOutputDeviceRestart('devicechange', true, 520);
-    });
+    devices.addEventListener?.('devicechange', () => void this.handleMediaDevicesChanged());
     this.refreshOutputDeviceSignature(false);
     // Chromium normally emits devicechange when Windows changes its default
     // endpoint. Polling the small device list is a fallback for drivers that
     // update the default pseudo-device without emitting the event.
     this.devicePollTimer = window.setInterval(async () => {
+      if (this.audioSourceId !== 'system') return;
       const changed = await this.refreshOutputDeviceSignature(true);
       if (changed) this.scheduleOutputDeviceRestart('default-output-changed', true, 260);
     }, 2400);
+  }
+
+  async audioSources() {
+    const sources = [{ id: 'system', kind: 'system', label: '' }];
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      let inputNumber = 0;
+      for (const device of devices) {
+        if (device.kind !== 'audioinput' || !device.deviceId) continue;
+        inputNumber += 1;
+        sources.push({
+          id: String(device.deviceId),
+          kind: 'input',
+          label: String(device.label || ''),
+          inputNumber
+        });
+      }
+    } catch {
+      // System loopback remains available even when input enumeration is denied.
+    }
+    return sources;
+  }
+
+  async handleMediaDevicesChanged() {
+    const sources = await this.audioSources();
+    this.dispatchEvent(new CustomEvent('audiosourceschange', { detail: { sources } }));
+    if (this.audioSourceId === 'system') {
+      this.scheduleOutputDeviceRestart('devicechange', true, 520);
+      return;
+    }
+    if (sources.some((source) => source.id === this.audioSourceId)) return;
+    this.audioSourceId = 'system';
+    this.dispatchEvent(new CustomEvent('audiosourcefallback', { detail: { sourceId: 'system' } }));
+    this.start();
+  }
+
+  async setAudioSource(sourceId) {
+    const next = String(sourceId || '').trim() || 'system';
+    if (next === this.audioSourceId && this.stream && this.status === 'live') return this.audioSourceId;
+    this.audioSourceId = next;
+    await this.start();
+    return this.audioSourceId;
   }
 
   async refreshOutputDeviceSignature(compare = true) {
@@ -78,6 +125,7 @@ export class AudioEngine extends EventTarget {
   }
 
   scheduleOutputDeviceRestart(reason, force = false, delay = 420) {
+    if (this.audioSourceId !== 'system') return;
     window.clearTimeout(this.deviceRestartTimer);
     this.deviceRestartTimer = window.setTimeout(async () => {
       const changed = await this.refreshOutputDeviceSignature(true);
@@ -143,6 +191,17 @@ export class AudioEngine extends EventTarget {
     if (this.stream && this.status === 'live') this.start();
   }
 
+  setLocalGenreModelEnabled(enabled) {
+    const next = enabled !== false;
+    if (next === this.localGenreModelEnabled) return;
+    this.localGenreModelEnabled = next;
+    if (!next) {
+      this.stopGenreFeed();
+      return;
+    }
+    if (this.stream && this.status === 'live') this.start();
+  }
+
   setModelAssist(payload = {}) {
     if (payload.type === 'ready') {
       this.modelAssist = {
@@ -185,10 +244,31 @@ export class AudioEngine extends EventTarget {
     this.status = 'starting';
     this.dispatchEvent(new CustomEvent('status', { detail: this.status }));
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        video: { width: 1, height: 1, frameRate: 1 }
-      });
+      let stream;
+      try {
+        stream = this.audioSourceId === 'system'
+          ? await navigator.mediaDevices.getDisplayMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+            video: { width: 1, height: 1, frameRate: 1 }
+          })
+          : await navigator.mediaDevices.getUserMedia({
+            audio: {
+              deviceId: { exact: this.audioSourceId },
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false
+            },
+            video: false
+          });
+      } catch (error) {
+        if (this.audioSourceId === 'system') throw error;
+        this.audioSourceId = 'system';
+        this.dispatchEvent(new CustomEvent('audiosourcefallback', { detail: { sourceId: 'system' } }));
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          video: { width: 1, height: 1, frameRate: 1 }
+        });
+      }
       const audioTracks = stream.getAudioTracks();
       if (!audioTracks.length) throw new Error('System loopback audio was not provided');
       if (serial !== this.startSerial) {
@@ -258,22 +338,66 @@ export class AudioEngine extends EventTarget {
           this.stopRhythmFeed();
         }
       }
+      if (this.localGenreModelEnabled) {
+        try {
+          try {
+            this.genreContext = new AudioContext({ latencyHint: 'playback', sampleRate: 16000 });
+          } catch {
+            this.genreContext = new AudioContext({ latencyHint: 'playback' });
+          }
+          await this.genreContext.audioWorklet.addModule('./genre-capture-worklet.js');
+          if (serial !== this.startSerial) return;
+          this.genreSource = this.genreContext.createMediaStreamSource(stream);
+          this.genreWorklet = new AudioWorkletNode(this.genreContext, 'genre-police-genre-capture', {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            outputChannelCount: [1]
+          });
+          this.genreMute = this.genreContext.createGain();
+          this.genreMute.gain.value = 0;
+          this.genreWorklet.port.onmessage = (event) => {
+            const samples = event.data;
+            if (samples instanceof Float32Array && samples.length === 1600) {
+              window.genrePolice.submitGenreAudio(samples);
+            }
+          };
+          this.genreSource.connect(this.genreWorklet);
+          this.genreWorklet.connect(this.genreMute);
+          this.genreMute.connect(this.genreContext.destination);
+        } catch (error) {
+          console.warn('Local genre model audio feed unavailable:', error);
+          this.stopGenreFeed();
+        }
+      }
       this.status = 'live';
       this.captureStartedAt = performance.now();
-      this.refreshOutputDeviceSignature(false);
+      if (this.audioSourceId === 'system') this.refreshOutputDeviceSignature(false);
+      this.dispatchEvent(new CustomEvent('audiosourceschange', {
+        detail: { sources: await this.audioSources(), sourceId: this.audioSourceId }
+      }));
       this.dispatchEvent(new CustomEvent('status', { detail: this.status }));
       audioTracks[0].addEventListener('ended', () => {
         if (this.stream !== stream || serial !== this.startSerial) return;
         this.status = 'stopped';
         this.dispatchEvent(new CustomEvent('status', { detail: this.status }));
-        this.scheduleOutputDeviceRestart('loopback-track-ended', true, 260);
+        if (this.audioSourceId === 'system') {
+          this.scheduleOutputDeviceRestart('loopback-track-ended', true, 260);
+        } else {
+          window.clearTimeout(this.deviceRestartTimer);
+          this.deviceRestartTimer = window.setTimeout(() => this.start(), 260);
+        }
       });
     } catch (error) {
       if (serial !== this.startSerial) return;
-      console.warn('System audio capture unavailable:', error);
+      console.warn('Audio capture unavailable:', error);
       this.status = 'metadata-only';
       this.dispatchEvent(new CustomEvent('status', { detail: this.status }));
     }
+  }
+
+  createRecordingTrack() {
+    const track = this.stream?.getAudioTracks?.()[0];
+    return track && track.readyState === 'live' ? track.clone() : null;
   }
 
   stop() {
@@ -281,6 +405,7 @@ export class AudioEngine extends EventTarget {
     this.stream = null;
     if (stream) stream.getTracks().forEach((track) => track.stop());
     this.stopRhythmFeed();
+    this.stopGenreFeed();
     if (this.context && this.context.state !== 'closed') this.context.close().catch(() => {});
     this.context = null;
     this.analyser = null;
@@ -300,6 +425,17 @@ export class AudioEngine extends EventTarget {
     this.rhythmSource = null;
     this.rhythmWorklet = null;
     this.rhythmMute = null;
+  }
+
+  stopGenreFeed() {
+    this.genreSource?.disconnect();
+    this.genreWorklet?.disconnect();
+    this.genreMute?.disconnect();
+    if (this.genreContext && this.genreContext.state !== 'closed') this.genreContext.close().catch(() => {});
+    this.genreContext = null;
+    this.genreSource = null;
+    this.genreWorklet = null;
+    this.genreMute = null;
   }
 
   rangeAverage(fromHz, toHz) {

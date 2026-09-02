@@ -390,7 +390,7 @@ export function resolveKickProfile(theme = {}) {
   if (mode === 'hardstyle' || family === 'hardstyle') return KICK_PROFILES.hardstyle;
   if (mode === 'hardcore' || family === 'hardcore') return KICK_PROFILES.hardcore;
   if (mode === 'trance' || family === 'trance') {
-    if (['classical', 'soundtrack', 'synthwave'].includes(id)) return KICK_PROFILES.general;
+    if (family === 'classical' || ['soundtrack', 'synthwave'].includes(id)) return KICK_PROFILES.general;
     return KICK_PROFILES.trance;
   }
   if (mode === 'hip-hop' || mode === 'phonk' || family === 'hip-hop' || family === 'phonk') {

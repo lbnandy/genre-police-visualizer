@@ -10,6 +10,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'index.html'
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'app.js'), 'utf8');
 const visualSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'visual-engine.js'), 'utf8');
 const mainSource = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+const themesSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'themes.js'), 'utf8');
 const backgroundRulesStart = css.indexOf('/* Poster families share the same stock');
 
 function ruleContaining(marker) {
@@ -64,6 +65,76 @@ test('every reviewed background family has an ambient motion source', () => {
   }
 });
 
+test('J-Pop subgenres keep distinct background and spectrum-attached visual languages', () => {
+  const cityPop = ruleContaining('[data-mode="j-pop"][data-genre="city-pop"]');
+  const anime = ruleContaining('[data-mode="j-pop"][data-genre="anime"]');
+  const vocaloid = ruleContaining('[data-mode="j-pop"][data-genre="vocaloid"]');
+  assert.match(cityPop, /repeating-linear-gradient\(0deg/);
+  assert.match(anime, /repeating-conic-gradient/);
+  assert.match(vocaloid, /repeating-linear-gradient\(90deg/);
+
+  const signatureStart = visualSource.indexOf("} else if (mode === 'j-pop')", visualSource.indexOf('drawGenreSignature'));
+  const signatureEnd = visualSource.indexOf("} else if (mode === 'pop')", signatureStart);
+  const signature = visualSource.slice(signatureStart, signatureEnd);
+  assert.match(signature, /Four broad, syncopated chord pockets/);
+  assert.match(signature, /Paired sweeps trade places/);
+  assert.match(signature, /Quantized ticks are anchored/);
+  assert.match(signature, /for \(let step = 0; step < 12; step \+= 1\)/);
+});
+
+test('Jazz and Classical subgenres keep distinct reviewed visual languages', () => {
+  for (const genre of ['bebop', 'swing-jazz', 'bossa-nova', 'jazz-fusion']) {
+    const rule = ruleContaining(`[data-genre="${genre}"]`);
+    assert.match(rule, /background:/, `${genre} needs its own background score`);
+  }
+  for (const genre of ['baroque', 'romantic-classical', 'opera', 'modern-classical']) {
+    const rule = ruleContaining(`[data-genre="${genre}"]`);
+    assert.match(rule, /background:/, `${genre} needs its own background score`);
+    assert.doesNotMatch(rule, /repeating-radial-gradient/, `${genre} should not add decorative ring stacks`);
+  }
+
+  const signatureStart = visualSource.indexOf("} else if (theme.family === 'jazz')", visualSource.indexOf('drawGenreSignature'));
+  const signatureEnd = visualSource.indexOf("} else if (mode === 'dubstep')", signatureStart);
+  const jazzSignature = visualSource.slice(signatureStart, signatureEnd);
+  assert.match(jazzSignature, /Improvised phrases travel over the live spectrum contour/);
+  assert.match(jazzSignature, /Short angled answers punctuate the rapidly changing horn line/);
+  assert.match(jazzSignature, /A weighted lower arc rocks in triplet-like groups/);
+  assert.match(jazzSignature, /Quiet guitar strings sit on the lower half/);
+  assert.match(jazzSignature, /Electric instruments connect distant phrases/);
+
+  const classicalStart = visualSource.indexOf('} else if (classicalFamily)', visualSource.indexOf('drawGenreSignature'));
+  const classicalEnd = visualSource.indexOf('} else if (orchestral)', classicalStart);
+  const classicalSignature = visualSource.slice(classicalStart, classicalEnd);
+  assert.match(classicalSignature, /one ensemble, but independently phrased/);
+  assert.match(visualSource, /echoes: classicalFamily \? 0/);
+  assert.match(visualSource, /ridgeDepths: classicalFamily \? \[0\.5\]/);
+  assert.match(classicalSignature, /const voiceCount = baroque \? 3 : modern \? 3 : romantic \? 2 : opera \? 3 : 2/);
+  assert.match(classicalSignature, /Counterpoint enters in paired, interlocking figures/);
+  assert.match(classicalSignature, /Broad crescendos lean beyond the ensemble/);
+  assert.match(classicalSignature, /Mirrored vocal fans open from a common stage/);
+});
+
+test('UK Garage subgenres keep distinct rhythmic backgrounds and spectrum structures', () => {
+  const twoStep = ruleContaining('[data-mode="garage"][data-genre="two-step-garage"]');
+  const speed = ruleContaining('[data-mode="garage"][data-genre="speed-garage"]');
+  const future = ruleContaining('[data-mode="garage"][data-genre="future-garage"]');
+  const bassline = ruleContaining('[data-mode="garage"][data-genre="bassline"]');
+  assert.match(twoStep, /linear-gradient\(90deg/);
+  assert.match(speed, /repeating-linear-gradient\(118deg/);
+  assert.match(future, /repeating-linear-gradient\(90deg/);
+  assert.match(bassline, /repeating-linear-gradient\(0deg/);
+
+  const signatureStart = visualSource.indexOf("} else if (mode === 'garage')", visualSource.indexOf('drawGenreSignature'));
+  const signatureEnd = visualSource.indexOf("} else if (mode === 'breakbeat')", signatureStart);
+  const signature = visualSource.slice(signatureStart, signatureEnd);
+  assert.match(signature, /Odd 16ths arrive late in UKG/);
+  assert.match(signature, /const gatePresence = twoStepGarage \? 1/);
+  assert.match(signature, /Two deliberately broken bridges/);
+  assert.match(signature, /Four evenly spaced drive bridges/);
+  assert.match(signature, /Sparse, long reflections/);
+  assert.match(signature, /two broad opposing low-end chambers/);
+});
+
 test('Psytrance keeps the Trance vortex direction and curvature', () => {
   assert.doesNotMatch(appSource, /psytrance['"]?\s*\?\s*-1/);
   assert.doesNotMatch(visualSource, /psy(?:chedelic|trance)['"]?\s*\?\s*-1/);
@@ -105,8 +176,45 @@ test('Trance kick impact relights particles without flashing or scaling the vort
 test('Capsule lyrics truncate on one row while sweep overlays clip cleanly', () => {
   assert.match(appSource, /const singleLineLyrics = \['side', 'poster'\]\.includes\(document\.body\.dataset\.layout\)/);
   assert.match(css, /body\[data-layout="side"\] #lyric-current-base[\s\S]*text-overflow:\s*ellipsis;[\s\S]*white-space:\s*nowrap;/);
+  assert.match(css, /body\[data-layout="side"\] #lyric-current\s*\{[^}]*overflow:\s*visible;[^}]*text-overflow:\s*clip;/s);
   assert.match(css, /body\[data-layout="side"\] #synced-lyrics\[data-overflowing="true"\] #lyric-current-fill-content,[\s\S]*#lyric-translation-fill-content[\s\S]*text-overflow:\s*clip/);
+  assert.match(css, /#lyric-current-fill\s*\{[^}]*inset:\s*-10px auto auto -24px;[^}]*width:\s*calc\(var\(--lyric-text-width, 1px\) \+ 48px\);[^}]*padding:\s*11px 24px 10px;/s);
+  assert.match(css, /#lyric-translation-fill\s*\{[^}]*inset:\s*-9px auto auto -24px;[^}]*width:\s*calc\(var\(--lyric-translation-width, 1px\) \+ 48px\);[^}]*padding:\s*9px 24px;/s);
   assert.match(css, /body\[data-layout="side"\] #synced-lyrics[\s\S]*padding:\s*1px 14px 1px 0/);
+});
+
+test('genre fitting ignores animated impact copies when measuring long labels', () => {
+  assert.match(appSource, /const genreFace = genreLabel\.querySelector\('#genre-face'\);/);
+  assert.match(appSource, /const renderedWidth = genreFace\?\.scrollWidth \|\| genreLabel\.scrollWidth;/);
+});
+
+test('capsule headlines use concise subtype labels and clip live paint at the visible edge', () => {
+  for (const label of ['INDUSTRIAL', 'EUPHORIC', 'EXPERIMENTAL', 'PROGRESSIVE']) {
+    assert.match(themesSource, new RegExp(`hudLabel: '${label}'`));
+  }
+  assert.match(appSource, /content\.theme\.hudLabel \|\| content\.theme\.label/);
+  assert.match(css, /body\[data-layout="side"\] #hud\s*\{[^}]*right:\s*108px/s);
+  assert.match(css, /body\[data-layout="side"\] #genre\s*\{[^}]*clip-path:\s*inset\(-96px 0 -96px -96px\)/s);
+  assert.match(css, /body\[data-layout="side"\] :is\(#visualizer, #riff-strings\)\s*\{[^}]*clip-path:\s*inset\(48px 108px 48px 54px round 152px\)/s);
+});
+
+test('genre ink is centered between the parent label and progress rule', () => {
+  assert.match(appSource, /const targetCenter = \(parentInk\.bottom \+ ruleTop\) \/ 2;/);
+  assert.match(appSource, /const currentCenter = \(genreInk\.top \+ genreInk\.bottom\) \/ 2;/);
+  assert.match(appSource, /--genre-balance-y/);
+  assert.match(css, /translateY\(calc\(3px \+ var\(--genre-balance-y, 0px\) \+ var\(--genre-lift, 0px\)\)\)/);
+});
+
+test('capsule genre stack distributes its visible gaps evenly', () => {
+  assert.match(appSource, /const freeSpace = ruleTop - jurisdictionInk\.bottom - parentHeight - genreHeight;/);
+  assert.match(appSource, /const targetGap = Math\.max\(0, freeSpace \/ 3\);/);
+  assert.match(appSource, /jurisdictionInk\.bottom \+ targetGap - parentInk\.top/);
+  assert.match(appSource, /ruleTop - targetGap - genreInk\.bottom/);
+  assert.match(css, /body\[data-layout="side"\] #parent-genre\s*\{[^}]*translate:\s*0 var\(--parent-balance-y, 0px\)/s);
+});
+
+test('capsule recording notice keeps its material without an outer shadow', () => {
+  assert.match(css, /body\[data-layout="side"\] :is\([^}]*#recording-toast[^}]*\)\s*\{[^}]*box-shadow:\s*inset 0 1px 0/s);
 });
 
 test('Capsule genre background defaults on while preserving an explicit opt-out', () => {
@@ -163,6 +271,8 @@ test('Bilibili capsule keeps a hard light stock and speech-safe one-way motion',
   const stockStart = visualSource.indexOf('drawBilibiliStock(metrics, time)');
   const stockEnd = visualSource.indexOf('\n  drawAtmosphere', stockStart);
   const stock = visualSource.slice(stockStart, stockEnd);
+  assert.match(stock, /const fullscreenOutput = document\.body\.dataset\.stageOutput === 'true';/);
+  assert.match(stock, /fullscreenOutput\s*\? \{ left: 0, top: 0, right: this\.width, bottom: this\.height, radius: 0 \}/);
   assert.doesNotMatch(stock, /ctx\.filter|metrics\.(?:volume|mid|high)/);
   assert.match(stock, /const bandAmplitude = 1\.6[\s\S]*?bilibiliSectionDrive \* 4\.2[\s\S]*?bilibiliTransientDrive \* 4\.8/);
   assert.match(stock, /const bandDrift = Math\.sin\(time \* 0\.00034\) \* bandAmplitude/);
@@ -225,6 +335,94 @@ test('Bilibili capsule keeps a hard light stock and speech-safe one-way motion',
   assert.match(artwork, /box-shadow:\s*none/);
 });
 
+test('fullscreen stacked synthwave keeps the poster horizon without a stale layout frame', () => {
+  assert.match(
+    css,
+    /body\[data-stage-output="true"\]\[data-fullscreen-layout="stacked"\]\[data-background-style="themed"\] \.themed-backdrop\[data-genre="synthwave"\]\s*\{[\s\S]*?--synth-horizon-y:\s*39%;/
+  );
+  assert.match(
+    visualSource,
+    /function fullscreenUsesCenteredScene\(\)[\s\S]*?stageOutputText === 'false'[\s\S]*?fullscreenLayout === 'stacked'/
+  );
+  assert.match(visualSource, /const fallbackY = fullscreenCentered\s*\? this\.centerY \+ 22/);
+  assert.match(visualSource, /document\.body\.style\.removeProperty\('--synth-capsule-horizon-y'\);/);
+  assert.match(
+    visualSource,
+    /if \(!posterScene\) \{[\s\S]*?this\.resolveSynthwaveHorizonY\(bounds, false, performance\.now\(\)\);/
+  );
+  assert.match(
+    appSource,
+    /function setFullscreenLayoutMode[\s\S]*?classList\.add\('layout-switching'\)[\s\S]*?if \(stageOutputActive && stageOutputTextVisible\) \{[\s\S]*?fitGenreLabel\(\);\s*updateTitleOverflow\(\);\s*visual\.resize\(\);[\s\S]*?classList\.remove\('layout-switching'\)/
+  );
+});
+
+test('textless fullscreen shares one centered scene across both remembered layouts', () => {
+  assert.match(
+    css,
+    /body\[data-stage-output="true"\]\[data-stage-output-text="false"\] #app\s*\{[\s\S]*?--visual-center-x:\s*460px;[\s\S]*?--visual-center-y:\s*200px;/
+  );
+  assert.match(
+    css,
+    /body\[data-stage-output="true"\]\[data-stage-output-text="false"\] #visualizer\s*\{[\s\S]*?--visual-center-x:\s*var\(--stage-stacked-visual-center-x,[\s\S]*?--visual-center-y:\s*var\(--stage-hidden-visual-center-y/
+  );
+  assert.match(
+    css,
+    /body\[data-stage-output="true"\]\[data-stage-output-text="false"\]\[data-background-style="themed"\] \.themed-backdrop\[data-genre="synthwave"\][\s\S]*?--synth-horizon-y:\s*39%;/
+  );
+  assert.match(appSource, /const switchingLayout = stageOutputActive && stageOutputTextVisible/);
+  assert.match(appSource, /if \(stageOutputActive && stageOutputTextVisible\) \{/);
+  assert.match(appSource, /fullscreen:\$\{stageOutputTextVisible \? fullscreenLayoutMode : 'textless'\}/);
+});
+
+test('fullscreen lyrics use the wider output canvas before truncating', () => {
+  assert.match(
+    css,
+    /body\[data-stage-output="true"\]\[data-stage-output-text="true"\] #synced-lyrics\s*\{[^}]*width:\s*560px;[^}]*max-width:\s*none;/s
+  );
+  assert.match(
+    css,
+    /body\[data-stage-output="true"\]\[data-stage-output-text="true"\]\[data-fullscreen-layout="stacked"\] #synced-lyrics\s*\{[^}]*width:\s*720px;[^}]*margin-left:\s*calc\(\(100% - 720px\) \/ 2\);[^}]*margin-right:\s*calc\(\(100% - 720px\) \/ 2\);/s
+  );
+});
+
+test('track copy avoids rectangular HUD and row shadow layers', () => {
+  const hudStart = css.indexOf('#hud {');
+  const hudRule = css.slice(hudStart, css.indexOf('\n}', hudStart));
+  const leavingStart = css.indexOf('#hud.leaving {');
+  const leavingRule = css.slice(leavingStart, css.indexOf('\n}', leavingStart));
+  const titleStart = css.indexOf('\n#title {') + 1;
+  const titleRule = css.slice(titleStart, css.indexOf('\n}', titleStart));
+  const artistStart = css.indexOf('\n#artist {') + 1;
+  const artistRule = css.slice(artistStart, css.indexOf('\n}', artistStart));
+  assert.match(hudRule, /filter:\s*none/);
+  assert.doesNotMatch(hudRule, /filter:\s*drop-shadow/);
+  assert.doesNotMatch(leavingRule, /filter:|drop-shadow/);
+  assert.doesNotMatch(titleRule, /text-shadow/);
+  assert.doesNotMatch(artistRule, /text-shadow/);
+  assert.match(
+    css,
+    /:is\(\.title-scroll-text, #artist\)\s*\{[^}]*text-shadow:\s*1px 1\.25px 0 rgba\(0, 0, 0, \.22\);/s
+  );
+});
+
+test('fullscreen keeps foreground resolution while throttling only ambient backdrop writes', () => {
+  assert.match(appSource, /const backdropStyleDue = !stageOutputActive[\s\S]*time - lastFullscreenBackdropStyleAt >= 1000 \/ 20/);
+  assert.match(appSource, /backgroundStyle === 'themed' && backdropStyleDue/);
+  assert.doesNotMatch(appSource, /minimumFrameInterval[\s\S]{0,180}stageOutputActive/);
+  assert.match(
+    css,
+    /body\[data-stage-output="true"\]\[data-background-style="themed"\] \.themed-backdrop\[data-mode="house"\]::before[\s\S]*?repeating-conic-gradient\(from 0deg[\s\S]*?transform: rotate\(var\(--poster-phase-quarter\)\) translateZ\(0\);[\s\S]*?will-change: transform, opacity;/
+  );
+  assert.match(visualSource, /this\.outputResolutionScale = 1;[\s\S]*?this\.effectiveResolutionScale = 1;/);
+  assert.match(visualSource, /this\.dpr = Math\.max\(1, nativeDpr \* this\.outputResolutionScale\);/);
+  assert.match(visualSource, /setOutputResolutionScale\(value\)[\s\S]*?clamp\(Number\(value\) \|\| 1, 0\.75, 1\)[\s\S]*?this\.resize\(\);/);
+  assert.match(visualSource, /applyImpactPostFx\(x, y, theme, metrics\)[\s\S]*?document\.body\.dataset\.stageOutput === 'true'\) return;/);
+  assert.match(appSource, /const gpuLimitedDrop = fps < 57\.5[\s\S]*?adaptiveLowFpsWindows >= 2[\s\S]*?visual\.setOutputResolutionScale\(nextScale\)/);
+  assert.match(appSource, /renderPerformanceWarmupUntil = time \+ 1200[\s\S]*?const comfortablyStable = fps > 58[\s\S]*?adaptiveHighFpsWindows >= 20/);
+  assert.match(appSource, /adaptiveResolutionProfiles\.get\(renderPerformanceContext\)[\s\S]*?adaptiveResolutionProfiles\.set\(renderPerformanceContext, nextScale\)/);
+  assert.match(appSource, /const resolutionLevels = stageOutputActive[\s\S]*?\[1, 0\.9, 0\.82, 0\.76\][\s\S]*?\[1, 0\.9, 0\.82\]/);
+});
+
 test('bright and organic genres use tailored full-card backdrop stock', () => {
   assert.match(
     css,
@@ -265,6 +463,73 @@ test('bright and organic genres use tailored full-card backdrop stock', () => {
   assert.equal((tonalStock.match(/radial-gradient\(ellipse[^\n]+rgba\(/g) || []).length, 1);
 });
 
+test('reviewed R&B and Soul branches keep distinct groove languages', () => {
+  for (const genre of [
+    'contemporary-rnb', 'alternative-rnb', 'neo-soul', 'new-jack-swing',
+    'soul', 'gospel', 'funk'
+  ]) {
+    const rule = ruleContaining(`[data-genre="${genre}"]`);
+    assert.match(rule, /background:/, `${genre} needs its own background score`);
+    assert.doesNotMatch(rule, /repeating-radial-gradient/, `${genre} should not add decorative ring stacks`);
+  }
+
+  const signatureStart = visualSource.indexOf("} else if (mode === 'rnb')", visualSource.indexOf('drawGenreSignature'));
+  const signatureEnd = visualSource.indexOf("} else if (mode === 'dubstep')", signatureStart);
+  const signature = visualSource.slice(signatureStart, signatureEnd);
+  assert.match(visualSource, /echoes: rnbFamily \? 0/);
+  assert.match(visualSource, /ridgeDepths: rnbFamily \? \[\]/);
+  assert.doesNotMatch(
+    signature,
+    /signatureStroke\(theme\.hot,[\s\S]*?this\.tracePoints\(outer, true, true\)/
+  );
+  assert.doesNotMatch(signature, /this\.traceBand\(outer, \[\.\.\.inner\]\.reverse\(\), true\)/);
+  assert.doesNotMatch(signature, /voiceContours\.forEach/);
+  assert.match(signature, /negative space around/);
+  assert.match(signature, /giving Neo Soul a/);
+  assert.match(signature, /Eight gated steps combine drum-machine precision/);
+  assert.match(signature, /Call and response alternates two broad phrases/);
+  assert.match(signature, /Choir voices rise in a fan/);
+  assert.match(signature, /Short syncopated chops land around the contour/);
+});
+
+test('Blues keeps a twelve-bar contour language instead of borrowing generic R&B', () => {
+  const rule = ruleContaining('[data-genre="blues"]');
+  assert.match(rule, /8\.333%/);
+  const signatureStart = visualSource.indexOf("} else if (mode === 'rnb')", visualSource.indexOf('drawGenreSignature'));
+  const signatureEnd = visualSource.indexOf("} else if (mode === 'dubstep')", signatureStart);
+  const signature = visualSource.slice(signatureStart, signatureEnd);
+  assert.match(signature, /Twelve uneven phrases/);
+  assert.match(signature, /barPosition/);
+});
+
+test('ambient, slow beats, lo-fi, IDM and Glitch keep distinct construction languages', () => {
+  for (const genre of [
+    'ambient', 'downtempo', 'chillout', 'instrumental-hip-hop',
+    'lo-fi-hip-hop', 'idm', 'glitch'
+  ]) {
+    const rule = ruleContaining(`[data-genre="${genre}"]`);
+    assert.match(rule, /background:/, `${genre} needs its own background score`);
+  }
+
+  const ambientStart = visualSource.indexOf("} else if (mode === 'ambient')", visualSource.indexOf('drawGenreSignature'));
+  const experimentalStart = visualSource.indexOf("} else if (mode === 'experimental')", ambientStart);
+  const ambientSignature = visualSource.slice(ambientStart, experimentalStart);
+  assert.match(ambientSignature, /continuous space rather than a beat diagram/);
+  assert.match(ambientSignature, /recognisable slow beat loop/);
+  assert.match(ambientSignature, /open horizon-like phrases/);
+
+  const rnbStart = visualSource.indexOf("} else if (mode === 'rnb')", experimentalStart);
+  const experimentalSignature = visualSource.slice(experimentalStart, rnbStart);
+  assert.match(experimentalSignature, /live-contour packets/);
+  assert.match(experimentalSignature, /c o p r i m e|coprime/);
+
+  const hipHopStart = visualSource.indexOf("} else if (mode === 'hip-hop')", visualSource.indexOf('drawGenreSignature'));
+  const hipHopEnd = visualSource.indexOf('\n    } else {', hipHopStart);
+  const hipHopSignature = visualSource.slice(hipHopStart, hipHopEnd);
+  assert.match(hipHopSignature, /worn tape loop/);
+  assert.match(hipHopSignature, /twelve curved pads/);
+});
+
 test('Missing artwork uses a flat badge and Phonk background has no concentric membrane', () => {
   const flatBadgeStart = css.indexOf('/* Missing artwork uses a flat badge');
   const flatBadgeEnd = css.indexOf('#artwork.loaded + #monogram', flatBadgeStart);
@@ -301,6 +566,87 @@ test('Missing artwork uses a flat badge and Phonk background has no concentric m
   assert.match(phonkSignature, /const sampleBed = spectrumShell[\s\S]*const slicePath = \(dx = 0, dy = 0\)/);
   assert.match(visualSource, /if \(\(options\.outerBodyWidth \|\| 0\) > 0\)[\s\S]*const bodyInk = ctx\.createConicGradient/);
   assert.doesNotMatch(visualSource, /phonk: theme\.id === 'drift-phonk'[\s\S]{0,500}broken:/);
+});
+
+test('Hip-Hop sampler pads stay inset from the live spectrum edge', () => {
+  const hipHopStart = visualSource.indexOf("} else if (mode === 'hip-hop')", visualSource.indexOf('drawGenreSignature'));
+  const hipHopEnd = visualSource.indexOf('\n    } else {', hipHopStart);
+  assert.notEqual(hipHopStart, -1);
+  assert.notEqual(hipHopEnd, -1);
+  const hipHopSignature = visualSource.slice(hipHopStart, hipHopEnd);
+  assert.match(hipHopSignature, /const deckRadiusScale = 0\.84/);
+  assert.match(hipHopSignature, /x: point\.x \* deckRadiusScale/);
+  assert.match(hipHopSignature, /const radialScale = deckRadiusScale \+ active \* \(0\.014 \+ groove \* 0\.009\)/);
+});
+
+test('Hardcore and Hardstyle subgenres keep distinct construction languages', () => {
+  assert.match(visualSource, /const gabber = theme\.id === 'gabber'/);
+  assert.match(visualSource, /facets: gabber \? 12 : industrial \? 10 : 0/);
+  assert.match(visualSource, /lobes: gentle \? 8 : frenchcore \? 12 : 0/);
+  assert.match(visualSource, /fracture: industrial \? 6\.2 : 0/);
+  assert.match(visualSource, /facets: raw \? 14 : euphoric \? 0 : 18/);
+  assert.match(visualSource, /lobes: euphoric \? 6 : 0/);
+  assert.match(visualSource, /material: euphoric \? 'bubble' : 'facet'/);
+  assert.match(visualSource, /const count = hardcore[\s\S]*frenchcore \? 12 : industrial \? 10 : 14[\s\S]*raw \? 8 : euphoric \? 5 : 6/);
+});
+
+test('Dubstep subgenres keep distinct construction languages', () => {
+  assert.match(visualSource, /const futureRiddim = theme\.id === 'future-riddim'/);
+  assert.match(visualSource, /facets: riddim \? 16 : futureRiddim \? 12 : deathstep \? 18 : 0/);
+  assert.match(visualSource, /fracture: deathstep \? 8\.8 : brostep \? 3\.8 : 0/);
+  assert.match(visualSource, /lobes: colourBass \? 9 : melodicDubstep \? 5 : futureRiddim \? 4 : moombahcore \? 3 : 0/);
+  assert.match(visualSource, /material: umbrellaBass \? 'bass'[\s\S]*deathstep \? 'razor'[\s\S]*brostep \? 'glitch'/);
+  assert.match(visualSource, /const railOptions = riddim[\s\S]*futureRiddim[\s\S]*colourBass[\s\S]*melodicDubstep[\s\S]*deathstep[\s\S]*brostep[\s\S]*moombahcore/);
+});
+
+test('reviewed House branches preserve existing specialists and add missing identities', () => {
+  assert.match(visualSource, /const techHouse = theme\.id === 'tech-house'/);
+  assert.match(visualSource, /const progressiveLayers = progressive \? this\.progressiveHouseLayers/);
+  assert.match(visualSource, /if \(theme\.id === 'bass-house'\)[\s\S]*const bassDrive = clamp/);
+  assert.match(visualSource, /if \(future\)[\s\S]*Four compact chrome pads/);
+  assert.match(visualSource, /const electroRiff = \['electro-house', 'complextro'\]/);
+  assert.match(visualSource, /else if \(theme\.id === 'big-room-house'\)/);
+  assert.match(visualSource, /facets: discoHouse \? 14 : hardHouse \? 12 : 0/);
+  assert.match(visualSource, /const lowContour = spectrumShell/);
+  assert.match(visualSource, /const percussionDrive = clamp/);
+  assert.match(visualSource, /const logDrive = clamp/);
+  assert.match(visualSource, /const sweep = \(\(time \* 0\.000085\)/);
+  assert.match(visualSource, /const mirrorContour = spectrumShell/);
+  assert.match(visualSource, /const strikePhase = time/);
+});
+
+test('reviewed Drum & Bass branches share forward motion but keep distinct signatures', () => {
+  assert.match(visualSource, /const liquid = theme\.id === 'liquid-dnb'/);
+  assert.match(visualSource, /const neuro = theme\.id === 'neurofunk'/);
+  assert.match(visualSource, /if \(drumstep\)[\s\S]*Two bass jaws grow directly from the DnB portal/);
+  assert.match(visualSource, /if \(dancefloor\)[\s\S]*Four disciplined launch gates/);
+  assert.match(visualSource, /if \(jumpUp\)[\s\S]*Alternating low-frequency answers/);
+  assert.match(visualSource, /if \(jungle\)[\s\S]*const amenPattern =/);
+  assert.match(visualSource, /const laneBudgetScale = fullscreenOutput \? \(neuro \? 0\.68 : 0\.82\) : 1/);
+  assert.match(visualSource, /const packetSegments = fullscreenOutput \? 12 : 18/);
+  assert.match(visualSource, /impactCore: !fullscreenOutput \|\| lane % 2 === 0[\s\S]*impactFlash > 0\.01 && lane\.impactCore/);
+  assert.match(visualSource, /material: liquid \? 'glass' : dancefloor \? 'chrome' : jumpUp \? 'bass' : jungle \? 'glitch' : 'wire'/);
+  for (const genre of ['liquid-dnb', 'dancefloor-dnb', 'jump-up-dnb', 'jungle']) {
+    assert.match(css, new RegExp(`data-genre="${genre}"`));
+  }
+});
+
+test('reviewed Techno and Trance branches keep distinct construction languages', () => {
+  assert.match(visualSource, /const industrialTechno = theme\.id === 'industrial-techno'/);
+  assert.match(visualSource, /material: industrialTechno \? 'glitch' : acidTechno \? 'liquid' : melodicTechno \? 'glass' : 'wire'/);
+  assert.match(visualSource, /Two continuous, phase-shifted resonance traces/);
+  assert.match(visualSource, /Slowly evolving partial contours form a harmonic stack/);
+  assert.match(visualSource, /const bracketCount = minimalTechno \? 4 : industrialTechno \? 12 : 8/);
+  for (const genre of ['minimal-techno', 'acid-techno', 'melodic-techno', 'industrial-techno']) {
+    assert.match(css, new RegExp(`data-genre="${genre}"`));
+  }
+
+  assert.match(visualSource, /const armCount = psychedelic \? 12 : uplifting \? 6 : techTrance \? 10 : 8/);
+  assert.match(visualSource, /const armCurl = uplifting \? 3\.36 : progressive \? 3\.25 : techTrance \? 3\.88 : hardTrance \? 3\.5 : 3\.65/);
+  assert.match(visualSource, /Subgenre accents grow from the live spiral field/);
+  for (const genre of ['uplifting-trance', 'progressive-trance', 'tech-trance', 'hard-trance']) {
+    assert.match(css, new RegExp(`data-genre="${genre}"`));
+  }
 });
 
 test('the shared atmosphere has no rotating C-shaped bezel', () => {
@@ -349,6 +695,16 @@ test('Synthwave uses one audio-reactive sunset plane without a foreground visual
   assert.match(sceneRule, /#02091f 100%/);
   assert.doesNotMatch(sceneRule, /rgba\(255,255,255|background-size:[^;]*(?:47px|79px)/);
   assert.match(css, /body\[data-layout="side"\][^{]+data-genre="synthwave"[^}]+--synth-horizon-y:\s*var\(--synth-capsule-horizon-y, 53%\)/);
+  const capsuleMaskSelector = 'body:not([data-stage-output="true"])[data-layout="side"][data-background-style="themed"][data-genre="synthwave"] #visualizer';
+  const capsuleMaskStart = css.indexOf(capsuleMaskSelector);
+  const capsuleMaskRule = css.slice(capsuleMaskStart, css.indexOf('\n}', capsuleMaskStart));
+  assert.notEqual(capsuleMaskStart, -1);
+  assert.match(capsuleMaskSelector, /:not\(\[data-stage-output="true"\]\)/);
+  assert.match(capsuleMaskRule, /clip-path:\s*none/);
+  assert.match(capsuleMaskRule, /mask-position:\s*54px 48px/);
+  assert.match(capsuleMaskRule, /mask-size:\s*758px 304px/);
+  assert.match(capsuleMaskRule, /viewBox='0 0 758 304'/);
+  assert.match(capsuleMaskRule, /rect x='5' y='5' width='748' height='294' rx='147'/);
   assert.equal((html.match(/synth-starfield--far/g) || []).length, 2);
   assert.equal((html.match(/synth-starfield--near/g) || []).length, 2);
   assert.doesNotMatch(html, /synth-sun-lines/);
@@ -479,7 +835,7 @@ test('Synthwave uses one audio-reactive sunset plane without a foreground visual
   assert.doesNotMatch(road, /const profile|spectrumSpan|metrics\.frequency|traceProfile/);
 
   const signatureStart = visualSource.indexOf('if (synthwave) {', visualSource.indexOf('drawGenreSignature'));
-  const signatureEnd = visualSource.indexOf('} else if (orchestral)', signatureStart);
+  const signatureEnd = visualSource.indexOf('} else if (classicalFamily)', signatureStart);
   assert.notEqual(signatureStart, -1);
   assert.notEqual(signatureEnd, -1);
   const signature = visualSource.slice(signatureStart, signatureEnd);
@@ -504,7 +860,9 @@ test('Synthwave uses one audio-reactive sunset plane without a foreground visual
   const chooseLayoutEnd = appSource.indexOf('\n}', chooseLayoutStart);
   const chooseLayout = appSource.slice(chooseLayoutStart, chooseLayoutEnd);
   assert.ok(chooseLayout.indexOf('window.genrePolice.setLayoutMode(requested)')
-    < chooseLayout.indexOf('applyLayoutMode(result?.mode)'));
+    < chooseLayout.indexOf('if (resolved !== layoutMode) applyLayoutMode(resolved)'));
   assert.doesNotMatch(chooseLayout, /applyLayoutMode\(requested\)/);
+  assert.match(appSource, /function refreshPresentationTypography\(\)[\s\S]*hud\.style\.display = 'none';[\s\S]*void hud\.offsetWidth;[\s\S]*fitGenreLabel\(\);[\s\S]*updateTitleOverflow\(\);/);
+  assert.match(appSource, /window\.genrePolice\.onLayoutMode[\s\S]*if \(requestedLayoutMode !== layoutMode\) applyLayoutMode\(requestedLayoutMode\)/);
   assert.match(mainSource, /resizeMainWindow\([\s\S]*\{ animate: false \}[\s\S]*webContents\.send\('layout-mode'/);
 });

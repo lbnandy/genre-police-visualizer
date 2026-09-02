@@ -1,23 +1,27 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, Tray, ipcMain, session, desktopCapturer, screen, nativeImage, globalShortcut, net, dialog } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, session, desktopCapturer, screen, nativeImage, globalShortcut, net, dialog, shell } = require('electron');
 const { spawn } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const readline = require('node:readline');
 const { GenreResolver } = require('./src/genre-resolver');
 const { LyricsResolver } = require('./src/lyrics-resolver');
-const { THEMES, DEMO_THEME_IDS, themeFor } = require('./src/themes');
+const { THEMES, DEMO_THEME_IDS, themeFor, themeWithId } = require('./src/themes');
 const { analyzeBackdropBitmap, deriveBackdropProfile, smoothBackdropSample } = require('./src/backdrop-analyzer');
 const { analyzeArtworkBitmap, chooseArtworkFacePalette } = require('./src/artwork-face-palette');
 const {
   normalizeAlwaysOnTop,
+  normalizeAudioSourceId,
   normalizeClickThrough,
+  normalizeDesktopLayer,
   normalizeIdleBehavior,
   normalizeIgnoredMediaSources,
   normalizeMediaSource,
   normalizeMotionMode,
+  normalizeVisualResponseMode,
   sanitizeStoredConfig
 } = require('./src/config-sanitizer');
 const { resolveWindowBounds } = require('./src/window-position');
@@ -26,15 +30,40 @@ const { displayArtistName } = require('./src/genre-classifier');
 const { normalizeLocale, resolveInitialLocale, translate } = require('./src/i18n');
 const { buildPreviewTree } = require('./src/preview-menu');
 const { normalizeLayoutMode, layoutWindowSize } = require('./src/layout-mode');
+const { pointInWindowSurface } = require('./src/window-hit-region');
 const { UI_SCALES, normalizeUiScale, uiScaleLabel } = require('./src/ui-scale');
 const { HOP_SIZE, LocalRhythmModel } = require('./src/rhythm-model-runtime');
+const { LocalAudioGenreModel } = require('./src/audio-genre-runtime');
+const {
+  createAudioGenreMemories,
+  createAudioGenreMemoryCandidate,
+  getAudioGenreMemory,
+  setAudioGenreMemory
+} = require('./src/audio-genre-memory');
+const {
+  hasSignificantPlaybackSeek,
+  isBroadAudioGenre,
+  shouldAnalyzeAudioGenre,
+  shouldKeepGenreIdentifying,
+  shouldReplaceMetadataWithAudioGenre
+} = require('./src/audio-genre-model');
 const {
   customGenreCorrectionId,
   findCustomGenreByCorrectionId,
   normalizeCustomGenreRules
 } = require('./src/custom-genres');
 const { normalizeGenreArtistRules } = require('./src/genre-artist-rules');
+const { withGenreReliability } = require('./src/genre-reliability');
 const { createGenreDataExport, mergeGenreData } = require('./src/genre-data-transfer');
+const { patchMp4DurationFile } = require('./src/recording-container');
+const {
+  UPDATE_RELEASES_URL,
+  canonicalVersion,
+  isAllowedReleaseUrl,
+  isUpdateCheckDue,
+  sameVersion,
+  selectLatestUpdate
+} = require('./src/update-checker');
 const {
   clearGenreCorrection,
   createGenreCorrections,
@@ -54,16 +83,38 @@ let idleAutoHidden = false;
 let rhythmModel = null;
 let rhythmModelStartTask = null;
 let rhythmModelState = { type: 'unavailable', reason: 'not started' };
+let audioGenreModel = null;
+let audioGenreModelStartTask = null;
+let audioGenreModelState = { type: 'unavailable', reason: 'not started' };
 let clickThrough = false;
+let mainSettingsOpen = false;
+let pointerHitTestTimer = null;
+let mainWindowMouseEventsIgnored = null;
+let mainWindowBeingMoved = false;
 let alwaysOnTop = false;
+let desktopLayerEnabled = false;
+let desktopLayerAttached = false;
+let desktopLayerLastError = '';
+let desktopLayerMonitor = null;
+let desktopLayerTask = Promise.resolve();
+let stageOutputActive = false;
+let stageOutputRestoreBounds = null;
 let demoTheme = '';
 let lastRawMetadata = null;
 let lastResolvedMetadata = null;
+let lastBaseResolvedMetadata = null;
+let currentAudioGenreDecision = null;
+let temporaryGenreOverride = null;
 let lastTrackKey = '';
 let resolutionSerial = 0;
 let lastLyricsKey = '';
 let config = {};
 let genreCorrections = createGenreCorrections();
+let audioGenreMemories = createAudioGenreMemories();
+let currentAudioGenreMemory = null;
+let currentAudioGenreSnapshot = null;
+let audioGenreMemoryVerificationLimit = 0;
+let lastPersistedAudioGenreWindows = 0;
 let backdropTimer = null;
 let windowPositionSaveTimer = null;
 let backdropSampling = false;
@@ -74,8 +125,263 @@ const LYRIC_DELAY_MAX_MS = 2000;
 const DEFAULT_LYRIC_DELAY_MS = 0;
 const NETWORK_REGION_TIMEOUT_MS = 1200;
 const MAX_GENRE_DATA_FILE_BYTES = 2_000_000;
+const AUDIO_GENRE_MEMORY_CONFIRMATION_WINDOWS = 24;
+const AUDIO_GENRE_MEMORY_WRITE_INTERVAL_WINDOWS = 10;
 let networkCountry = '';
 let networkCountryTask = null;
+let recordingSession = null;
+let quitAfterRecording = false;
+let recordingControlsWindow = null;
+let recordingTransportWindow = null;
+let recordingControlsState = null;
+let updateCheckTimer = null;
+let updateCheckTask = null;
+let latestUpdate = null;
+let snapshotSession = null;
+
+function recordingLocaleText(key, variables) {
+  return translate(normalizeLocale(config.language), key, variables);
+}
+
+function recordingFileStem() {
+  const title = String(lastRawMetadata?.title || '')
+    .normalize('NFKC')
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/g, '')
+    .trim()
+    .slice(0, 96);
+  if (title) return title;
+  const now = new Date();
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+    '-',
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0')
+  ].join('');
+  return `genre-police-recording-${stamp}`;
+}
+
+function snapshotFileStem() {
+  return recordingFileStem().replace('recording', 'snapshot');
+}
+
+function recordingSenderAllowed(event) {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
+}
+
+function closeRecordingFile({ keepPartial = false } = {}) {
+  const active = recordingSession;
+  recordingSession = null;
+  if (!active) return;
+  try {
+    fs.closeSync(active.fd);
+  } catch {}
+  if (!keepPartial) {
+    try {
+      fs.rmSync(active.partialPath, { force: true });
+    } catch {}
+  }
+  if (tray && !tray.isDestroyed()) tray.setToolTip('Genre Police Visualizer');
+  rebuildTrayMenu();
+}
+
+function sendRecordingCommand(command) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  showMainWindow();
+  mainWindow.webContents.send('recording-command', command);
+}
+
+function sanitizeRecordingControlsState(payload) {
+  const rect = payload?.rect || {};
+  const transportRect = payload?.transportRect || {};
+  const appearance = payload?.appearance || {};
+  const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  const safeRect = (value, fallback) => ({
+    x: Math.max(0, finite(value.x, fallback.x)),
+    y: Math.max(0, finite(value.y, fallback.y)),
+    width: Math.max(24, Math.min(320, finite(value.width, fallback.width))),
+    height: Math.max(24, Math.min(100, finite(value.height, fallback.height)))
+  });
+  return {
+    active: payload?.active === true,
+    visible: payload?.visible === true,
+    showTransport: payload?.showTransport !== false,
+    state: ['preparing', 'recording', 'stopping'].includes(payload?.state) ? payload.state : 'preparing',
+    rect: safeRect(rect, { x: 0, y: 0, width: 30, height: 30 }),
+    transportRect: safeRect(transportRect, { x: 0, y: 0, width: 102, height: 36 }),
+    appearance: {
+      accent: /^#[0-9a-f]{6}$/i.test(appearance.accent) ? appearance.accent : '#67f7ff',
+      scale: Math.max(UI_SCALES[0], Math.min(UI_SCALES[UI_SCALES.length - 1], finite(appearance.scale, 1))),
+      buttonSize: Math.max(20, Math.min(40, finite(appearance.buttonSize, 30))),
+      iconSize: Math.max(10, Math.min(24, finite(appearance.iconSize, 16))),
+      gap: Math.max(0, Math.min(16, finite(appearance.gap, 6))),
+      transportButtonSize: Math.max(20, Math.min(40, finite(appearance.transportButtonSize, 30))),
+      transportIconSize: Math.max(10, Math.min(24, finite(appearance.transportIconSize, 16))),
+      transportGap: Math.max(0, Math.min(16, finite(appearance.transportGap, 6))),
+      edgePadding: Math.max(8, Math.min(48, finite(appearance.edgePadding, 18)))
+    },
+    playing: payload?.playing === true,
+    labels: Object.fromEntries(Object.entries(payload?.labels || {}).map(([key, value]) => [key, String(value).slice(0, 80)]))
+  };
+}
+
+function positionRecordingControlsWindow() {
+  if (!recordingControlsState || !mainWindow || mainWindow.isDestroyed()) return;
+  const mainBounds = mainWindow.getBounds();
+  const position = (overlay, rect) => {
+    if (!overlay || overlay.isDestroyed()) return;
+    const edgePadding = Math.ceil(recordingControlsState.appearance.edgePadding);
+    overlay.setBounds({
+      x: mainBounds.x + Math.round(rect.x) - edgePadding,
+      y: mainBounds.y + Math.round(rect.y) - edgePadding,
+      width: Math.max(1, Math.ceil(rect.width) + edgePadding * 2),
+      height: Math.max(1, Math.ceil(rect.height) + edgePadding * 2)
+    });
+  };
+  position(recordingControlsWindow, recordingControlsState.rect);
+  position(recordingTransportWindow, recordingControlsState.transportRect);
+}
+
+function sendRecordingControlsState() {
+  for (const overlay of [recordingControlsWindow, recordingTransportWindow]) {
+    if (!overlay || overlay.isDestroyed() || overlay.webContents.isLoading()) continue;
+    overlay.webContents.send('recording-controls:state', recordingControlsState);
+  }
+}
+
+function ensureRecordingControlsWindow() {
+  if (recordingControlsWindow && !recordingControlsWindow.isDestroyed()) return recordingControlsWindow;
+  recordingControlsWindow = new BrowserWindow({
+    width: 66,
+    height: 66,
+    parent: mainWindow || undefined,
+    transparent: true,
+    backgroundColor: '#00000000',
+    backgroundMaterial: 'none',
+    frame: false,
+    hasShadow: false,
+    roundedCorners: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'recording-controls-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false
+    }
+  });
+  recordingControlsWindow.setAlwaysOnTop(true, 'floating');
+  recordingControlsWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  recordingControlsWindow.webContents.on('did-finish-load', () => {
+    positionRecordingControlsWindow();
+    sendRecordingControlsState();
+    if (recordingControlsState?.visible) {
+      recordingControlsWindow.showInactive();
+      recordingControlsWindow.moveTop();
+    }
+  });
+  recordingControlsWindow.on('closed', () => {
+    recordingControlsWindow = null;
+  });
+  void recordingControlsWindow.loadFile(path.join(__dirname, 'renderer', 'recording-controls.html'));
+  return recordingControlsWindow;
+}
+
+function ensureRecordingTransportWindow() {
+  if (recordingTransportWindow && !recordingTransportWindow.isDestroyed()) return recordingTransportWindow;
+  recordingTransportWindow = new BrowserWindow({
+    width: 102,
+    height: 36,
+    parent: mainWindow || undefined,
+    transparent: true,
+    backgroundColor: '#00000000',
+    backgroundMaterial: 'none',
+    frame: false,
+    hasShadow: false,
+    roundedCorners: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'recording-controls-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false
+    }
+  });
+  recordingTransportWindow.setAlwaysOnTop(true, 'floating');
+  recordingTransportWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  recordingTransportWindow.webContents.on('did-finish-load', () => {
+    positionRecordingControlsWindow();
+    sendRecordingControlsState();
+    if (recordingControlsState?.visible) {
+      recordingTransportWindow.showInactive();
+      recordingTransportWindow.moveTop();
+    }
+  });
+  recordingTransportWindow.on('closed', () => {
+    recordingTransportWindow = null;
+  });
+  void recordingTransportWindow.loadFile(path.join(__dirname, 'renderer', 'recording-transport.html'));
+  return recordingTransportWindow;
+}
+
+function updateRecordingControls(payload) {
+  recordingControlsState = sanitizeRecordingControlsState(payload);
+  if (!recordingControlsState.active) {
+    if (recordingControlsWindow && !recordingControlsWindow.isDestroyed()) recordingControlsWindow.hide();
+    if (recordingTransportWindow && !recordingTransportWindow.isDestroyed()) recordingTransportWindow.hide();
+    return;
+  }
+  const overlays = [ensureRecordingControlsWindow()];
+  if (recordingControlsState.showTransport) {
+    overlays.push(ensureRecordingTransportWindow());
+  } else if (recordingTransportWindow && !recordingTransportWindow.isDestroyed()) {
+    recordingTransportWindow.hide();
+  }
+  positionRecordingControlsWindow();
+  sendRecordingControlsState();
+  for (const overlay of overlays) {
+    if (!overlay.webContents.isLoading()) {
+      overlay.setIgnoreMouseEvents(
+        !recordingControlsState.visible,
+        { forward: true }
+      );
+      overlay.showInactive();
+      overlay.moveTop();
+    }
+  }
+}
+
+function hideRecordingControlsWindows() {
+  for (const overlay of [recordingControlsWindow, recordingTransportWindow]) {
+    if (overlay && !overlay.isDestroyed()) overlay.hide();
+  }
+}
+
+function requestAppQuit() {
+  if (!recordingSession) {
+    app.quit();
+    return;
+  }
+  quitAfterRecording = true;
+  sendRecordingCommand('stop');
+}
 
 async function sampleArtwork(url) {
   const source = String(url || '');
@@ -177,6 +483,10 @@ function genreCorrectionsPath() {
   return path.join(app.getPath('userData'), 'genre-corrections.json');
 }
 
+function audioGenreMemoriesPath() {
+  return path.join(app.getPath('userData'), 'audio-genre-memory.json');
+}
+
 function removeLegacyUnmappedArtistLog() {
   const legacyPath = path.join(app.getPath('userData'), 'unmapped-artists.json');
   try {
@@ -202,6 +512,22 @@ function loadGenreCorrections() {
   }
 }
 
+function saveAudioGenreMemories() {
+  const memoriesPath = audioGenreMemoriesPath();
+  fs.mkdirSync(path.dirname(memoriesPath), { recursive: true });
+  fs.writeFileSync(memoriesPath, `${JSON.stringify(audioGenreMemories, null, 2)}\n`, 'utf8');
+}
+
+function loadAudioGenreMemories() {
+  try {
+    audioGenreMemories = createAudioGenreMemories(
+      JSON.parse(fs.readFileSync(audioGenreMemoriesPath(), 'utf8'))
+    );
+  } catch {
+    audioGenreMemories = createAudioGenreMemories();
+  }
+}
+
 function loadConfig() {
   try {
     config = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
@@ -213,8 +539,14 @@ function loadConfig() {
   const storedLayoutMode = config.layoutMode;
   const storedUiScale = config.uiScale;
   const storedLanguage = config.language;
+  const storedLocalGenreModelEnabled = config.localGenreModelEnabled;
+  const storedDynamicGenreDetectionEnabled = config.dynamicGenreDetectionEnabled;
   clickThrough = normalizeClickThrough(config.clickThrough);
   alwaysOnTop = normalizeAlwaysOnTop(config.alwaysOnTop);
+  desktopLayerEnabled = process.platform === 'win32' && normalizeDesktopLayer(config.desktopLayer);
+  if (desktopLayerEnabled) alwaysOnTop = false;
+  config.alwaysOnTop = alwaysOnTop;
+  config.desktopLayer = desktopLayerEnabled;
   config.uiScale = normalizeUiScale(process.env.GP_UI_SCALE || config.uiScale);
   config.layoutMode = normalizeLayoutMode(process.env.GP_LAYOUT_MODE || config.layoutMode);
   config.language = process.env.GP_CAPTURE_LANGUAGE
@@ -225,14 +557,28 @@ function loadConfig() {
   config.lyricTranslationEnabled = config.lyricTranslationEnabled !== false;
   config.capsuleCondensedEnglish = config.capsuleCondensedEnglish === true;
   config.posterCondensedEnglish = config.posterCondensedEnglish !== false;
+  config.fullscreenCondensedEnglish = config.fullscreenCondensedEnglish === true;
   config.posterThemedBackground = config.posterThemedBackground !== false;
   config.capsuleThemedBackground = config.capsuleThemedBackground !== false;
   config.onlineGenreLookupEnabled = config.onlineGenreLookupEnabled !== false;
+  config.artistGenreReferenceEnabled = config.artistGenreReferenceEnabled !== false;
   config.launchAtLogin = config.launchAtLogin === true;
   config.motionMode = normalizeMotionMode(config.motionMode);
+  config.visualResponseMode = normalizeVisualResponseMode(config.visualResponseMode);
+  config.audioSourceId = normalizeAudioSourceId(config.audioSourceId);
   config.idleBehavior = normalizeIdleBehavior(config.idleBehavior);
   config.idleFrameLimitEnabled = config.idleFrameLimitEnabled !== false;
+  config.showFps = config.showFps === true;
   config.rhythmModelEnabled = config.rhythmModelEnabled !== false;
+  config.localGenreModelEnabled = config.localGenreModelEnabled !== false;
+  config.dynamicGenreDetectionEnabled = config.localGenreModelEnabled
+    && config.dynamicGenreDetectionEnabled === true;
+  config.recordingQuickButtonVisible = config.recordingQuickButtonVisible !== false;
+  config.snapshotQuickButtonVisible = config.snapshotQuickButtonVisible !== false;
+  config.stageOutputTextVisible = config.stageOutputTextVisible !== false;
+  config.fullscreenLayoutMode = (process.env.GP_CAPTURE_FULLSCREEN_LAYOUT || config.fullscreenLayoutMode) === 'stacked'
+    ? 'stacked'
+    : 'split';
   config.preferredMediaSource = normalizeMediaSource(config.preferredMediaSource);
   config.ignoredMediaSources = normalizeIgnoredMediaSources(config.ignoredMediaSources);
   const storedCustomGenres = JSON.stringify(config.customGenres || []);
@@ -246,14 +592,100 @@ function loadConfig() {
     && Math.abs(Number(storedUiScale) - config.uiScale) > 0.000001;
   const languageInitialized = process.env.GP_CAPTURE_LANGUAGE === undefined
     && String(storedLanguage || '').trim() !== config.language;
+  const dependentGenreSettingSanitized = storedLocalGenreModelEnabled === false
+    && storedDynamicGenreDetectionEnabled === true;
   if (sanitized.changed || customGenresSanitized || genreArtistRulesSanitized || uiScaleMigrated
-    || languageInitialized || (storedLayoutMode && storedLayoutMode !== config.layoutMode)) saveConfig();
+    || languageInitialized || dependentGenreSettingSanitized
+    || (storedLayoutMode && storedLayoutMode !== config.layoutMode)) saveConfig();
 }
 
 function saveConfig(patch = {}) {
   config = { ...config, ...patch };
   fs.mkdirSync(path.dirname(configPath()), { recursive: true });
   fs.writeFileSync(configPath(), `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+}
+
+function updateStatus(status, release = null) {
+  return {
+    status,
+    currentVersion: canonicalVersion(app.getVersion()) || `v${app.getVersion()}`,
+    latestVersion: release?.version || '',
+    releaseName: release?.name || '',
+    releaseUrl: release?.url || ''
+  };
+}
+
+async function requestLatestUpdate() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+  try {
+    const response = await net.fetch(
+      'https://api.github.com/repos/lbnandy/genre-police-visualizer/releases?per_page=10',
+      {
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': `Genre-Police-Visualizer/${app.getVersion()}`,
+          'X-GitHub-Api-Version': '2022-11-28'
+        },
+        signal: controller.signal
+      }
+    );
+    if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+    const releases = await response.json();
+    if (!Array.isArray(releases)) throw new Error('GitHub returned an invalid release list');
+    const release = selectLatestUpdate(releases, app.getVersion());
+    latestUpdate = release;
+    return updateStatus(release ? 'available' : 'current', release);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function checkForUpdates({ manual = false, notify = false } = {}) {
+  if (!manual && !isUpdateCheckDue(config.lastUpdateCheckAt)) {
+    return updateStatus('skipped', latestUpdate);
+  }
+  if (updateCheckTask) return updateCheckTask;
+  saveConfig({ lastUpdateCheckAt: Date.now() });
+  updateCheckTask = requestLatestUpdate()
+    .catch(() => updateStatus('error'))
+    .finally(() => {
+      updateCheckTask = null;
+    });
+  const result = await updateCheckTask;
+  const dismissed = sameVersion(config.dismissedUpdateVersion, result.latestVersion);
+  if (notify && result.status === 'available' && !dismissed
+      && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', result);
+  }
+  return result;
+}
+
+function scheduleAutomaticUpdateCheck() {
+  if (process.env.GP_CAPTURE_PATH || updateCheckTimer) return;
+  updateCheckTimer = setTimeout(() => {
+    updateCheckTimer = null;
+    void checkForUpdates({ notify: true });
+  }, 10_000);
+}
+
+function dismissUpdate(version) {
+  const normalized = canonicalVersion(version);
+  if (!normalized || !latestUpdate || !sameVersion(normalized, latestUpdate.version)) {
+    return { ok: false };
+  }
+  saveConfig({ dismissedUpdateVersion: normalized });
+  return { ok: true, version: normalized };
+}
+
+async function openUpdatePage(value) {
+  const url = isAllowedReleaseUrl(value)
+    ? String(value)
+    : latestUpdate?.url || UPDATE_RELEASES_URL;
+  if (!isAllowedReleaseUrl(url)) return { ok: false };
+  await shell.openExternal(url);
+  return { ok: true };
 }
 
 const resolver = new GenreResolver({
@@ -312,9 +744,393 @@ function restartRhythmModelForOutputDevice() {
   rhythmModel?.reset();
 }
 
+const AUDIO_MODEL_FAMILIES = new Set([
+  'hardcore', 'hardstyle', 'dubstep', 'future-bass', 'drum-bass', 'house', 'trance',
+  'techno', 'uk-garage', 'breakbeat', 'synthwave', 'phonk', 'metal', 'rock', 'pop',
+  'j-pop', 'k-pop', 'hip-hop', 'rnb', 'country', 'folk', 'jazz', 'classical',
+  'soundtrack', 'latin', 'reggae', 'punk', 'ambient', 'downtempo', 'idm', 'glitch',
+  'instrumental-hip-hop', 'blues', 'electronic'
+]);
+
+function audioGenreModelPaths() {
+  return {
+    modelPath: assetPath(path.join('models', 'discogs-effnet-bsdynamic-1.onnx')),
+    metadataPath: assetPath(path.join('models', 'discogs-effnet-bsdynamic-1.json'))
+  };
+}
+
+function localGenreModelAvailable() {
+  const paths = audioGenreModelPaths();
+  return fs.existsSync(paths.modelPath) && fs.existsSync(paths.metadataPath);
+}
+
+function audioFamilyForGenreId(value) {
+  const id = String(value || 'unknown');
+  if (AUDIO_MODEL_FAMILIES.has(id)) return id;
+  const family = themeFor(id).family;
+  return AUDIO_MODEL_FAMILIES.has(family) ? family : id;
+}
+
+function metadataGenreKind(metadata) {
+  const genre = metadata?.genre || themeFor('unknown');
+  const evidence = metadata?.genreEvidence || {};
+  const matched = String(genre.matched || '');
+  const sources = metadata?.genreSources || [];
+  if (metadata?.userGenreCorrection
+    || metadata?.customGenreRule
+    || evidence.type === 'user-correction'
+    || evidence.type === 'custom-genre'
+    || ['asmr', 'bilibili'].includes(genre.id)) return 'authoritative';
+  if (evidence.type === 'user-artist'
+    || matched.startsWith('artist:')
+    || sources.some((source) => /artist map|artist supplement/i.test(source))) return 'artist';
+  if (!genre.id || ['unknown', 'electronic'].includes(genre.id)) return 'broad';
+  return 'specific';
+}
+
+function rememberedAudioGenreDecision(memory = currentAudioGenreMemory) {
+  if (!memory?.genreId || !THEMES[memory.genreId]) return null;
+  return {
+    stage: 'memory',
+    genreId: memory.genreId,
+    confidence: memory.confidence,
+    margin: memory.margin,
+    acceptedWindows: memory.acceptedWindows,
+    remembered: true
+  };
+}
+
+function loadCurrentAudioGenreMemory(metadata = lastRawMetadata) {
+  if (config.localGenreModelEnabled === false || !metadata?.title) return null;
+  const memory = getAudioGenreMemory(audioGenreMemories, metadata);
+  return memory?.genreId && THEMES[memory.genreId] ? memory : null;
+}
+
+function resetCurrentAudioGenreEvidence({ reloadMemory = true } = {}) {
+  currentAudioGenreSnapshot = null;
+  audioGenreMemoryVerificationLimit = 0;
+  lastPersistedAudioGenreWindows = 0;
+  currentAudioGenreMemory = reloadMemory ? loadCurrentAudioGenreMemory() : null;
+  currentAudioGenreDecision = rememberedAudioGenreDecision();
+}
+
+function persistCurrentAudioGenreMemory({ force = false } = {}) {
+  if (config.localGenreModelEnabled === false
+    || !lastRawMetadata?.title
+    || !currentAudioGenreSnapshot?.track
+    || currentAudioGenreSnapshot.trackKey !== lastTrackKey) return false;
+  const acceptedWindows = Number(currentAudioGenreSnapshot.acceptedWindows) || 0;
+  if (acceptedWindows <= lastPersistedAudioGenreWindows) return false;
+  if (!force
+    && lastPersistedAudioGenreWindows
+    && acceptedWindows - lastPersistedAudioGenreWindows < AUDIO_GENRE_MEMORY_WRITE_INTERVAL_WINDOWS) return false;
+  const candidate = createAudioGenreMemoryCandidate({
+    metadata: lastRawMetadata,
+    metadataKind: metadataGenreKind(lastBaseResolvedMetadata),
+    trackResult: currentAudioGenreSnapshot.track,
+    acceptedWindows,
+    winnerHistory: currentAudioGenreSnapshot.winnerHistory,
+    validGenreIds: new Set(Object.keys(THEMES))
+  });
+  if (!candidate) return false;
+  const updated = setAudioGenreMemory(audioGenreMemories, lastRawMetadata, candidate);
+  lastPersistedAudioGenreWindows = acceptedWindows;
+  if (!updated.changed) return false;
+  audioGenreMemories = updated.state;
+  currentAudioGenreMemory = updated.memory;
+  try {
+    saveAudioGenreMemories();
+  } catch (error) {
+    console.warn('Could not save local AI genre memory:', error.message);
+    return false;
+  }
+  return true;
+}
+
+function audioGenreContext(metadata = lastBaseResolvedMetadata) {
+  const kind = metadataGenreKind(metadata);
+  const dynamicEnabled = config.localGenreModelEnabled !== false
+    && config.dynamicGenreDetectionEnabled === true;
+  const priorGenreIds = [];
+  const guardGenreIds = [];
+  if (kind === 'artist') {
+    const artistGenreId = audioFamilyForGenreId(metadata?.genre?.id);
+    priorGenreIds.push(artistGenreId);
+    guardGenreIds.push(artistGenreId);
+  }
+  if (currentAudioGenreMemory?.genreId) priorGenreIds.push(currentAudioGenreMemory.genreId);
+  const metadataBaseline = dynamicEnabled && kind === 'specific'
+    ? audioFamilyForGenreId(metadata?.genre?.id)
+    : '';
+  return {
+    dynamicEnabled,
+    priorGenreIds: [...new Set(priorGenreIds.filter(Boolean))],
+    guardGenreIds: [...new Set(guardGenreIds.filter(Boolean))],
+    baselineGenreId: metadataBaseline
+      || (dynamicEnabled ? currentAudioGenreMemory?.genreId || '' : '')
+  };
+}
+
+function shouldAnalyzeCurrentGenreAudio() {
+  return shouldAnalyzeAudioGenre({
+    enabled: config.localGenreModelEnabled !== false,
+    playing: Boolean(lastRawMetadata?.playing),
+    hasTrack: Boolean(lastRawMetadata?.title),
+    dynamicEnabled: config.dynamicGenreDetectionEnabled === true,
+    metadataKind: metadataGenreKind(lastBaseResolvedMetadata),
+    decisionGenreId: currentAudioGenreDecision?.genreId,
+    acceptedWindows: audioGenreModelState?.acceptedWindows,
+    settleWindowLimit: audioGenreMemoryVerificationLimit
+      || audioGenreModelState?.analysisWindowLimit
+  });
+}
+
+function fuseAudioGenreDecision(baseMetadata, decision) {
+  if (!decision?.genreId || !THEMES[decision.genreId]) return baseMetadata;
+  const base = baseMetadata || {};
+  const baseGenre = base.genre || themeFor('unknown');
+  const kind = metadataGenreKind({ ...base, genre: baseGenre });
+  const sameFamily = audioFamilyForGenreId(baseGenre.id) === decision.genreId;
+  const dynamicChange = decision.stage === 'dynamic';
+  const mayReplace = shouldReplaceMetadataWithAudioGenre({
+    metadataKind: kind,
+    baseGenreId: baseGenre.id,
+    decisionGenreId: decision.genreId,
+    decisionStage: decision.stage,
+    dynamicEnabled: config.dynamicGenreDetectionEnabled === true
+  });
+  const rememberedResult = decision.stage === 'memory';
+  const audioEvidence = {
+    type: rememberedResult ? 'audio-memory' : 'audio-model',
+    stage: decision.stage,
+    genreId: decision.genreId,
+    confidence: decision.confidence,
+    margin: decision.margin,
+    acceptedWindows: decision.acceptedWindows,
+    confirmed: decision.confirmed === true,
+    supportedByRelativeLead: decision.supportedByRelativeLead === true
+  };
+
+  if (sameFamily || !mayReplace) {
+    return {
+      ...base,
+      resolving: false,
+      audioGenreEvidence: audioEvidence,
+      audioGenreAlternative: mayReplace ? null : decision.genreId
+    };
+  }
+
+  const source = rememberedResult
+    ? 'Remembered local AI'
+    : dynamicChange ? 'Local AI genre change' : 'Local AI model';
+  return {
+    ...base,
+    resolving: false,
+    genre: themeWithId(decision.genreId),
+    genreSource: source,
+    genreSources: [...new Set([source, ...(base.genreSources || [])])],
+    genreEvidence: audioEvidence,
+    audioGenreEvidence: audioEvidence,
+    metadataGenre: baseGenre
+  };
+}
+
+function publishCurrentGenre({ force = false } = {}) {
+  if (!mainWindow || mainWindow.isDestroyed() || !lastRawMetadata?.title) return;
+  const base = lastBaseResolvedMetadata || {
+    ...lastRawMetadata,
+    displayArtist: displayArtistName(lastRawMetadata.artist || lastRawMetadata.albumArtist),
+    hardcoreTanoc: isHardcoreTanocArtist(lastRawMetadata.artist || lastRawMetadata.albumArtist),
+    genre: themeWithId('unknown'),
+    genreSource: '',
+    genreSources: [],
+    genreEvidence: { type: 'unknown' }
+  };
+  let next = currentAudioGenreDecision
+    ? fuseAudioGenreDecision(base, currentAudioGenreDecision)
+    : base;
+  if (shouldKeepGenreIdentifying({
+    enabled: config.localGenreModelEnabled !== false,
+    available: localGenreModelAvailable(),
+    playing: Boolean(lastRawMetadata?.playing),
+    hasTrack: Boolean(lastRawMetadata?.title),
+    displayedGenreId: next.genre?.id,
+    decisionGenreId: currentAudioGenreDecision?.genreId,
+    modelState: audioGenreModelState?.type
+  })) {
+    next = { ...next, resolving: true };
+  }
+  if (temporaryGenreOverride?.trackKey === lastTrackKey) {
+    next = {
+      ...next,
+      resolving: false,
+      genre: temporaryGenreOverride.genre,
+      genreSource: 'Temporary visual lock',
+      genreSources: [...new Set(['Temporary visual lock', ...(next.genreSources || [])])],
+      genreEvidence: {
+        type: 'temporary-genre',
+        genreId: temporaryGenreOverride.genreId
+      },
+      temporaryGenreOverride: {
+        genreId: temporaryGenreOverride.genreId,
+        label: temporaryGenreOverride.label
+      }
+    };
+  }
+  next = withGenreReliability(next);
+  const previousGenreId = lastResolvedMetadata?.genre?.id;
+  const previousGenreUncertain = Boolean(lastResolvedMetadata?.genreUncertain);
+  lastResolvedMetadata = next;
+  if (process.env.GP_DEBUG_AUDIO_GENRE && currentAudioGenreDecision) {
+    console.info('Local audio genre publish:', {
+      stage: currentAudioGenreDecision.stage,
+      baseGenreId: base.genre?.id,
+      baseKind: metadataGenreKind(base),
+      decisionGenreId: currentAudioGenreDecision.genreId,
+      previousGenreId,
+      nextGenreId: next.genre?.id,
+      genreUncertain: next.genreUncertain,
+      genreUncertainReason: next.genreUncertainReason,
+      sent: Boolean(force
+        || previousGenreId !== next.genre?.id
+        || previousGenreUncertain !== next.genreUncertain)
+    });
+  }
+  if (force
+    || previousGenreId !== next.genre?.id
+    || previousGenreUncertain !== next.genreUncertain) {
+    mainWindow.webContents.send('now-playing', {
+      ...next,
+      displayArtist: displayArtistName(next.artist || next.albumArtist || lastRawMetadata.artist || lastRawMetadata.albumArtist),
+      hardcoreTanoc: isHardcoreTanocArtist(next.artist || next.albumArtist || lastRawMetadata.artist || lastRawMetadata.albumArtist),
+      audioGenreUpdate: !force
+    });
+  }
+}
+
+function handleAudioGenreModelEvent(payload) {
+  if (payload?.type !== 'prediction') {
+    audioGenreModelState = payload || audioGenreModelState;
+    if (process.env.GP_DEBUG_AUDIO_GENRE && payload?.type !== 'reset') {
+      console.info('Local audio genre model:', payload);
+    }
+    return;
+  }
+  if (payload.trackKey !== lastTrackKey) return;
+  const decision = payload.decision || {};
+  const previousWinnerHistory = currentAudioGenreSnapshot?.trackKey === payload.trackKey
+    ? currentAudioGenreSnapshot.winnerHistory || []
+    : [];
+  currentAudioGenreSnapshot = {
+    trackKey: payload.trackKey,
+    acceptedWindows: decision.acceptedWindows,
+    short: payload.short,
+    track: payload.track,
+    segment: payload.segment,
+    winnerHistory: [...previousWinnerHistory, payload.track?.id]
+      .filter(Boolean)
+      .slice(-12)
+  };
+  if (process.env.GP_DEBUG_AUDIO_GENRE) {
+    const summarize = (result = {}) => ({
+      id: result.id,
+      confidence: Number(result.confidence || 0).toFixed(3),
+      margin: Number(result.margin || 0).toFixed(3)
+    });
+    console.info('Local audio genre prediction:', {
+      stage: decision.stage,
+      windows: decision.acceptedWindows,
+      short: summarize(payload.short),
+      track: summarize(payload.track),
+      segment: summarize(payload.segment)
+    });
+  }
+  audioGenreModelState = {
+    type: 'prediction',
+    genreId: decision.genreId,
+    stage: decision.stage,
+    confidence: decision.confidence,
+    margin: decision.margin,
+    acceptedWindows: decision.acceptedWindows,
+    analysisWindowLimit: decision.analysisWindowLimit,
+    inferenceMs: payload.inferenceMs
+  };
+  const rememberedGenreId = currentAudioGenreMemory?.genreId;
+  if (rememberedGenreId && decision.genreId && decision.genreId !== rememberedGenreId
+    && ['first', 'refinement', 'correction', 'dynamic'].includes(decision.stage)) {
+    audioGenreMemoryVerificationLimit = 0;
+  } else if (rememberedGenreId
+    && decision.genreId === rememberedGenreId
+    && decision.stage === 'confirmed'
+    && config.dynamicGenreDetectionEnabled !== true) {
+    audioGenreMemoryVerificationLimit = Math.max(
+      AUDIO_GENRE_MEMORY_CONFIRMATION_WINDOWS,
+      Number(decision.acceptedWindows || 0) + 6
+    );
+  }
+  if (['provisional', 'first', 'refinement', 'correction', 'dynamic'].includes(decision.stage)) {
+    currentAudioGenreDecision = { ...decision };
+    publishCurrentGenre();
+  } else if (decision.stage === 'confirmed' && currentAudioGenreDecision?.genreId === decision.genreId) {
+    currentAudioGenreDecision = { ...currentAudioGenreDecision, ...decision };
+    publishCurrentGenre();
+  }
+  persistCurrentAudioGenreMemory();
+}
+
+function startAudioGenreModel() {
+  if (config.localGenreModelEnabled === false) {
+    audioGenreModelState = { type: 'disabled', reason: 'disabled in settings' };
+    return null;
+  }
+  if (audioGenreModel || audioGenreModelStartTask || app.isQuitting) return audioGenreModelStartTask;
+  const paths = audioGenreModelPaths();
+  if (!localGenreModelAvailable()) {
+    audioGenreModelState = { type: 'unavailable', reason: 'bundled Discogs-EffNet model is missing' };
+    return null;
+  }
+  const model = new LocalAudioGenreModel({ ...paths, onEvent: handleAudioGenreModelEvent });
+  audioGenreModel = model;
+  if (lastTrackKey) model.reset(lastTrackKey, audioGenreContext());
+  audioGenreModelState = { type: 'starting' };
+  audioGenreModelStartTask = model.initialize()
+    .catch(async (error) => {
+      if (audioGenreModel === model) audioGenreModel = null;
+      audioGenreModelState = { type: 'unavailable', reason: error.message };
+      await model.close();
+      publishCurrentGenre({ force: true });
+    })
+    .finally(() => {
+      audioGenreModelStartTask = null;
+    });
+  return audioGenreModelStartTask;
+}
+
+async function setAudioGenreModelEnabled(enabled) {
+  if (enabled !== false) {
+    resetCurrentAudioGenreEvidence();
+    startAudioGenreModel();
+    publishCurrentGenre({ force: true });
+    return;
+  }
+  const model = audioGenreModel;
+  audioGenreModel = null;
+  audioGenreModelStartTask = null;
+  resetCurrentAudioGenreEvidence({ reloadMemory: false });
+  if (model) await model.close();
+  audioGenreModelState = { type: 'disabled', reason: 'disabled in settings' };
+  publishCurrentGenre({ force: true });
+}
+
+function resetAudioGenreForCurrentTrack() {
+  resetCurrentAudioGenreEvidence();
+  if (audioGenreModel) audioGenreModel.reset(lastTrackKey, audioGenreContext());
+}
+
 function restartAllAudioCapture() {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('restart-audio');
   restartRhythmModelForOutputDevice();
+  resetAudioGenreForCurrentTrack();
 }
 
 function clearIdleHideTimer() {
@@ -368,23 +1184,127 @@ function currentGenreCorrection() {
   return getGenreCorrection(genreCorrections, lastRawMetadata || {});
 }
 
-function rememberCurrentGenre(genreId) {
+function genreSelection(genreId) {
   const cleanId = String(genreId || '').trim();
   const theme = THEMES[cleanId];
   const customRule = findCustomGenreByCorrectionId(config.customGenres, cleanId);
-  if (!lastRawMetadata?.title) return { ok: false, error: 'no-track' };
-  if ((!theme || cleanId === 'unknown') && !customRule) return { ok: false, error: 'invalid-genre' };
-  const correctionGenre = customRule
-    ? {
-      id: customGenreCorrectionId(customRule.id),
-      label: customRule.name.toLocaleUpperCase(),
-      customGenreId: customRule.id,
-      baseGenreId: customRule.baseGenreId,
-      colors: customRule.colors
+  if ((!theme || cleanId === 'unknown') && !customRule) return null;
+  if (customRule) {
+    const base = themeWithId(customRule.baseGenreId);
+    const colors = customRule.colors || null;
+    return {
+      genreId: customGenreCorrectionId(customRule.id),
+      label: customRule.name,
+      genre: {
+        ...base,
+        ...(colors || {}),
+        ...(colors ? { genreInk: '', genreInk2: '', genreInkEdge: '' } : {}),
+        label: customRule.name.toLocaleUpperCase(),
+        matched: `temporary:${customRule.id}`,
+        confidence: 1
+      },
+      correction: {
+        id: customGenreCorrectionId(customRule.id),
+        label: customRule.name.toLocaleUpperCase(),
+        customGenreId: customRule.id,
+        baseGenreId: customRule.baseGenreId,
+        colors: customRule.colors
+      }
+    };
+  }
+  return {
+    genreId: cleanId,
+    label: theme.label,
+    genre: { ...themeWithId(cleanId), matched: `temporary:${cleanId}`, confidence: 1 },
+    correction: { id: cleanId, label: theme.label }
+  };
+}
+
+function currentGenreCandidates() {
+  const candidates = new Map();
+  const add = (genreId, basis, label = '') => {
+    const selection = genreSelection(genreId);
+    if (!selection) return;
+    const existing = candidates.get(selection.genreId);
+    if (existing) {
+      if (!existing.bases.includes(basis)) existing.bases.push(basis);
+      return;
     }
-    : { id: cleanId, label: theme.label };
-  const updated = setGenreCorrection(genreCorrections, lastRawMetadata, correctionGenre);
+    candidates.set(selection.genreId, {
+      id: selection.genreId,
+      label: label || selection.label,
+      bases: [basis]
+    });
+  };
+  const correction = currentGenreCorrection();
+  const displayedId = temporaryGenreOverride?.trackKey === lastTrackKey
+    ? temporaryGenreOverride.genreId
+    : correction?.genreId || lastResolvedMetadata?.genre?.id;
+  add(
+    displayedId,
+    temporaryGenreOverride?.trackKey === lastTrackKey ? 'locked' : 'current',
+    temporaryGenreOverride?.label || correction?.label || lastResolvedMetadata?.genre?.label
+  );
+  add(lastBaseResolvedMetadata?.genre?.id, 'metadata', lastBaseResolvedMetadata?.genre?.label);
+
+  const addRanked = (result, basis, limit) => {
+    let added = 0;
+    for (const entry of result?.ranked || []) {
+      if (added >= limit) break;
+      if (!entry?.id || ['unknown', 'electronic'].includes(entry.id)) continue;
+      const before = candidates.size;
+      add(entry.id, basis);
+      if (candidates.size > before) added += 1;
+    }
+  };
+  addRanked(currentAudioGenreSnapshot?.track, 'ai-track', 3);
+  addRanked(currentAudioGenreSnapshot?.segment, 'ai-recent', 2);
+  add(lastResolvedMetadata?.audioGenreAlternative, 'ai-track');
+
+  return {
+    trackKey: lastTrackKey,
+    title: lastResolvedMetadata?.title || lastRawMetadata?.title || '',
+    artist: displayArtistName(
+      lastResolvedMetadata?.artist
+      || lastRawMetadata?.artist
+      || lastRawMetadata?.albumArtist
+    ),
+    selectedGenreId: displayedId || '',
+    locked: temporaryGenreOverride?.trackKey === lastTrackKey
+      ? { genreId: temporaryGenreOverride.genreId, label: temporaryGenreOverride.label }
+      : null,
+    candidates: [...candidates.values()].slice(0, 7)
+  };
+}
+
+function setTemporaryGenre(genreId) {
+  if (!lastRawMetadata?.title || !lastTrackKey) return { ok: false, error: 'no-track' };
+  const selection = genreSelection(genreId);
+  if (!selection) return { ok: false, error: 'invalid-genre' };
+  temporaryGenreOverride = {
+    trackKey: lastTrackKey,
+    genreId: selection.genreId,
+    label: selection.label,
+    genre: selection.genre
+  };
+  publishCurrentGenre({ force: true });
+  return { ok: true, override: { genreId: selection.genreId, label: selection.label } };
+}
+
+function clearTemporaryGenre() {
+  const changed = Boolean(temporaryGenreOverride?.trackKey === lastTrackKey);
+  temporaryGenreOverride = null;
+  if (changed) publishCurrentGenre({ force: true });
+  return { ok: true, changed };
+}
+
+function rememberCurrentGenre(genreId) {
+  const selection = genreSelection(genreId);
+  if (!lastRawMetadata?.title) return { ok: false, error: 'no-track' };
+  if (!selection) return { ok: false, error: 'invalid-genre' };
+  const updated = setGenreCorrection(genreCorrections, lastRawMetadata, selection.correction);
   if (!updated.changed) return { ok: false, error: 'invalid-track' };
+  temporaryGenreOverride = null;
   genreCorrections = updated.state;
   saveGenreCorrections();
   rebuildTrayMenu();
@@ -404,10 +1324,48 @@ function forgetCurrentGenre() {
   return { ok: true, changed: updated.changed };
 }
 
-function openGenreCorrection() {
+function setMainWindowMouseEventsIgnored(ignored) {
+  const nextIgnored = ignored === true;
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindowMouseEventsIgnored === nextIgnored) return;
+  mainWindowMouseEventsIgnored = nextIgnored;
+  mainWindow.setIgnoreMouseEvents(nextIgnored, { forward: true });
+}
+
+function updateMainWindowPointerHitTest() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
+  if (stageOutputActive) {
+    setMainWindowMouseEventsIgnored(false);
+    return;
+  }
+  const pointerInside = pointInWindowSurface(
+    screen.getCursorScreenPoint(),
+    mainWindow.getBounds(),
+    normalizeLayoutMode(config.layoutMode),
+    { settingsOpen: mainSettingsOpen }
+  );
+  setMainWindowMouseEventsIgnored(clickThrough || (!mainWindowBeingMoved && !pointerInside));
+}
+
+function startMainWindowPointerHitTest() {
+  if (pointerHitTestTimer) clearInterval(pointerHitTestTimer);
+  pointerHitTestTimer = setInterval(updateMainWindowPointerHitTest, 24);
+  updateMainWindowPointerHitTest();
+}
+
+function stopMainWindowPointerHitTest() {
+  if (pointerHitTestTimer) clearInterval(pointerHitTestTimer);
+  pointerHitTestTimer = null;
+  mainWindowMouseEventsIgnored = null;
+  mainWindowBeingMoved = false;
+}
+
+async function openGenreCorrection() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (stageOutputActive) await setStageOutput(false);
   showMainWindow();
   setClickThrough(false);
+  mainSettingsOpen = true;
+  updateMainWindowPointerHitTest();
   mainWindow.webContents.send('genre-correction:open');
 }
 
@@ -415,6 +1373,8 @@ function openSettings() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   showMainWindow();
   setClickThrough(false);
+  mainSettingsOpen = true;
+  updateMainWindowPointerHitTest();
   mainWindow.webContents.send('settings:open');
 }
 
@@ -428,28 +1388,189 @@ function trayImage() {
 
 function setClickThrough(value, { persist = true } = {}) {
   clickThrough = Boolean(value);
+  if (clickThrough) mainSettingsOpen = false;
   if (persist) saveConfig({ clickThrough });
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
+    updateMainWindowPointerHitTest();
     mainWindow.webContents.send('interaction-state', { clickThrough });
   }
   rebuildTrayMenu();
 }
 
-function setAlwaysOnTop(value, { persist = true } = {}) {
-  alwaysOnTop = normalizeAlwaysOnTop(value);
-  if (persist) saveConfig({ alwaysOnTop });
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setAlwaysOnTop(alwaysOnTop, 'floating');
+function desktopLayerHelperPath() {
+  const root = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked')
+    : __dirname;
+  return path.join(root, 'scripts', 'windows-desktop-host.exe');
+}
+
+function desktopLayerAvailable() {
+  return process.platform === 'win32' && fs.existsSync(desktopLayerHelperPath());
+}
+
+function mainWindowHandleString() {
+  if (!mainWindow || mainWindow.isDestroyed()) return '';
+  const handle = mainWindow.getNativeWindowHandle();
+  if (!Buffer.isBuffer(handle) || handle.length < 4) return '';
+  return handle.length >= 8
+    ? handle.readBigUInt64LE(0).toString()
+    : BigInt(handle.readUInt32LE(0)).toString();
+}
+
+function runDesktopLayerHelper(command) {
+  const handle = mainWindowHandleString();
+  if (!desktopLayerAvailable() || !handle) {
+    return Promise.resolve({ ok: false, mode: 'detached', detail: 'desktop-layer-unavailable' });
   }
+  const execute = () => new Promise((resolve) => {
+    const child = spawn(desktopLayerHelperPath(), [command, handle], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const timeout = setTimeout(() => {
+      child.kill();
+      finish({ ok: false, mode: desktopLayerAttached ? 'attached' : 'detached', detail: 'desktop-layer-timeout' });
+    }, 4000);
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+    child.on('error', (error) => {
+      clearTimeout(timeout);
+      finish({ ok: false, mode: 'detached', detail: error.message });
+    });
+    child.on('close', () => {
+      clearTimeout(timeout);
+      try {
+        const line = stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
+        finish(JSON.parse(line || ''));
+      } catch {
+        finish({ ok: false, mode: 'detached', detail: stderr.trim() || 'desktop-layer-invalid-response' });
+      }
+    });
+  });
+  desktopLayerTask = desktopLayerTask.then(execute, execute);
+  return desktopLayerTask;
+}
+
+async function syncDesktopLayer() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const shouldAttach = desktopLayerEnabled && !stageOutputActive;
+  const result = await runDesktopLayerHelper(shouldAttach ? 'attach' : 'detach');
+  desktopLayerAttached = result.ok === true && result.mode === 'attached';
+  desktopLayerLastError = result.ok === true ? '' : String(result.detail || 'desktop-layer-failed');
+  return shouldAttach ? desktopLayerAttached : !desktopLayerAttached;
+}
+
+function startDesktopLayerMonitor() {
+  if (desktopLayerMonitor) clearInterval(desktopLayerMonitor);
+  desktopLayerMonitor = setInterval(async () => {
+    if (!desktopLayerEnabled || stageOutputActive || !mainWindow || mainWindow.isDestroyed()) return;
+    const status = await runDesktopLayerHelper('status');
+    desktopLayerAttached = status.ok === true && status.mode === 'attached';
+    if (!desktopLayerAttached) await syncDesktopLayer();
+  }, 15000);
+  desktopLayerMonitor.unref?.();
+}
+
+async function setDesktopLayer(value, { persist = true } = {}) {
+  const requested = normalizeDesktopLayer(value);
+  desktopLayerEnabled = requested && desktopLayerAvailable();
+  if (desktopLayerEnabled) {
+    alwaysOnTop = false;
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(false, 'floating');
+  }
+  await syncDesktopLayer();
+  if (requested && !desktopLayerAttached && !stageOutputActive) desktopLayerEnabled = false;
+  if (persist) saveConfig({ desktopLayer: desktopLayerEnabled, alwaysOnTop });
+  rebuildTrayMenu();
+  return {
+    enabled: desktopLayerEnabled,
+    attached: desktopLayerAttached,
+    available: desktopLayerAvailable(),
+    error: desktopLayerLastError,
+    alwaysOnTop
+  };
+}
+
+async function setAlwaysOnTop(value, { persist = true } = {}) {
+  alwaysOnTop = normalizeAlwaysOnTop(value);
+  if (alwaysOnTop && desktopLayerEnabled) {
+    desktopLayerEnabled = false;
+    await syncDesktopLayer();
+  }
+  if (persist) saveConfig({ alwaysOnTop, desktopLayer: desktopLayerEnabled });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setAlwaysOnTop(stageOutputActive || alwaysOnTop, stageOutputActive ? 'screen-saver' : 'floating');
+  }
+  rebuildTrayMenu();
   return alwaysOnTop;
+}
+
+function stageOutputState(extra = {}) {
+  return { ok: true, active: stageOutputActive, ...extra };
+}
+
+async function setStageOutput(value) {
+  const active = value === true;
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, active: false, error: 'window-unavailable' };
+  if (active === stageOutputActive) return stageOutputState();
+  if (active && recordingSession) return { ok: false, active: false, error: 'recording-active' };
+  if (!active && recordingSession) return { ok: false, active: true, error: 'recording-active' };
+
+  if (active) {
+    if (desktopLayerAttached) {
+      const result = await runDesktopLayerHelper('detach');
+      desktopLayerAttached = !(result.ok === true && result.mode === 'detached');
+      if (desktopLayerAttached) {
+        desktopLayerLastError = String(result.detail || 'desktop-layer-detach-failed');
+        return { ok: false, active: false, error: 'desktop-layer-detach-failed' };
+      }
+    }
+    const currentBounds = mainWindow.getBounds();
+    const display = screen.getDisplayMatching(currentBounds);
+    stageOutputRestoreBounds = currentBounds;
+    stageOutputActive = true;
+    mainSettingsOpen = false;
+    if (windowPositionSaveTimer) clearTimeout(windowPositionSaveTimer);
+    windowPositionSaveTimer = null;
+    stopBackdropSampler();
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    mainWindow.setBounds(display.bounds, false);
+    mainWindow.show();
+    mainWindow.focus();
+    setMainWindowMouseEventsIgnored(false);
+    globalShortcut.unregister('Escape');
+    globalShortcut.register('Escape', () => setStageOutput(false));
+    mainWindow.webContents.send('stage-output-state', stageOutputState({ displayId: display.id }));
+  } else {
+    globalShortcut.unregister('Escape');
+    stageOutputActive = false;
+    const restoreBounds = stageOutputRestoreBounds;
+    stageOutputRestoreBounds = null;
+    if (restoreBounds) mainWindow.setBounds(restoreBounds, false);
+    mainWindow.setAlwaysOnTop(alwaysOnTop, 'floating');
+    mainWindow.webContents.send('stage-output-state', stageOutputState());
+    updateMainWindowPointerHitTest();
+    if (usesAdaptiveBackdrop()) startBackdropSampler();
+    scheduleWindowPositionSave();
+    if (desktopLayerEnabled) await syncDesktopLayer();
+  }
+  rebuildTrayMenu();
+  return stageOutputState();
 }
 
 function setUiScale(value) {
   const uiScale = normalizeUiScale(value);
   saveConfig({ uiScale });
   if (mainWindow && !mainWindow.isDestroyed()) {
-    resizeMainWindow(layoutWindowSize(config.layoutMode, uiScale));
+    if (!stageOutputActive) resizeMainWindow(layoutWindowSize(config.layoutMode, uiScale));
     mainWindow.webContents.send('ui-scale', { scale: uiScale });
   }
   rebuildTrayMenu();
@@ -472,13 +1593,16 @@ function setLayoutMode(value) {
   const layoutMode = normalizeLayoutMode(value);
   saveConfig({ layoutMode });
   if (mainWindow && !mainWindow.isDestroyed()) {
-    resizeMainWindow(
-      layoutWindowSize(layoutMode, normalizeUiScale(config.uiScale)),
-      { animate: false }
-    );
+    if (!stageOutputActive) {
+      resizeMainWindow(
+        layoutWindowSize(layoutMode, normalizeUiScale(config.uiScale)),
+        { animate: false }
+      );
+    }
     mainWindow.webContents.send('layout-mode', { mode: layoutMode });
   }
-  if (usesAdaptiveBackdrop(layoutMode)) startBackdropSampler();
+  if (stageOutputActive) stopBackdropSampler();
+  else if (usesAdaptiveBackdrop(layoutMode)) startBackdropSampler();
   else stopBackdropSampler();
   return { mode: layoutMode };
 }
@@ -512,6 +1636,7 @@ function rebuildTrayMenu() {
   const currentTitle = String(lastRawMetadata?.title || '').trim();
   const hasCurrentTrack = Boolean(currentTitle);
   const hasCorrection = Boolean(currentGenreCorrection());
+  const recordingActive = Boolean(recordingSession);
   const previewRadio = (id, label) => ({
     label,
     type: 'radio',
@@ -538,16 +1663,31 @@ function rebuildTrayMenu() {
       enabled: false
     },
     { type: 'separator' },
-    { label: tr('tray.showHide'), click: toggleMainWindowVisibility },
-    { label: tr('tray.settings'), click: openSettings },
+    { label: tr('tray.showHide'), enabled: !recordingActive, click: toggleMainWindowVisibility },
+    { label: tr('tray.settings'), enabled: !recordingActive, click: openSettings },
+    {
+      label: tr(stageOutputActive ? 'tray.stopStageOutput' : 'tray.startStageOutput'),
+      enabled: !recordingActive,
+      accelerator: 'CommandOrControl+Shift+O', registerAccelerator: false,
+      click: () => setStageOutput(!stageOutputActive)
+    },
+    {
+      label: recordingSession ? tr('tray.stopRecording') : tr('tray.startRecording'),
+      enabled: true,
+      accelerator: 'CommandOrControl+Shift+R',
+      registerAccelerator: false,
+      click: () => sendRecordingCommand(recordingSession ? 'stop' : 'start')
+    },
     {
       label: tr('tray.clickThrough'), type: 'checkbox', checked: clickThrough,
+      enabled: !recordingActive && !stageOutputActive,
       accelerator: 'CommandOrControl+Shift+G', registerAccelerator: false,
       click: (item) => setClickThrough(item.checked)
     },
     { type: 'separator' },
     {
       label: tr('tray.genre'),
+      enabled: !recordingActive,
       submenu: [
         { label: tr('tray.correctGenre'), enabled: hasCurrentTrack, click: openGenreCorrection },
         { label: tr('tray.clearCorrection'), enabled: hasCorrection, click: forgetCurrentGenre },
@@ -555,7 +1695,7 @@ function rebuildTrayMenu() {
       ]
     },
     {
-      label: tr('tray.scale'), submenu: UI_SCALES.map((scale) => ({
+      label: tr('tray.scale'), enabled: !recordingActive, submenu: UI_SCALES.map((scale) => ({
         label: uiScaleLabel(scale),
         type: 'radio',
         checked: normalizeUiScale(config.uiScale) === scale,
@@ -566,14 +1706,20 @@ function rebuildTrayMenu() {
       label: tr('tray.preview'), submenu: [
         { label: tr('tray.followTrack'), type: 'radio', checked: !demoTheme, click: () => setDemoTheme('') },
         { type: 'separator' },
-        ...previewTree.flatMap((group) => group.label === 'GENRE POLICE'
-          ? group.children.map(previewNode)
-          : [{ label: group.label, submenu: group.children.map(previewNode) }])
+        ...previewTree.flatMap((group) => {
+          const onlyChild = group.children.length === 1 ? group.children[0] : null;
+          const duplicatesOnlyChild = onlyChild
+            && String(onlyChild.label).trim().toLocaleUpperCase()
+              === String(group.label).trim().toLocaleUpperCase();
+          return group.label === 'GENRE POLICE' || duplicatesOnlyChild
+            ? group.children.map(previewNode)
+            : [{ label: group.label, submenu: group.children.map(previewNode) }];
+        })
       ]
     },
-    { label: tr('tray.recaptureAudio'), click: restartAllAudioCapture },
+    { label: tr('tray.recaptureAudio'), enabled: !recordingActive, click: restartAllAudioCapture },
     { type: 'separator' },
-    { label: tr('tray.quit'), click: () => app.quit() }
+    { label: tr('tray.quit'), click: requestAppQuit }
   ];
   tray.setContextMenu(Menu.buildFromTemplate(template));
 }
@@ -583,6 +1729,7 @@ function createTray() {
   tray.setToolTip('Genre Police Visualizer');
   tray.on('double-click', () => {
     showMainWindow();
+    if (recordingSession) return;
     setClickThrough(!clickThrough);
   });
   rebuildTrayMenu();
@@ -603,7 +1750,7 @@ function defaultWindowPosition() {
 }
 
 function saveWindowPositionNow() {
-  if (!mainWindow || mainWindow.isDestroyed() || process.env.GP_CAPTURE_PATH) return;
+  if (!mainWindow || mainWindow.isDestroyed() || process.env.GP_CAPTURE_PATH || stageOutputActive) return;
   const bounds = mainWindow.getBounds();
   saveConfig({ windowPosition: { x: bounds.x, y: bounds.y } });
 }
@@ -629,7 +1776,7 @@ function createWindow() {
     hasShadow: false,
     resizable: false,
     alwaysOnTop,
-    skipTaskbar: true,
+    skipTaskbar: false,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -642,8 +1789,25 @@ function createWindow() {
 
   mainWindow.setAlwaysOnTop(alwaysOnTop, 'floating');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
-  mainWindow.on('move', scheduleWindowPositionSave);
+  mainWindowMouseEventsIgnored = null;
+  setMainWindowMouseEventsIgnored(true);
+  mainWindow.on('will-move', () => {
+    mainWindowBeingMoved = true;
+    updateMainWindowPointerHitTest();
+  });
+  mainWindow.on('moved', () => {
+    mainWindowBeingMoved = false;
+    updateMainWindowPointerHitTest();
+  });
+  mainWindow.on('move', () => {
+    scheduleWindowPositionSave();
+    positionRecordingControlsWindow();
+    updateMainWindowPointerHitTest();
+  });
+  mainWindow.on('resize', () => {
+    positionRecordingControlsWindow();
+    updateMainWindowPointerHitTest();
+  });
   mainWindow.webContents.on('console-message', (event) => {
     if (event.level === 'error') {
       console.error(`[renderer] ${event.message} (${event.sourceId || 'unknown'}:${event.lineNumber || 0})`);
@@ -655,10 +1819,15 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.once('ready-to-show', () => {
     mainWindow.showInactive();
+    if (desktopLayerEnabled) void syncDesktopLayer();
+    startDesktopLayerMonitor();
+    startMainWindowPointerHitTest();
     mainWindow.webContents.send('ui-scale', { scale: normalizeUiScale(config.uiScale) });
     mainWindow.webContents.send('layout-mode', { mode: normalizeLayoutMode(config.layoutMode) });
+    mainWindow.webContents.send('stage-output-state', stageOutputState());
     mainWindow.webContents.send('rhythm-model', rhythmModelState);
     startBackdropSampler();
+    scheduleAutomaticUpdateCheck();
     if (process.env.GP_DEMO_THEME) {
       setDemoTheme(process.env.GP_DEMO_THEME);
       setTimeout(() => setDemoTheme(process.env.GP_DEMO_THEME), 320);
@@ -666,6 +1835,7 @@ function createWindow() {
     if (process.env.GP_CAPTURE_SETTINGS || process.env.GP_CAPTURE_SCALE_MENU
       || process.env.GP_CAPTURE_MEDIA_MENU || process.env.GP_CAPTURE_CUSTOM_GENRES
       || process.env.GP_CAPTURE_GENRE_ARTISTS
+      || process.env.GP_CAPTURE_DIAGNOSTICS
       || process.env.GP_CAPTURE_NETEASE_HINT || process.env.GP_CAPTURE_SETTINGS_PANE
       || (process.env.GP_CAPTURE_LANGUAGE && !process.env.GP_CAPTURE_NETEASE_TOAST)
       || process.env.GP_CAPTURE_CORRECTION_QUERY
@@ -716,6 +1886,55 @@ function createWindow() {
         mainWindow?.webContents.executeJavaScript("document.body.classList.add('interactive', 'pointer-active')").catch(() => {});
       }, 480);
     }
+    if (process.env.GP_CAPTURE_STAGE_OUTPUT) {
+      setTimeout(() => setStageOutput(true), 720);
+    }
+    if (process.env.GP_CAPTURE_STAGE_SETTINGS) {
+      setTimeout(() => {
+        mainWindow?.webContents.executeJavaScript(
+          "document.querySelector('#fullscreen-settings-button')?.click()"
+        ).catch(() => {});
+      }, 980);
+    }
+    if (process.env.GP_CAPTURE_GENRE_QUICK) {
+      setTimeout(() => {
+        setDemoTheme('');
+        const raw = {
+          title: 'Midnight Circuit',
+          artist: 'Genre Police Unit',
+          album: 'Visual Evidence',
+          playing: true,
+          status: 'Playing',
+          positionMs: 8200,
+          durationMs: 240000,
+          source: 'Capture'
+        };
+        lastRawMetadata = raw;
+        lastTrackKey = 'genre police unit::midnight circuit::visual evidence';
+        lastBaseResolvedMetadata = {
+          ...raw,
+          displayArtist: raw.artist,
+          genre: themeWithId('synthwave'),
+          genreSource: 'Capture metadata',
+          genreSources: ['Capture metadata'],
+          genreEvidence: { type: 'classifier', matched: 'Synthwave' }
+        };
+        lastResolvedMetadata = withGenreReliability(lastBaseResolvedMetadata);
+        currentAudioGenreSnapshot = {
+          trackKey: lastTrackKey,
+          acceptedWindows: 12,
+          track: { ranked: [{ id: 'synthwave' }, { id: 'electro-house' }, { id: 'progressive-house' }] },
+          segment: { ranked: [{ id: 'trance' }, { id: 'electro-house' }] },
+          winnerHistory: ['synthwave']
+        };
+        mainWindow?.webContents.send('now-playing', lastResolvedMetadata);
+        setTimeout(() => {
+          mainWindow?.webContents.executeJavaScript(
+            "document.querySelector('#genre')?.click()"
+          ).catch(() => {});
+        }, 700);
+      }, 620);
+    }
     if (process.env.GP_CAPTURE_SCALE_MENU) {
       setTimeout(() => {
         mainWindow?.webContents.executeJavaScript("document.querySelector('#ui-scale-button')?.click()").catch(() => {});
@@ -763,6 +1982,21 @@ function createWindow() {
         })()`).catch(() => {});
       }, 820);
     }
+    if (process.env.GP_CAPTURE_DIAGNOSTICS) {
+      setTimeout(() => {
+        mainWindow?.webContents.executeJavaScript(`(() => {
+          document.querySelector('.settings-tab[data-settings-pane="app"]')?.click();
+          const panel = document.querySelector('#diagnostics-panel');
+          const settings = document.querySelector('.settings-scroll');
+          if (!panel || !settings) return;
+          panel.open = true;
+          panel.dispatchEvent(new Event('toggle'));
+          const top = settings.scrollTop + panel.getBoundingClientRect().top
+            - settings.getBoundingClientRect().top - 150;
+          settings.scrollTo({ top: Math.max(0, top) });
+        })()`).catch(() => {});
+      }, 860);
+    }
     if (process.env.GP_CAPTURE_CUSTOM_GENRE_DELETE) {
       setTimeout(() => {
         mainWindow?.webContents.executeJavaScript(`(() => {
@@ -809,6 +2043,16 @@ function createWindow() {
         });
       }, 820);
     }
+    if (process.env.GP_CAPTURE_UPDATE_TOAST) {
+      setTimeout(() => {
+        mainWindow?.webContents.send('update-status', {
+          ...updateStatus('available'),
+          latestVersion: 'v0.3.0',
+          releaseName: 'v0.3.0',
+          releaseUrl: `${UPDATE_RELEASES_URL}/tag/v0.3.0`
+        });
+      }, 820);
+    }
     if (process.env.GP_CAPTURE_PATH && process.env.GP_CAPTURE_BACKDROP === 'bright') {
       setTimeout(() => {
         const profile = deriveBackdropProfile({ r: 250, g: 250, b: 250, luminance: 0.98, saturation: 0 });
@@ -825,8 +2069,15 @@ function createWindow() {
     }
   });
   mainWindow.on('closed', () => {
+    stopMainWindowPointerHitTest();
+    mainSettingsOpen = false;
     if (windowPositionSaveTimer) clearTimeout(windowPositionSaveTimer);
     windowPositionSaveTimer = null;
+    if (recordingControlsWindow && !recordingControlsWindow.isDestroyed()) recordingControlsWindow.destroy();
+    if (recordingTransportWindow && !recordingTransportWindow.isDestroyed()) recordingTransportWindow.destroy();
+    recordingControlsWindow = null;
+    recordingTransportWindow = null;
+    recordingControlsState = null;
     mainWindow = null;
   });
 
@@ -834,8 +2085,12 @@ function createWindow() {
 }
 
 function setupAudioCapture() {
-  session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
     try {
+      if (request.videoRequested && !request.audioRequested && request.frame) {
+        callback({ video: request.frame });
+        return;
+      }
       const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } });
       callback({ video: sources[0], audio: 'loopback' });
     } catch (error) {
@@ -843,6 +2098,144 @@ function setupAudioCapture() {
       callback({});
     }
   });
+}
+
+async function prepareRecording(event, payload) {
+  if (!recordingSenderAllowed(event)) return { ok: false, error: 'not-allowed' };
+  if (recordingSession) return { ok: false, error: 'already-recording' };
+  const extension = payload?.extension === 'mp4' ? 'mp4' : 'webm';
+  const formatLabel = extension === 'mp4'
+    ? recordingLocaleText('recording.mp4Video')
+    : recordingLocaleText('recording.webmVideo');
+  const options = {
+    title: recordingLocaleText('recording.saveDialogTitle'),
+    defaultPath: path.join(app.getPath('videos'), `${recordingFileStem()}.${extension}`),
+    filters: [{ name: formatLabel, extensions: [extension] }],
+    properties: ['showOverwriteConfirmation', 'createDirectory']
+  };
+  hideRecordingControlsWindows();
+  const result = mainWindow && !mainWindow.isDestroyed()
+    ? await dialog.showSaveDialog(mainWindow, options)
+    : await dialog.showSaveDialog(options);
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+
+  const finalPath = result.filePath.toLowerCase().endsWith(`.${extension}`)
+    ? result.filePath
+    : `${result.filePath}.${extension}`;
+  const partialPath = `${finalPath}.part`;
+  try {
+    fs.rmSync(partialPath, { force: true });
+    const fd = fs.openSync(partialPath, 'w');
+    recordingSession = {
+      id: randomUUID(),
+      fd,
+      finalPath,
+      partialPath,
+      extension,
+      bytes: 0,
+      startedAt: Date.now()
+    };
+    if (tray && !tray.isDestroyed()) {
+      tray.setToolTip(recordingLocaleText('recording.trayActive'));
+    }
+    rebuildTrayMenu();
+    return { ok: true, id: recordingSession.id, filePath: finalPath };
+  } catch (error) {
+    console.error('Could not prepare recording file:', error);
+    closeRecordingFile();
+    return { ok: false, error: 'open-failed' };
+  }
+}
+
+function appendRecordingChunk(event, payload) {
+  if (!recordingSenderAllowed(event)) return { ok: false, error: 'not-allowed' };
+  const active = recordingSession;
+  if (!active || payload?.id !== active.id) return { ok: false, error: 'invalid-session' };
+  const chunk = payload?.chunk;
+  const bytes = chunk instanceof ArrayBuffer
+    ? Buffer.from(chunk)
+    : ArrayBuffer.isView(chunk)
+      ? Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+      : null;
+  if (!bytes || bytes.length === 0 || bytes.length > 32 * 1024 * 1024) {
+    return { ok: false, error: 'invalid-chunk' };
+  }
+  try {
+    fs.writeSync(active.fd, bytes);
+    active.bytes += bytes.length;
+    return { ok: true, bytes: active.bytes };
+  } catch (error) {
+    console.error('Could not write recording chunk:', error);
+    closeRecordingFile();
+    return { ok: false, error: 'write-failed' };
+  }
+}
+
+function finishRecording(event, payload) {
+  if (!recordingSenderAllowed(event)) return { ok: false, error: 'not-allowed' };
+  const active = recordingSession;
+  if (!active || payload?.id !== active.id) return { ok: false, error: 'invalid-session' };
+  recordingSession = null;
+  try {
+    const reportedDuration = Number(payload?.durationMs);
+    const durationMs = Number.isFinite(reportedDuration) && reportedDuration > 0
+      ? reportedDuration
+      : Date.now() - active.startedAt;
+    fs.fsyncSync(active.fd);
+    fs.closeSync(active.fd);
+    if (active.bytes <= 0) throw new Error('Recording contained no media data');
+    if (active.extension === 'mp4') {
+      try {
+        const patchResult = patchMp4DurationFile(active.partialPath, durationMs);
+        if (!patchResult.patched) console.warn('MP4 duration metadata could not be updated');
+      } catch (error) {
+        console.warn('Could not update MP4 duration metadata:', error.message);
+      }
+    }
+    fs.rmSync(active.finalPath, { force: true });
+    fs.renameSync(active.partialPath, active.finalPath);
+    if (tray && !tray.isDestroyed()) tray.setToolTip('Genre Police Visualizer');
+    rebuildTrayMenu();
+    const response = {
+      ok: true,
+      filePath: active.finalPath,
+      bytes: active.bytes,
+      durationMs
+    };
+    if (quitAfterRecording) {
+      quitAfterRecording = false;
+      setImmediate(() => app.quit());
+    }
+    return response;
+  } catch (error) {
+    console.error('Could not finalize recording:', error);
+    try {
+      fs.closeSync(active.fd);
+    } catch {}
+    try {
+      fs.rmSync(active.partialPath, { force: true });
+    } catch {}
+    if (tray && !tray.isDestroyed()) tray.setToolTip('Genre Police Visualizer');
+    rebuildTrayMenu();
+    if (quitAfterRecording) {
+      quitAfterRecording = false;
+      setImmediate(() => app.quit());
+    }
+    return { ok: false, error: 'finalize-failed' };
+  }
+}
+
+function cancelRecording(event, payload) {
+  if (!recordingSenderAllowed(event)) return { ok: false, error: 'not-allowed' };
+  if (recordingSession && payload?.id && payload.id !== recordingSession.id) {
+    return { ok: false, error: 'invalid-session' };
+  }
+  closeRecordingFile();
+  if (quitAfterRecording) {
+    quitAfterRecording = false;
+    setImmediate(() => app.quit());
+  }
+  return { ok: true };
 }
 
 async function sampleWindowBackdrop() {
@@ -900,9 +2293,10 @@ function stopBackdropSampler() {
   backdropTimer = null;
 }
 
-function mediaPreferenceArguments() {
+function mediaPreferenceArguments(preferredSource = config.preferredMediaSource) {
   const args = [];
-  if (config.preferredMediaSource) args.push('-PreferredSource', config.preferredMediaSource);
+  const normalizedPreferredSource = normalizeMediaSource(preferredSource);
+  if (normalizedPreferredSource) args.push('-PreferredSource', normalizedPreferredSource);
   const ignored = normalizeIgnoredMediaSources(config.ignoredMediaSources);
   if (ignored.length) {
     args.push('-IgnoredSourcesBase64', Buffer.from(JSON.stringify(ignored), 'utf8').toString('base64'));
@@ -1002,7 +2396,8 @@ function mediaControl(action) {
   return new Promise((resolve) => {
     const child = spawn('powershell.exe', [
       '-NoLogo', '-NoProfile', '-NonInteractive', '-MTA', '-ExecutionPolicy', 'Bypass',
-      '-File', scriptPath, '-Action', action, ...mediaPreferenceArguments()
+      '-File', scriptPath, '-Action', action,
+      ...mediaPreferenceArguments(config.preferredMediaSource || lastRawMetadata?.source)
     ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     let errorOutput = '';
@@ -1038,12 +2433,34 @@ async function handleMetadata(raw) {
     ? `${previousRawMetadata.artist || previousRawMetadata.albumArtist || ''}::${previousRawMetadata.title || ''}::${previousRawMetadata.album || ''}`.toLowerCase()
     : '';
   const changedTrack = Boolean(rawKey && rawKey !== previousKey);
+  const seekedWithinTrack = Boolean(
+    rawKey
+    && rawKey === previousKey
+    && hasSignificantPlaybackSeek(previousRawMetadata, raw)
+  );
   const artworkChanged = Boolean(raw.artwork && raw.artwork !== previousRawMetadata?.artwork);
   if (rawKey === previousKey && !raw.artwork && previousRawMetadata?.artwork) {
     raw = { ...raw, artwork: previousRawMetadata.artwork };
   }
+  const leavingPreviousTrack = Boolean(
+    previousRawMetadata?.title
+    && (!raw.title || rawKey !== previousKey)
+  );
+  if (leavingPreviousTrack) persistCurrentAudioGenreMemory({ force: true });
   lastRawMetadata = raw;
+  if (changedTrack) {
+    temporaryGenreOverride = null;
+    lastBaseResolvedMetadata = null;
+    lastResolvedMetadata = null;
+    resetCurrentAudioGenreEvidence();
+    if (audioGenreModel) audioGenreModel.reset(rawKey, audioGenreContext(null));
+  } else if (seekedWithinTrack) {
+    resetCurrentAudioGenreEvidence();
+    if (audioGenreModel) audioGenreModel.reset(rawKey, audioGenreContext(lastBaseResolvedMetadata));
+    publishCurrentGenre({ force: true });
+  }
   updateIdleWindowPolicy(Boolean(raw.playing));
+  persistCurrentAudioGenreMemory();
   if (changedTrack || (!raw.title && previousRawMetadata?.title)) rebuildTrayMenu();
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (!raw.title) {
@@ -1063,6 +2480,10 @@ async function handleMetadata(raw) {
     lastTrackKey = '';
     lastLyricsKey = '';
     lastResolvedMetadata = null;
+    lastBaseResolvedMetadata = null;
+    temporaryGenreOverride = null;
+    resetCurrentAudioGenreEvidence({ reloadMemory: false });
+    if (audioGenreModel) audioGenreModel.reset('');
     resolutionSerial += 1;
     mainWindow.webContents.send('now-playing', raw);
     return;
@@ -1095,26 +2516,26 @@ async function handleMetadata(raw) {
   const hasRememberedCorrection = Boolean(getGenreCorrection(genreCorrections, raw));
   const hasBilibiliFallbackHint = resolver.isBilibiliFallbackCandidate(raw);
   if (!hasRememberedCorrection) {
-    mainWindow.webContents.send('now-playing', {
-      ...raw,
-      displayArtist: displayArtistName(raw.artist || raw.albumArtist),
-      hardcoreTanoc: isHardcoreTanocArtist(raw.artist || raw.albumArtist),
-      resolving: true,
-      genre: themeFor(hasBilibiliFallbackHint ? 'bilibili' : 'unknown')
-    });
+    if (currentAudioGenreMemory) {
+      publishCurrentGenre({ force: true });
+    } else {
+      mainWindow.webContents.send('now-playing', {
+        ...raw,
+        displayArtist: displayArtistName(raw.artist || raw.albumArtist),
+        hardcoreTanoc: isHardcoreTanocArtist(raw.artist || raw.albumArtist),
+        resolving: true,
+        genre: themeWithId(hasBilibiliFallbackHint ? 'bilibili' : 'unknown')
+      });
+    }
   }
   const [resolved, lyrics] = await Promise.all([
     resolver.resolve(raw),
     resolveLyricsFor(raw, key)
   ]);
   if (serial !== resolutionSerial || !mainWindow || mainWindow.isDestroyed()) return;
-  lastResolvedMetadata = { ...resolved, lyrics };
-  mainWindow.webContents.send('now-playing', {
-    ...resolved,
-    displayArtist: displayArtistName(resolved.artist || resolved.albumArtist || raw.artist || raw.albumArtist),
-    hardcoreTanoc: isHardcoreTanocArtist(resolved.artist || resolved.albumArtist || raw.artist || raw.albumArtist),
-    lyrics
-  });
+  lastBaseResolvedMetadata = { ...resolved, lyrics };
+  audioGenreModel?.setContext(audioGenreContext(lastBaseResolvedMetadata));
+  publishCurrentGenre({ force: true });
 }
 
 function diagnosticText(value, maxLength = 240) {
@@ -1143,7 +2564,10 @@ function diagnosticSnapshot(rendererState = {}) {
       motionMode: normalizeMotionMode(config.motionMode),
       idleBehavior: normalizeIdleBehavior(config.idleBehavior),
       idleFrameLimitEnabled: config.idleFrameLimitEnabled !== false,
+      showFps: config.showFps === true,
       rhythmModelEnabled: config.rhythmModelEnabled !== false,
+      localGenreModelEnabled: config.localGenreModelEnabled !== false,
+      dynamicGenreDetectionEnabled: config.dynamicGenreDetectionEnabled === true,
       preferredMediaSource: normalizeMediaSource(config.preferredMediaSource),
       ignoredMediaSourceCount: normalizeIgnoredMediaSources(config.ignoredMediaSources).length,
       supplementalArtistRuleCount: normalizeGenreArtistRules(
@@ -1154,7 +2578,8 @@ function diagnosticSnapshot(rendererState = {}) {
         ? config.posterThemedBackground !== false
         : config.capsuleThemedBackground !== false,
       lyricsEnabled: config.lyricsEnabled !== false,
-      onlineGenreLookupEnabled: config.onlineGenreLookupEnabled !== false
+      onlineGenreLookupEnabled: config.onlineGenreLookupEnabled !== false,
+      artistGenreReferenceEnabled: config.artistGenreReferenceEnabled !== false
     },
     runtime: {
       windowVisible: Boolean(mainWindow?.isVisible()),
@@ -1168,8 +2593,25 @@ function diagnosticSnapshot(rendererState = {}) {
         model: diagnosticText(rhythmModelState?.model),
         reason: diagnosticText(rhythmModelState?.reason)
       },
+      audioGenreModel: {
+        type: diagnosticText(audioGenreModelState?.type),
+        genreId: diagnosticText(audioGenreModelState?.genreId),
+        stage: diagnosticText(audioGenreModelState?.stage),
+        confidence: diagnosticText(audioGenreModelState?.confidence),
+        margin: diagnosticText(audioGenreModelState?.margin),
+        acceptedWindows: diagnosticText(audioGenreModelState?.acceptedWindows),
+        analysisWindowLimit: diagnosticText(audioGenreModelState?.analysisWindowLimit),
+        inferenceMs: diagnosticText(audioGenreModelState?.inferenceMs),
+        analyzing: shouldAnalyzeCurrentGenreAudio(),
+        metadataKind: metadataGenreKind(lastBaseResolvedMetadata),
+        reason: diagnosticText(audioGenreModelState?.reason)
+      },
       audioCapture: diagnosticText(rendererState.audioStatus),
       genreSource: diagnosticText(rendererState.genreSource || lastResolvedMetadata?.genreSource),
+      genreUncertain: Boolean(rendererState.genreUncertain ?? lastResolvedMetadata?.genreUncertain),
+      genreUncertainReason: diagnosticText(
+        rendererState.genreUncertainReason || lastResolvedMetadata?.genreUncertainReason
+      ),
       genreSources: (Array.isArray(rendererState.genreSources)
         ? rendererState.genreSources
         : lastResolvedMetadata?.genreSources || []).map((source) => diagnosticText(source)),
@@ -1198,6 +2640,39 @@ async function exportDiagnostics(rendererState = {}) {
   if (result.canceled || !result.filePath) return { ok: false, canceled: true };
   fs.writeFileSync(result.filePath, `${JSON.stringify(diagnosticSnapshot(rendererState), null, 2)}\n`, 'utf8');
   return { ok: true, filePath: result.filePath };
+}
+
+async function prepareSnapshot(event) {
+  if (!recordingSenderAllowed(event)) return { ok: false, error: 'invalid-sender' };
+  const options = {
+    title: translate(normalizeLocale(config.language), 'snapshot.saveDialogTitle'),
+    defaultPath: `${snapshotFileStem()}.png`,
+    filters: [{ name: 'PNG', extensions: ['png'] }]
+  };
+  const result = await dialog.showSaveDialog(mainWindow, options);
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+  const token = randomUUID();
+  snapshotSession = { token, filePath: result.filePath };
+  return { ok: true, token, filePath: result.filePath };
+}
+
+async function captureSnapshot(event, token) {
+  if (!recordingSenderAllowed(event)
+    || !snapshotSession
+    || String(token || '') !== snapshotSession.token) {
+    return { ok: false, error: 'invalid-session' };
+  }
+  const active = snapshotSession;
+  snapshotSession = null;
+  try {
+    const image = await mainWindow.webContents.capturePage();
+    if (!image || image.isEmpty()) return { ok: false, error: 'capture-failed' };
+    fs.writeFileSync(active.filePath, image.toPNG());
+    return { ok: true, filePath: active.filePath };
+  } catch (error) {
+    console.warn('Could not save visualization snapshot:', error.message);
+    return { ok: false, error: 'write-failed' };
+  }
 }
 
 function genreDataDialogTitle(key) {
@@ -1304,18 +2779,98 @@ async function importGenreData() {
   };
 }
 
-ipcMain.handle('window:close', () => app.quit());
+ipcMain.handle('window:close', () => {
+  requestAppQuit();
+  return { ok: true, recording: Boolean(recordingSession) };
+});
 ipcMain.handle('window:minimize', () => mainWindow?.minimize());
 ipcMain.handle('window:set-ui-scale', (_event, value) => setUiScale(value));
 ipcMain.handle('window:set-layout-mode', (_event, value) => setLayoutMode(value));
+ipcMain.handle('window:set-stage-output', (event, value) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return { ok: false, active: false, error: 'not-allowed' };
+  }
+  return setStageOutput(value);
+});
+ipcMain.on('window:settings-visibility', (event, visible) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  mainSettingsOpen = visible === true;
+  updateMainWindowPointerHitTest();
+});
 ipcMain.handle('media:control', (_event, action) => mediaControl(action));
 ipcMain.handle('media:recapture', () => {
   restartAllAudioCapture();
   return { ok: true };
 });
+ipcMain.handle('recording:prepare', prepareRecording);
+ipcMain.handle('recording:append', appendRecordingChunk);
+ipcMain.handle('recording:finish', finishRecording);
+ipcMain.handle('recording:cancel', cancelRecording);
+ipcMain.handle('snapshot:prepare', prepareSnapshot);
+ipcMain.handle('snapshot:capture', captureSnapshot);
+ipcMain.on('recording-controls:update', (event, payload) => {
+  if (!recordingSenderAllowed(event)) return;
+  updateRecordingControls(payload);
+});
+ipcMain.on('recording-controls:command', (event, command) => {
+  const allowed = [recordingControlsWindow, recordingTransportWindow]
+    .some((overlay) => overlay && !overlay.isDestroyed() && event.sender === overlay.webContents);
+  if (!allowed) return;
+  if (command === 'stop') sendRecordingCommand('stop');
+  if (command === 'close') requestAppQuit();
+  if (['previous', 'toggle', 'next'].includes(command)) void mediaControl(command);
+});
+ipcMain.on('recording-controls:activity', (event, phase) => {
+  const allowed = [recordingControlsWindow, recordingTransportWindow]
+    .some((overlay) => overlay && !overlay.isDestroyed() && event.sender === overlay.webContents);
+  if (!allowed || !['enter', 'leave'].includes(phase)) return;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('recording-controls:activity', phase);
+  }
+});
+ipcMain.handle('diagnostics:status', () => ({
+  audioGenreModelState,
+  audioGenreAnalyzing: shouldAnalyzeCurrentGenreAudio()
+}));
+ipcMain.on('diagnostics:render-performance', (event, payload) => {
+  if (!process.argv.includes('--dev')
+    || !mainWindow
+    || mainWindow.isDestroyed()
+    || event.sender !== mainWindow.webContents) return;
+  const number = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) : 'n/a';
+  const theme = String(payload?.theme || 'unknown').replace(/[^a-z0-9-]/gi, '').slice(0, 48);
+  console.log(
+    `[render-perf] theme=${theme} fps=${number(payload?.fps)}`
+      + ` mode=${payload?.fullscreen === true ? 'fullscreen' : 'desktop'}`
+      + ` scale=${number(payload?.resolutionScale)}`
+      + ` frame-p95=${number(payload?.frameP95)}ms`
+      + ` render-avg=${number(payload?.renderAverage)}ms`
+      + ` render-p95=${number(payload?.renderP95)}ms`
+      + ` work-p95=${number(payload?.workP95)}ms`
+      + ` canvas=${Math.round(Number(payload?.pixelWidth) || 0)}x${Math.round(Number(payload?.pixelHeight) || 0)}`
+  );
+});
 ipcMain.handle('diagnostics:export', (_event, rendererState) => exportDiagnostics(rendererState));
 ipcMain.handle('genre-data:export', () => exportGenreData());
 ipcMain.handle('genre-data:import', () => importGenreData());
+ipcMain.handle('update:check', (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return updateStatus('error');
+  }
+  return checkForUpdates({ manual: true });
+});
+ipcMain.handle('update:dismiss', (event, version) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return { ok: false };
+  }
+  return dismissUpdate(version);
+});
+ipcMain.handle('update:open-release', (event, url) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return { ok: false };
+  }
+  return openUpdatePage(url);
+});
 ipcMain.handle('artwork:face-palette', async (_event, payload) => {
   try {
     const sample = await sampleArtwork(payload?.url);
@@ -1333,17 +2888,29 @@ ipcMain.handle('config:get', () => ({
   lyricTranslationEnabled: config.lyricTranslationEnabled !== false,
   capsuleCondensedEnglish: config.capsuleCondensedEnglish === true,
   posterCondensedEnglish: config.posterCondensedEnglish !== false,
+  fullscreenCondensedEnglish: config.fullscreenCondensedEnglish === true,
   posterThemedBackground: config.posterThemedBackground !== false,
   capsuleThemedBackground: config.capsuleThemedBackground !== false,
   lyricSweepEnabled: config.lyricSweepEnabled !== false,
   lyricDelayMs: normalizeLyricDelayMs(config.lyricDelayMs),
   onlineGenreLookupEnabled: config.onlineGenreLookupEnabled !== false,
+  artistGenreReferenceEnabled: config.artistGenreReferenceEnabled !== false,
   launchAtLogin: config.launchAtLogin === true,
   launchAtLoginSupported: launchAtLoginSupported(),
   motionMode: normalizeMotionMode(config.motionMode),
+  visualResponseMode: normalizeVisualResponseMode(config.visualResponseMode),
+  audioSourceId: normalizeAudioSourceId(config.audioSourceId),
   idleBehavior: normalizeIdleBehavior(config.idleBehavior),
   idleFrameLimitEnabled: config.idleFrameLimitEnabled !== false,
+  showFps: config.showFps === true,
   rhythmModelEnabled: config.rhythmModelEnabled !== false,
+  localGenreModelEnabled: config.localGenreModelEnabled !== false,
+  dynamicGenreDetectionEnabled: config.dynamicGenreDetectionEnabled === true,
+  localGenreModelAvailable: localGenreModelAvailable(),
+  recordingQuickButtonVisible: config.recordingQuickButtonVisible === true,
+  snapshotQuickButtonVisible: config.snapshotQuickButtonVisible === true,
+  stageOutputTextVisible: config.stageOutputTextVisible !== false,
+  fullscreenLayoutMode: config.fullscreenLayoutMode === 'stacked' ? 'stacked' : 'split',
   preferredMediaSource: normalizeMediaSource(config.preferredMediaSource),
   ignoredMediaSources: normalizeIgnoredMediaSources(config.ignoredMediaSources),
   availableMediaSources,
@@ -1352,13 +2919,19 @@ ipcMain.handle('config:get', () => ({
   genreArtistRules: normalizeGenreArtistRules(config.genreArtistRules, Object.keys(THEMES)),
   currentMediaSource: normalizeMediaSource(lastRawMetadata?.source),
   rhythmModelState,
+  audioGenreModelState,
   language: normalizeLocale(config.language),
   uiScale: normalizeUiScale(config.uiScale),
   layoutMode: normalizeLayoutMode(config.layoutMode),
+  stageOutputActive,
   clickThrough,
   alwaysOnTop,
+  desktopLayer: desktopLayerEnabled,
+  desktopLayerAttached,
+  desktopLayerAvailable: desktopLayerAvailable(),
+  desktopLayerError: desktopLayerLastError,
   genreOptions: Object.entries(THEMES)
-    .filter(([id]) => id !== 'unknown')
+    .filter(([id]) => !['edm', 'unknown'].includes(id))
     .map(([id, theme]) => ({
       id,
       label: theme.label,
@@ -1377,17 +2950,41 @@ ipcMain.handle('config:set', async (_event, patch) => {
   if (typeof patch?.lyricTranslationEnabled === 'boolean') safe.lyricTranslationEnabled = patch.lyricTranslationEnabled;
   if (typeof patch?.capsuleCondensedEnglish === 'boolean') safe.capsuleCondensedEnglish = patch.capsuleCondensedEnglish;
   if (typeof patch?.posterCondensedEnglish === 'boolean') safe.posterCondensedEnglish = patch.posterCondensedEnglish;
+  if (typeof patch?.fullscreenCondensedEnglish === 'boolean') safe.fullscreenCondensedEnglish = patch.fullscreenCondensedEnglish;
   if (typeof patch?.posterThemedBackground === 'boolean') safe.posterThemedBackground = patch.posterThemedBackground;
   if (typeof patch?.capsuleThemedBackground === 'boolean') safe.capsuleThemedBackground = patch.capsuleThemedBackground;
   if (typeof patch?.lyricSweepEnabled === 'boolean') safe.lyricSweepEnabled = patch.lyricSweepEnabled;
   if (typeof patch?.onlineGenreLookupEnabled === 'boolean') safe.onlineGenreLookupEnabled = patch.onlineGenreLookupEnabled;
+  if (typeof patch?.artistGenreReferenceEnabled === 'boolean') {
+    safe.artistGenreReferenceEnabled = patch.artistGenreReferenceEnabled;
+  }
   if (typeof patch?.launchAtLogin === 'boolean') safe.launchAtLogin = patch.launchAtLogin;
   if (typeof patch?.alwaysOnTop === 'boolean') safe.alwaysOnTop = normalizeAlwaysOnTop(patch.alwaysOnTop);
+  if (typeof patch?.desktopLayer === 'boolean') safe.desktopLayer = normalizeDesktopLayer(patch.desktopLayer);
   if (typeof patch?.clickThrough === 'boolean') safe.clickThrough = normalizeClickThrough(patch.clickThrough);
   if (typeof patch?.motionMode === 'string') safe.motionMode = normalizeMotionMode(patch.motionMode);
+  if (typeof patch?.visualResponseMode === 'string') {
+    safe.visualResponseMode = normalizeVisualResponseMode(patch.visualResponseMode);
+  }
+  if (typeof patch?.audioSourceId === 'string') safe.audioSourceId = normalizeAudioSourceId(patch.audioSourceId);
   if (typeof patch?.idleBehavior === 'string') safe.idleBehavior = normalizeIdleBehavior(patch.idleBehavior);
   if (typeof patch?.idleFrameLimitEnabled === 'boolean') safe.idleFrameLimitEnabled = patch.idleFrameLimitEnabled;
+  if (typeof patch?.showFps === 'boolean') safe.showFps = patch.showFps;
   if (typeof patch?.rhythmModelEnabled === 'boolean') safe.rhythmModelEnabled = patch.rhythmModelEnabled;
+  if (typeof patch?.localGenreModelEnabled === 'boolean') safe.localGenreModelEnabled = patch.localGenreModelEnabled;
+  if (typeof patch?.dynamicGenreDetectionEnabled === 'boolean') {
+    safe.dynamicGenreDetectionEnabled = patch.dynamicGenreDetectionEnabled;
+  }
+  const nextLocalGenreModelEnabled = Object.hasOwn(safe, 'localGenreModelEnabled')
+    ? safe.localGenreModelEnabled
+    : config.localGenreModelEnabled !== false;
+  if (!nextLocalGenreModelEnabled) safe.dynamicGenreDetectionEnabled = false;
+  if (typeof patch?.recordingQuickButtonVisible === 'boolean') safe.recordingQuickButtonVisible = patch.recordingQuickButtonVisible;
+  if (typeof patch?.snapshotQuickButtonVisible === 'boolean') safe.snapshotQuickButtonVisible = patch.snapshotQuickButtonVisible;
+  if (typeof patch?.stageOutputTextVisible === 'boolean') safe.stageOutputTextVisible = patch.stageOutputTextVisible;
+  if (typeof patch?.fullscreenLayoutMode === 'string') {
+    safe.fullscreenLayoutMode = patch.fullscreenLayoutMode === 'stacked' ? 'stacked' : 'split';
+  }
   if (typeof patch?.preferredMediaSource === 'string') safe.preferredMediaSource = normalizeMediaSource(patch.preferredMediaSource);
   if (Array.isArray(patch?.ignoredMediaSources)) safe.ignoredMediaSources = normalizeIgnoredMediaSources(patch.ignoredMediaSources);
   if (Object.hasOwn(patch || {}, 'lyricDelayMs')) safe.lyricDelayMs = normalizeLyricDelayMs(patch.lyricDelayMs);
@@ -1398,12 +2995,16 @@ ipcMain.handle('config:set', async (_event, patch) => {
   if (Array.isArray(patch?.genreArtistRules)) {
     safe.genreArtistRules = normalizeGenreArtistRules(patch.genreArtistRules, Object.keys(THEMES));
   }
+  if (safe.desktopLayer === true) safe.alwaysOnTop = false;
+  else if (safe.alwaysOnTop === true) safe.desktopLayer = false;
   const genreSourcesChanged = (Object.hasOwn(safe, 'lastFmApiKey')
       && safe.lastFmApiKey !== (config.lastFmApiKey || ''))
     || (Object.hasOwn(safe, 'discogsToken')
       && safe.discogsToken !== (config.discogsToken || ''))
     || (Object.hasOwn(safe, 'onlineGenreLookupEnabled')
       && safe.onlineGenreLookupEnabled !== (config.onlineGenreLookupEnabled !== false))
+    || (Object.hasOwn(safe, 'artistGenreReferenceEnabled')
+      && safe.artistGenreReferenceEnabled !== (config.artistGenreReferenceEnabled !== false))
     || (Object.hasOwn(safe, 'customGenres')
       && JSON.stringify(safe.customGenres) !== JSON.stringify(config.customGenres || []))
     || (Object.hasOwn(safe, 'genreArtistRules')
@@ -1414,10 +3015,30 @@ ipcMain.handle('config:set', async (_event, patch) => {
     || Object.hasOwn(safe, 'capsuleThemedBackground');
   const mediaPreferenceChanged = Object.hasOwn(safe, 'preferredMediaSource')
     || Object.hasOwn(safe, 'ignoredMediaSources');
+  const dynamicGenreSettingChanged = Object.hasOwn(safe, 'dynamicGenreDetectionEnabled')
+    && safe.dynamicGenreDetectionEnabled !== (config.dynamicGenreDetectionEnabled === true);
   saveConfig(safe);
-  if (Object.hasOwn(safe, 'alwaysOnTop')) setAlwaysOnTop(safe.alwaysOnTop, { persist: false });
+  if (Object.hasOwn(safe, 'desktopLayer')) await setDesktopLayer(safe.desktopLayer, { persist: false });
+  if (Object.hasOwn(safe, 'alwaysOnTop')) await setAlwaysOnTop(safe.alwaysOnTop, { persist: false });
+  if (Object.hasOwn(safe, 'desktopLayer') || Object.hasOwn(safe, 'alwaysOnTop')) {
+    saveConfig({ desktopLayer: desktopLayerEnabled, alwaysOnTop });
+  }
   if (Object.hasOwn(safe, 'clickThrough')) setClickThrough(safe.clickThrough, { persist: false });
   if (Object.hasOwn(safe, 'rhythmModelEnabled')) await setRhythmModelEnabled(safe.rhythmModelEnabled);
+  if (Object.hasOwn(safe, 'localGenreModelEnabled')) {
+    await setAudioGenreModelEnabled(safe.localGenreModelEnabled);
+  }
+  if (dynamicGenreSettingChanged && audioGenreModel) {
+    audioGenreModel.setContext(audioGenreContext());
+    const baseGenreKind = metadataGenreKind(lastBaseResolvedMetadata);
+    const decisionRequiresDynamicMode = currentAudioGenreDecision?.stage === 'dynamic'
+      || (baseGenreKind === 'specific' && Boolean(currentAudioGenreDecision?.genreId))
+      || Boolean(currentAudioGenreMemory && currentAudioGenreDecision?.genreId);
+    if (!safe.dynamicGenreDetectionEnabled && decisionRequiresDynamicMode) {
+      resetAudioGenreForCurrentTrack();
+      publishCurrentGenre({ force: true });
+    }
+  }
   if (Object.hasOwn(safe, 'launchAtLogin')) {
     safe.launchAtLogin = applyLaunchAtLogin(safe.launchAtLogin);
     saveConfig({ launchAtLogin: safe.launchAtLogin });
@@ -1457,17 +3078,33 @@ ipcMain.handle('config:set', async (_event, patch) => {
     launchAtLogin: config.launchAtLogin === true,
     launchAtLoginSupported: launchAtLoginSupported(),
     alwaysOnTop,
+    desktopLayer: desktopLayerEnabled,
+    desktopLayerAttached,
+    desktopLayerAvailable: desktopLayerAvailable(),
+    desktopLayerError: desktopLayerLastError,
     clickThrough,
     rhythmModelEnabled: config.rhythmModelEnabled !== false,
+    localGenreModelEnabled: config.localGenreModelEnabled !== false,
+    dynamicGenreDetectionEnabled: config.dynamicGenreDetectionEnabled === true,
+    artistGenreReferenceEnabled: config.artistGenreReferenceEnabled !== false,
+    localGenreModelAvailable: localGenreModelAvailable(),
+    recordingQuickButtonVisible: config.recordingQuickButtonVisible === true,
+    snapshotQuickButtonVisible: config.snapshotQuickButtonVisible === true,
+    stageOutputTextVisible: config.stageOutputTextVisible !== false,
+    fullscreenLayoutMode: config.fullscreenLayoutMode === 'stacked' ? 'stacked' : 'split',
     customGenres: normalizeCustomGenreRules(config.customGenres, Object.keys(THEMES)),
     genreArtistRules: normalizeGenreArtistRules(config.genreArtistRules, Object.keys(THEMES))
   };
 });
 ipcMain.handle('genre-correction:set', (_event, genreId) => rememberCurrentGenre(genreId));
 ipcMain.handle('genre-correction:clear', () => forgetCurrentGenre());
+ipcMain.handle('genre-candidates:get', () => currentGenreCandidates());
+ipcMain.handle('genre-temporary:set', (_event, genreId) => setTemporaryGenre(genreId));
+ipcMain.handle('genre-temporary:clear', () => clearTemporaryGenre());
 ipcMain.handle('demo:set', (_event, id) => setDemoTheme(id));
 ipcMain.on('audio:output-device-changed', () => {
   restartRhythmModelForOutputDevice();
+  resetAudioGenreForCurrentTrack();
 });
 ipcMain.on('rhythm-model:audio', (event, payload) => {
   if (!mainWindow || event.sender !== mainWindow.webContents || !rhythmModel) return;
@@ -1478,32 +3115,58 @@ ipcMain.on('rhythm-model:audio', (event, payload) => {
       : null;
   if (samples?.length === HOP_SIZE) rhythmModel.ingest(samples);
 });
+ipcMain.on('audio-genre-model:audio', (event, payload) => {
+  if (!mainWindow
+    || event.sender !== mainWindow.webContents
+    || !audioGenreModel
+    || !shouldAnalyzeCurrentGenreAudio()) return;
+  const samples = payload instanceof Float32Array
+    ? payload
+    : ArrayBuffer.isView(payload)
+      ? new Float32Array(payload.buffer, payload.byteOffset, payload.byteLength / Float32Array.BYTES_PER_ELEMENT)
+      : null;
+  if (samples?.length === 1600) audioGenreModel.ingest(samples);
+});
 
 app.whenReady().then(() => {
   loadConfig();
   refreshNetworkCountry();
   if (config.launchAtLogin) config.launchAtLogin = applyLaunchAtLogin(true);
   loadGenreCorrections();
+  loadAudioGenreMemories();
   removeLegacyUnmappedArtistLog();
   setupAudioCapture();
   createWindow();
   createTray();
   startMediaMonitor();
   startRhythmModel();
+  startAudioGenreModel();
   globalShortcut.register('CommandOrControl+Shift+G', () => setClickThrough(!clickThrough));
+  globalShortcut.register('CommandOrControl+Shift+R', () => {
+    sendRecordingCommand(recordingSession ? 'stop' : 'start');
+  });
+  globalShortcut.register('CommandOrControl+Shift+O', () => setStageOutput(!stageOutputActive));
 });
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  stopMainWindowPointerHitTest();
+  persistCurrentAudioGenreMemory({ force: true });
+  closeRecordingFile();
   clearIdleHideTimer();
   if (windowPositionSaveTimer) clearTimeout(windowPositionSaveTimer);
   windowPositionSaveTimer = null;
+  if (updateCheckTimer) clearTimeout(updateCheckTimer);
+  updateCheckTimer = null;
+  if (desktopLayerMonitor) clearInterval(desktopLayerMonitor);
+  desktopLayerMonitor = null;
   saveWindowPositionNow();
   globalShortcut.unregisterAll();
   if (mediaWatchdogTimer) clearTimeout(mediaWatchdogTimer);
   if (mediaRestartTimer) clearTimeout(mediaRestartTimer);
   if (mediaProcess) mediaProcess.kill();
   if (rhythmModel) void rhythmModel.close();
+  if (audioGenreModel) void audioGenreModel.close();
   if (backdropTimer) clearInterval(backdropTimer);
 });
 

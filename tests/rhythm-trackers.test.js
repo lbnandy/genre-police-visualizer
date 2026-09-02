@@ -29,11 +29,46 @@ test('shared impact post-effects scale continuously and differ by genre family',
   assert.ok(ukHardcore.slice < strong.slice);
   assert.ok(ukHardcore.chroma < strong.chroma);
 
+  const hardstyle = resolveImpactFx({ id: 'hardstyle', mode: 'hardstyle' }, { rhythmPulse: 0.95 });
+  const rawstyle = resolveImpactFx({ id: 'rawstyle', mode: 'hardstyle' }, { rhythmPulse: 0.95 });
+  const euphoric = resolveImpactFx({ id: 'euphoric-hardstyle', mode: 'hardstyle' }, { rhythmPulse: 0.95 });
+  const industrial = resolveImpactFx({ id: 'industrial-hardcore', mode: 'hardcore' }, { rhythmPulse: 0.95 });
+  assert.ok(rawstyle.slice > hardstyle.slice);
+  assert.ok(rawstyle.chroma > hardstyle.chroma);
+  assert.ok(euphoric.bloom > hardstyle.bloom);
+  assert.ok(euphoric.blur > hardstyle.blur);
+  assert.ok(euphoric.slice < hardstyle.slice);
+  assert.ok(industrial.saturation < strong.saturation);
+
+  const dubstep = resolveImpactFx({ id: 'dubstep', mode: 'dubstep' }, { rhythmPulse: 0.95 });
+  const brostep = resolveImpactFx({ id: 'brostep', mode: 'dubstep' }, { rhythmPulse: 0.95 });
+  const deathstep = resolveImpactFx({ id: 'deathstep', mode: 'dubstep' }, { rhythmPulse: 0.95 });
+  const riddim = resolveImpactFx({ id: 'riddim', mode: 'dubstep' }, { rhythmPulse: 0.95 });
+  const colourBass = resolveImpactFx({ id: 'colour-bass', mode: 'dubstep' }, { rhythmPulse: 0.95 });
+  const melodicDubstep = resolveImpactFx({ id: 'melodic-dubstep', mode: 'dubstep' }, { rhythmPulse: 0.95 });
+  assert.ok(brostep.chroma > dubstep.chroma);
+  assert.ok(deathstep.slice > brostep.slice);
+  assert.ok(riddim.blur < dubstep.blur);
+  assert.ok(colourBass.blur > dubstep.blur);
+  assert.ok(colourBass.saturation > dubstep.saturation);
+  assert.ok(melodicDubstep.slice < colourBass.slice);
+
   const hipHop = resolveImpactFx({ id: 'hip-hop', mode: 'hip-hop' }, { rhythmPulse: 0.95 });
   const edmTrap = resolveImpactFx({ id: 'trap-edm', mode: 'trap' }, { rhythmPulse: 0.95 });
   assert.ok(hipHop.echo < edmTrap.echo);
   assert.ok(hipHop.chroma < edmTrap.chroma);
   assert.ok(hipHop.slice < edmTrap.slice);
+
+  const ambient = resolveImpactFx({ id: 'ambient', mode: 'ambient' }, { rhythmPulse: 0.95 });
+  const downtempo = resolveImpactFx({ id: 'downtempo', mode: 'ambient' }, { rhythmPulse: 0.95 });
+  const lofi = resolveImpactFx({ id: 'lo-fi-hip-hop', mode: 'hip-hop' }, { rhythmPulse: 0.95 });
+  const idm = resolveImpactFx({ id: 'idm', mode: 'experimental' }, { rhythmPulse: 0.95 });
+  const glitch = resolveImpactFx({ id: 'glitch', mode: 'experimental' }, { rhythmPulse: 0.95 });
+  assert.ok(ambient.blur > downtempo.blur);
+  assert.ok(ambient.exposure < downtempo.exposure);
+  assert.ok(lofi.bloom < hipHop.bloom);
+  assert.ok(glitch.slice > idm.slice);
+  assert.ok(glitch.chroma > idm.chroma);
 
   const genericPop = resolveImpactFx({ id: 'pop', mode: 'pop' }, { rhythmPulse: 0.95 });
   const kPop = resolveImpactFx({ id: 'k-pop', mode: 'pop' }, { rhythmPulse: 0.95 });
@@ -41,17 +76,57 @@ test('shared impact post-effects scale continuously and differ by genre family',
   assert.ok(kPop.saturation > genericPop.saturation);
   assert.ok(kPop.slice > genericPop.slice && kPop.slice < edmTrap.slice);
 
+  const genericJpop = resolveImpactFx({ id: 'j-pop', mode: 'j-pop' }, { rhythmPulse: 0.95 });
+  const cityPop = resolveImpactFx({ id: 'city-pop', mode: 'j-pop' }, { rhythmPulse: 0.95 });
+  const anime = resolveImpactFx({ id: 'anime', mode: 'j-pop' }, { rhythmPulse: 0.95 });
+  const vocaloid = resolveImpactFx({ id: 'vocaloid', mode: 'j-pop' }, { rhythmPulse: 0.95 });
+  assert.ok(cityPop.blur > genericJpop.blur);
+  assert.ok(cityPop.slice < genericJpop.slice);
+  assert.ok(anime.bloom > genericJpop.bloom);
+  assert.ok(vocaloid.slice > anime.slice);
+  assert.ok(vocaloid.chroma > genericJpop.chroma);
+
   const phonk = resolveImpactFx({ id: 'phonk', mode: 'phonk' }, { rhythmPulse: 0.95 });
   const driftPhonk = resolveImpactFx({ id: 'drift-phonk', mode: 'phonk' }, { rhythmPulse: 0.95 });
   assert.ok(phonk.chroma > hipHop.chroma);
   assert.ok(driftPhonk.slice > phonk.slice);
 
   const ukGarage = resolveImpactFx({ id: 'uk-garage', mode: 'garage' }, { rhythmPulse: 0.95 });
+  const twoStepGarage = resolveImpactFx({ id: 'two-step-garage', mode: 'garage' }, { rhythmPulse: 0.95 });
   const speedGarage = resolveImpactFx({ id: 'speed-garage', mode: 'garage' }, { rhythmPulse: 0.95 });
   const futureGarage = resolveImpactFx({ id: 'future-garage', mode: 'garage' }, { rhythmPulse: 0.95 });
+  const bassline = resolveImpactFx({ id: 'bassline', mode: 'garage' }, { rhythmPulse: 0.95 });
+  assert.ok(twoStepGarage.echo > ukGarage.echo);
   assert.ok(speedGarage.slice > ukGarage.slice);
+  assert.ok(speedGarage.slice > bassline.slice);
+  assert.ok(bassline.saturation > ukGarage.saturation);
   assert.ok(futureGarage.blur > ukGarage.blur);
   assert.ok(ukGarage.slice < edmTrap.slice);
+
+  const deepHouse = resolveImpactFx({ id: 'deep-house', mode: 'house' }, { rhythmPulse: 0.95 });
+  const afroHouse = resolveImpactFx({ id: 'afro-house', mode: 'house' }, { rhythmPulse: 0.95 });
+  const frenchHouse = resolveImpactFx({ id: 'french-house', mode: 'house' }, { rhythmPulse: 0.95 });
+  const acidHouse = resolveImpactFx({ id: 'acid-house', mode: 'house' }, { rhythmPulse: 0.95 });
+  const hardHouse = resolveImpactFx({ id: 'hard-house', mode: 'house' }, { rhythmPulse: 0.95 });
+  assert.ok(deepHouse.blur > hardHouse.blur);
+  assert.ok(deepHouse.slice < afroHouse.slice);
+  assert.ok(frenchHouse.saturation > deepHouse.saturation);
+  assert.ok(acidHouse.chroma > afroHouse.chroma);
+  assert.ok(hardHouse.slice > acidHouse.slice);
+
+  const genericDnb = resolveImpactFx({ id: 'drum-bass', mode: 'drum-bass' }, { rhythmPulse: 0.95 });
+  const liquidDnb = resolveImpactFx({ id: 'liquid-dnb', mode: 'drum-bass' }, { rhythmPulse: 0.95 });
+  const dancefloorDnb = resolveImpactFx({ id: 'dancefloor-dnb', mode: 'drum-bass' }, { rhythmPulse: 0.95 });
+  const jumpUpDnb = resolveImpactFx({ id: 'jump-up-dnb', mode: 'drum-bass' }, { rhythmPulse: 0.95 });
+  const neurofunk = resolveImpactFx({ id: 'neurofunk', mode: 'drum-bass' }, { rhythmPulse: 0.95 });
+  const jungle = resolveImpactFx({ id: 'jungle', mode: 'drum-bass' }, { rhythmPulse: 0.95 });
+  const drumstep = resolveImpactFx({ id: 'drumstep', mode: 'drum-bass' }, { rhythmPulse: 0.95 });
+  assert.ok(liquidDnb.blur > genericDnb.blur);
+  assert.ok(dancefloorDnb.bloom > genericDnb.bloom);
+  assert.ok(jumpUpDnb.slice > dancefloorDnb.slice);
+  assert.ok(neurofunk.chroma > jumpUpDnb.chroma);
+  assert.ok(jungle.slice > neurofunk.slice);
+  assert.ok(drumstep.slice > genericDnb.slice);
 });
 
 test('kawaii bass impact keeps its pastel colors instead of washing out to white', async () => {

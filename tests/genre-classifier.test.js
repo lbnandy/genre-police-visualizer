@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { classifyGenre, canonicalArtist, displayArtistName, ARTIST_HINTS, RULES } = require('../src/genre-classifier');
-const { themeFor } = require('../src/themes');
+const { themeFor, themeWithId } = require('../src/themes');
 const { GROUPS, hasJapaneseScript } = require('../src/genre-localization');
 const {
   GenreResolver,
@@ -22,6 +22,12 @@ const {
   rawGenreTheme
 } = require('../src/genre-resolver');
 
+test('metadata-facing themes retain the genre identity used for change detection', () => {
+  assert.equal(themeWithId('dubstep').id, 'dubstep');
+  assert.equal(themeWithId('trance').id, 'trance');
+  assert.equal(themeWithId('not-a-genre').id, 'unknown');
+});
+
 test('classifies target EDM subgenres before their broad parents', () => {
   assert.equal(classifyGenre({ tags: ['Electronic', 'Happy Hardcore'] }).id, 'happy-hardcore');
   assert.equal(classifyGenre({ tags: ['Electronic', 'Puzzycore'] }).id, 'puzzycore');
@@ -33,18 +39,16 @@ test('classifies target EDM subgenres before their broad parents', () => {
   assert.equal(classifyGenre({ tags: ['Moombahcore'] }).id, 'moombahcore');
 });
 
-test('marks Skrillex Bangarang as the track-specific Moombahcore case', () => {
+test('does not special-case Skrillex Bangarang', () => {
   const bangarang = classifyGenre({
     artist: 'Skrillex',
     title: 'Bangarang (feat. Sirah)',
     tags: ['Dubstep']
   });
-  assert.equal(bangarang.id, 'moombahcore');
+  assert.equal(bangarang.id, 'dubstep');
   assert.equal(bangarang.mode, 'dubstep');
-  assert.equal(bangarang.note, '(NOT DUBSTEP)');
-  assert.equal(bangarang.matched, 'track:skrillex/bangarang');
-  assert.equal(classifyGenre({ artist: 'スクリレックス', title: 'Bangarang', tags: ['Dance'] }).id, 'moombahcore');
-  assert.notEqual(classifyGenre({ artist: 'Tribute Unit', title: 'Bangarang', tags: ['Dubstep'] }).id, 'moombahcore');
+  assert.equal(bangarang.note, undefined);
+  assert.notEqual(bangarang.matched, 'track:skrillex/bangarang');
 });
 
 test('ASMR metadata overrides catalog music genres', () => {
@@ -58,6 +62,132 @@ test('preserves provider tag relevance while allowing same-branch refinement', (
   assert.equal(classifyGenre({ tags: ['industrial rock', 'industrial metal', 'drum and bass'] }).id, 'rock');
   assert.equal(classifyGenre({ tags: ['Electronic', 'Hard Dance', 'Hardstyle', 'Rawstyle'] }).id, 'rawstyle');
   assert.equal(classifyGenre({ tags: ['Bass Music', 'Dubstep', 'Melodic Dubstep'] }).id, 'melodic-dubstep');
+  assert.equal(classifyGenre({ tags: ['Bass Music', 'Riddim'] }).id, 'riddim');
+  assert.equal(classifyGenre({ tags: ['Riddim', 'Future Riddim'] }).id, 'future-riddim');
+});
+
+test('specific Dubstep artist mappings refine only broad branch tags', () => {
+  assert.equal(classifyGenre({ artist: 'Subtronics', tags: ['Dubstep'] }).id, 'riddim');
+  assert.equal(classifyGenre({ artist: 'Chime', tags: ['Dubstep'] }).id, 'colour-bass');
+  assert.equal(classifyGenre({ artist: 'Papa Khan', tags: ['Riddim'] }).id, 'future-riddim');
+  assert.equal(classifyGenre({ artist: 'Subtronics', tags: ['Deathstep'] }).id, 'deathstep');
+});
+
+test('specific House artist mappings refine only the broad House tag', () => {
+  assert.equal(classifyGenre({ artist: 'Daft Punk', tags: ['House'] }).id, 'french-house');
+  assert.equal(classifyGenre({ artist: 'Black Coffee', tags: ['House'] }).id, 'afro-house');
+  assert.equal(classifyGenre({ artist: 'Kabza De Small', tags: ['House'] }).id, 'amapiano');
+  assert.equal(classifyGenre({ artist: 'Hardwell', tags: ['House'] }).id, 'big-room-house');
+  assert.equal(classifyGenre({ artist: 'Daft Punk', tags: ['Tech House'] }).id, 'tech-house');
+});
+
+test('specific Drum & Bass artist mappings refine only the broad DnB tag', () => {
+  assert.equal(classifyGenre({ artist: 'Black Sun Empire', tags: ['Drum & Bass'] }).id, 'neurofunk');
+  assert.equal(classifyGenre({ artist: 'Hybrid Minds', tags: ['Drum & Bass'] }).id, 'liquid-dnb');
+  assert.equal(classifyGenre({ artist: 'Hedex', tags: ['Drum & Bass'] }).id, 'jump-up-dnb');
+  assert.equal(classifyGenre({ artist: 'Sub Focus', tags: ['Drum & Bass'] }).id, 'dancefloor-dnb');
+  assert.equal(classifyGenre({ artist: 'Nia Archives', tags: ['Drum & Bass'] }).id, 'jungle');
+  assert.equal(classifyGenre({ artist: 'Black Sun Empire', tags: ['Liquid Drum & Bass'] }).id, 'liquid-dnb');
+});
+
+test('specific Techno and Trance artist mappings refine only their broad family tags', () => {
+  assert.equal(classifyGenre({ artist: 'Sara Landry', tags: ['Techno'] }).id, 'hard-techno');
+  assert.equal(classifyGenre({ artist: 'Anyma', tags: ['Techno'] }).id, 'melodic-techno');
+  assert.equal(classifyGenre({ artist: 'Paula Temple', tags: ['Techno'] }).id, 'industrial-techno');
+  assert.equal(classifyGenre({ artist: 'Boris Brejcha', tags: ['Techno'] }).id, 'minimal-techno');
+  assert.equal(classifyGenre({ artist: 'Anyma', tags: ['Hard Techno'] }).id, 'hard-techno');
+
+  assert.equal(classifyGenre({ artist: 'Astrix', tags: ['Trance'] }).id, 'psytrance');
+  assert.equal(classifyGenre({ artist: 'Aly & Fila', tags: ['Trance'] }).id, 'uplifting-trance');
+  assert.equal(classifyGenre({ artist: 'Gabriel & Dresden', tags: ['Trance'] }).id, 'progressive-trance');
+  assert.equal(classifyGenre({ artist: 'Bryan Kearney', tags: ['Trance'] }).id, 'tech-trance');
+  assert.equal(classifyGenre({ artist: 'Scot Project', tags: ['Trance'] }).id, 'hard-trance');
+  assert.equal(classifyGenre({ artist: 'Astrix', tags: ['Hard Trance'] }).id, 'hard-trance');
+});
+
+test('Jazz and Classical metadata resolves to the reviewed concrete branches', () => {
+  const tagCases = [
+    ['Bebop', 'bebop'],
+    ['Bop', 'bebop'],
+    ['Big Band', 'swing-jazz'],
+    ['Bossa Nova', 'bossa-nova'],
+    ['Bossanova', 'bossa-nova'],
+    ['Jazz Fusion', 'jazz-fusion'],
+    ['Jazz', 'jazz'],
+    ['Baroque', 'baroque'],
+    ['Romantic Era', 'romantic-classical'],
+    ['Opera', 'opera'],
+    ['Modern Classical', 'modern-classical'],
+    ['Contemporary', 'modern-classical'],
+    ['Impressionist', 'classical'],
+    ['Choral', 'classical'],
+    ['Classical', 'classical']
+  ];
+  for (const [tag, id] of tagCases) {
+    assert.equal(classifyGenre({ tags: [tag] }).id, id, tag);
+  }
+  assert.equal(classifyGenre({ tags: ['Contemporary Jazz'] }).id, 'jazz');
+
+  const artistCases = [
+    ['Charlie Parker', 'bebop'],
+    ['Count Basie', 'swing-jazz'],
+    ['Antonio Carlos Jobim', 'bossa-nova'],
+    ['Weather Report', 'jazz-fusion'],
+    ['J. S. Bach', 'baroque'],
+    ['Tchaikovsky', 'romantic-classical'],
+    ['Maria Callas', 'opera'],
+    ['Max Richter', 'modern-classical']
+  ];
+  for (const [artist, id] of artistCases) {
+    assert.equal(classifyGenre({ artist, tags: ['Electronic'] }).id, id, artist);
+  }
+});
+
+test('Jazz and Classical artist hints refine broad family tags but preserve concrete metadata', () => {
+  assert.equal(classifyGenre({ artist: 'Charlie Parker', tags: ['Jazz'] }).id, 'bebop');
+  assert.equal(classifyGenre({ artist: 'J. S. Bach', tags: ['Classical'] }).id, 'baroque');
+  assert.equal(classifyGenre({ artist: 'Charlie Parker', tags: ['Bossa Nova'] }).id, 'bossa-nova');
+  assert.equal(classifyGenre({ artist: 'J. S. Bach', tags: ['Opera'] }).id, 'opera');
+});
+
+test('R&B and Soul metadata resolves to the reviewed concrete branches', () => {
+  const tagCases = [
+    ['R&B', 'rnb'],
+    ['Contemporary R&B', 'contemporary-rnb'],
+    ['Alternative R&B', 'alternative-rnb'],
+    ['Neo Soul', 'neo-soul'],
+    ['New Jack Swing', 'new-jack-swing'],
+    ['Swingbeat', 'new-jack-swing'],
+    ['Soul', 'soul'],
+    ['UK Street Soul', 'soul'],
+    ['Gospel', 'gospel'],
+    ['Funk', 'funk'],
+    ['P.Funk', 'funk'],
+    ['Disco', 'disco-funk'],
+    ['Boogie', 'disco-funk']
+  ];
+  for (const [tag, id] of tagCases) {
+    assert.equal(classifyGenre({ tags: [tag] }).id, id, tag);
+  }
+  assert.equal(classifyGenre({ tags: ['Jazz-Funk'] }).id, 'jazz-fusion');
+  assert.equal(classifyGenre({ tags: ['G-Funk'] }).id, 'hip-hop');
+});
+
+test('R&B artist hints refine only a broad R&B tag', () => {
+  const artistCases = [
+    ['SZA', 'contemporary-rnb'],
+    ['Frank Ocean', 'alternative-rnb'],
+    ["D'Angelo", 'neo-soul'],
+    ['Teddy Riley', 'new-jack-swing'],
+    ['Aretha Franklin', 'soul'],
+    ['Kirk Franklin', 'gospel'],
+    ['Parliament', 'funk']
+  ];
+  for (const [artist, id] of artistCases) {
+    assert.equal(classifyGenre({ artist, tags: ['R&B'] }).id, id, artist);
+  }
+  assert.equal(classifyGenre({ artist: 'Frank Ocean', tags: ['Neo Soul'] }).id, 'neo-soul');
+  assert.equal(classifyGenre({ artist: 'Parliament', tags: ['Disco'] }).id, 'disco-funk');
 });
 
 test('rejects unrelated Deezer album genres when a curated artist family is known', () => {
@@ -120,7 +250,7 @@ test('broad rock text keeps a restrained non-white highlight', () => {
 test('uses curated artist hints when Apple only returns generic Dance', () => {
   const result = classifyGenre({ artist: 'S3RL', title: 'Genre Police', tags: ['Dance'] });
   assert.equal(result.id, 'happy-hardcore');
-  assert.equal(result.label, 'HAPPY HC');
+  assert.equal(result.label, 'HAPPY HARDCORE');
 });
 
 test('prefers concrete queried genres and only falls back to artist mappings for generic buckets', () => {
@@ -177,17 +307,24 @@ test('recognizes hard-dance artists when storefront metadata is generic', () => 
   assert.equal(classifyGenre({ artist: 'Darren Styles', title: 'Us Against the World', tags: ['Dance'] }).id, 'uk-hardcore');
 });
 
+test('refines broad hard-dance and hardstyle evidence to their specific branches', () => {
+  assert.equal(classifyGenre({ tags: ['Hard Dance', 'Rawstyle'] }).id, 'rawstyle');
+  assert.equal(classifyGenre({ tags: ['Hard Dance', 'Euphoric Hardstyle'] }).id, 'euphoric-hardstyle');
+  assert.equal(classifyGenre({ artist: 'Rooler', tags: ['Hardstyle'] }).id, 'rawstyle');
+  assert.equal(classifyGenre({ artist: 'Brennan Heart', tags: ['Hardstyle'] }).id, 'euphoric-hardstyle');
+});
+
 test('exposes an immediate-parent hard-dance hierarchy', () => {
   assert.equal(classifyGenre({ tags: ['Hardstyle'] }).parent, 'HARD DANCE');
   assert.equal(classifyGenre({ tags: ['Rawstyle'] }).parent, 'HARDSTYLE');
   assert.equal(classifyGenre({ tags: ['Hardcore Techno'] }).parent, 'HARD DANCE');
   assert.equal(classifyGenre({ tags: ['Frenchcore'] }).parent, 'HARDCORE');
-  assert.equal(classifyGenre({ tags: ['Puzzycore'] }).parent, 'UPTEMPO');
+  assert.equal(classifyGenre({ tags: ['Puzzycore'] }).parent, 'UPTEMPO HARDCORE');
   assert.notEqual(classifyGenre({ tags: ['J-Core'] }).id, 'happy-hardcore');
 });
 
 test('keeps broad electronic and rock branches hierarchical', () => {
-  assert.equal(classifyGenre({ tags: ['House'] }).parent, 'ELECTRONIC DANCE');
+  assert.equal(classifyGenre({ tags: ['House'] }).parent, 'EDM');
   assert.equal(classifyGenre({ tags: ['Dubstep'] }).parent, 'BASS MUSIC');
   assert.equal(classifyGenre({ tags: ['Brostep'] }).parent, 'DUBSTEP');
   assert.equal(classifyGenre({ tags: ['Riddim'] }).parent, 'DUBSTEP');
@@ -235,11 +372,41 @@ test('models Experimental Hip-Hop under Hip-Hop and lets its artist mapping refi
   assert.equal(classifyGenre({ artist: 'MC 赵小六', tags: ['Electronic'] }).id, 'experimental-hip-hop');
 });
 
+test('keeps listening electronic and beat-oriented branches in their honest hierarchy', () => {
+  assert.equal(classifyGenre({ tags: ['Ambient'] }).id, 'ambient');
+  assert.equal(classifyGenre({ tags: ['Dark Ambient'] }).parent, 'ELECTRONIC');
+  assert.equal(classifyGenre({ tags: ['Downtempo'] }).id, 'downtempo');
+  assert.equal(classifyGenre({ tags: ['Chillout'] }).parent, 'DOWNTEMPO');
+  assert.equal(classifyGenre({ tags: ['IDM'] }).parent, 'ELECTRONIC');
+  assert.equal(classifyGenre({ tags: ['Glitch'] }).parent, 'ELECTRONIC');
+
+  assert.equal(classifyGenre({ tags: ['Instrumental Hip-Hop'] }).parent, 'HIP-HOP');
+  assert.equal(classifyGenre({ tags: ['Lo-Fi Hip-Hop'] }).parent, 'INSTRUMENTAL HIP-HOP');
+  assert.equal(classifyGenre({ tags: ['Chillhop'] }).id, 'lo-fi-hip-hop');
+
+  assert.equal(classifyGenre({ tags: ['Glitch Hop'] }).id, 'glitch-hop');
+  assert.equal(classifyGenre({ tags: ['Lo-Fi House'] }).id, 'deep-house');
+  assert.equal(classifyGenre({ tags: ['Ambient House'] }).id, 'house');
+  assert.equal(classifyGenre({ tags: ['Chillstep'] }).id, 'melodic-dubstep');
+});
+
+test('listening-genre artist hints refine broad tags without replacing concrete metadata', () => {
+  assert.equal(classifyGenre({ artist: 'Brian Eno', tags: ['Electronic'] }).id, 'ambient');
+  assert.equal(classifyGenre({ artist: 'Bonobo', tags: ['Electronic'] }).id, 'downtempo');
+  assert.equal(classifyGenre({ artist: 'Zero 7', tags: ['Electronic'] }).id, 'chillout');
+  assert.equal(classifyGenre({ artist: 'DJ Shadow', tags: ['Hip-Hop'] }).id, 'instrumental-hip-hop');
+  assert.equal(classifyGenre({ artist: 'Jinsang', tags: ['Hip-Hop'] }).id, 'lo-fi-hip-hop');
+  assert.equal(classifyGenre({ artist: 'Jinsang', tags: ['Instrumental Hip-Hop'] }).id, 'lo-fi-hip-hop');
+  assert.equal(classifyGenre({ artist: 'Autechre', tags: ['Electronic'] }).id, 'idm');
+  assert.equal(classifyGenre({ artist: 'Oval', tags: ['Electronic'] }).id, 'glitch');
+  assert.equal(classifyGenre({ artist: 'Autechre', tags: ['Glitch'] }).id, 'glitch');
+});
+
 test('covers the common bass, garage, breaks, trance and techno branches', () => {
   assert.equal(classifyGenre({ tags: ['Colour Bass'] }).parent, 'DUBSTEP');
   assert.equal(classifyGenre({ tags: ['Jump Up DnB'] }).parent, 'DRUM & BASS');
   assert.equal(classifyGenre({ tags: ['Jungle'] }).parent, 'DRUM & BASS');
-  assert.equal(classifyGenre({ tags: ['UK Garage'] }).parent, 'ELECTRONIC DANCE');
+  assert.equal(classifyGenre({ tags: ['UK Garage'] }).parent, 'EDM');
   assert.equal(classifyGenre({ tags: ['Future Garage'] }).parent, 'UK GARAGE');
   assert.equal(classifyGenre({ tags: ['2-Step Garage'] }).parent, 'UK GARAGE');
   assert.equal(classifyGenre({ tags: ['Big Beat'] }).parent, 'BREAKBEAT');
@@ -252,6 +419,23 @@ test('covers the common bass, garage, breaks, trance and techno branches', () =>
   assert.equal(classifyGenre({ artist: 'Zed Bias', tags: ['Electronic'] }).id, 'uk-garage');
   assert.equal(classifyGenre({ artist: 'TS7', tags: ['Electronic'] }).id, 'bassline');
   assert.equal(classifyGenre({ artist: 'The Chemical Brothers', tags: ['Electronic'] }).id, 'big-beat');
+});
+
+test('keeps UK Garage aliases specific and lets artists refine only the broad family tag', () => {
+  assert.equal(classifyGenre({ tags: ['4x4 Garage'] }).id, 'uk-garage');
+  assert.equal(classifyGenre({ tags: ['Garage 4x4'] }).id, 'uk-garage');
+  assert.equal(classifyGenre({ tags: ['4x4 Bassline'] }).id, 'bassline');
+  assert.equal(classifyGenre({ tags: ['Niche Bassline'] }).id, 'bassline');
+  assert.equal(classifyGenre({ tags: ['Garage'] }).id, 'unknown');
+  assert.equal(classifyGenre({ tags: ['Garage House'] }).id, 'house');
+  assert.equal(classifyGenre({ tags: ['Garage Rock'] }).id, 'alternative');
+
+  assert.equal(classifyGenre({ artist: 'Burial', tags: ['UK Garage'] }).id, 'future-garage');
+  assert.equal(classifyGenre({ artist: 'Artful Dodger', tags: ['UKG'] }).id, 'two-step-garage');
+  assert.equal(classifyGenre({ artist: 'DJ Q', tags: ['UK Garage'] }).id, 'speed-garage');
+  assert.equal(classifyGenre({ artist: 'Holy Goof', tags: ['UK Garage'] }).id, 'bassline');
+  assert.equal(classifyGenre({ artist: 'Burial', tags: ['Speed Garage'] }).id, 'speed-garage');
+  assert.equal(classifyGenre({ artist: 'Holy Goof', tags: ['Future Garage'] }).id, 'future-garage');
 });
 
 test('uses pop artist hints when catalog tags are too broad', () => {
@@ -388,6 +572,14 @@ test('recognizes Japanese music tags and curated artists', () => {
   assert.equal(classifyGenre({ tags: ['エレクトロニック'] }).id, 'electronic');
 });
 
+test('curated Japanese artist mappings refine only a broad J-Pop tag', () => {
+  assert.equal(classifyGenre({ artist: 'Hatsune Miku', tags: ['J-Pop'] }).id, 'vocaloid');
+  assert.equal(classifyGenre({ artist: 'Mariya Takeuchi', tags: ['J-Pop'] }).id, 'city-pop');
+  assert.equal(classifyGenre({ artist: 'rionos', tags: ['J-Pop'] }).id, 'anime');
+  assert.equal(classifyGenre({ artist: 'Hatsune Miku', tags: ['City Pop'] }).id, 'city-pop');
+  assert.equal(classifyGenre({ artist: 'Mariya Takeuchi', tags: ['Anime'] }).id, 'anime');
+});
+
 test('translates localized Japanese storefront genres before displaying raw labels', () => {
   assert.equal(rawGenreTheme('ニューエイジ').label, 'NEW AGE');
   assert.equal(rawGenreTheme('ブルース').label, 'BLUES');
@@ -415,7 +607,16 @@ test('places Kawaii Bass under Future Bass without treating Future Bass as Bass 
   assert.equal(kawaii.id, 'kawaii-bass');
   assert.equal(kawaii.parent, 'FUTURE BASS');
   assert.equal(future.id, 'future-bass');
-  assert.equal(future.parent, 'ELECTRONIC DANCE');
+  assert.equal(future.parent, 'EDM');
+});
+
+test('recognizes Blues without confusing Rhythm & Blues or Blues Rock', () => {
+  assert.equal(classifyGenre({ tags: ['Delta Blues'] }).id, 'blues');
+  assert.equal(classifyGenre({ tags: ['ブルース'] }).id, 'blues');
+  assert.equal(classifyGenre({ artist: 'B.B. King', tags: ['Roots Music'] }).id, 'blues');
+  assert.equal(classifyGenre({ tags: ['Rhythm & Blues'] }).id, 'rnb');
+  assert.equal(classifyGenre({ tags: ['Blues Rock'] }).id, 'rock');
+  assert.equal(classifyGenre({ tags: ['Trip-Hop'] }).id, 'downtempo');
 });
 
 test('never displays Japanese script for any localized genre alias or fallback', () => {
