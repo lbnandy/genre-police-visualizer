@@ -43,8 +43,8 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 ### 全屏模式
 
 <p align="center">
-  <a href="docs/screenshots/synthwave-fullscreen.png"><img src="docs/screenshots/synthwave-fullscreen.png" alt="Synthwave 全屏上下结构" width="46%" /></a>
-  <a href="docs/screenshots/trance-fullscreen-split.png"><img src="docs/screenshots/trance-fullscreen-split.png" alt="Trance 全屏左右结构" width="46%" /></a>
+  <a href="docs/screenshots/synthwave-fullscreen.png"><img src="docs/screenshots/synthwave-fullscreen.png" alt="Synthwave 全屏上下结构" width="45%" /></a>&nbsp;&nbsp;
+  <a href="docs/screenshots/trance-fullscreen-split.png"><img src="docs/screenshots/trance-fullscreen-split.png" alt="Trance 全屏左右结构" width="45%" /></a>
 </p>
 
 ## 主要功能
