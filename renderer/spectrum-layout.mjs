@@ -5,17 +5,21 @@ const TAU = Math.PI * 2;
 // of the mirrored circle: 0 is the top seam and 1 is the bottom. The reserved
 // region contains no FFT band; the lowest band starts independently at each
 // edge and the complete spectrum still reaches the bottom.
-export function mapFrequencyOutsideTopGap(spatialRatio, options = {}) {
+export function mapFrequencyOutsideTopGap(spatialRatio, options = {}, output = {}) {
   const position = clamp(spatialRatio);
   const halfGapRatio = clamp(options.halfGapRatio ?? (15 / 180), 0, 0.24);
   // A zero-sized gap means a genuinely continuous spectrum. Without this
   // branch the feather calculation would still suppress the exact top point.
-  if (halfGapRatio <= 0) return { frequencyRatio: position, response: 1 };
+  if (halfGapRatio <= 0) {
+    output.frequencyRatio = position;
+    output.response = 1;
+    return output;
+  }
   const featherRatio = clamp(options.featherRatio ?? (5 / 180), 0.001, 0.06);
-  const frequencyRatio = clamp((position - halfGapRatio) / Math.max(0.001, 1 - halfGapRatio));
+  output.frequencyRatio = clamp((position - halfGapRatio) / Math.max(0.001, 1 - halfGapRatio));
   const edgeProgress = clamp((position - halfGapRatio) / featherRatio);
-  const response = edgeProgress * edgeProgress * (3 - 2 * edgeProgress);
-  return { frequencyRatio, response };
+  output.response = edgeProgress * edgeProgress * (3 - 2 * edgeProgress);
+  return output;
 }
 
 const degreesOnHalfCircle = (degrees) => degrees / 180;

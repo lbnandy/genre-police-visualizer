@@ -192,7 +192,7 @@ test('a fresh configuration follows the Windows locale with an English fallback'
   assert.match(mainSource, /const languageInitialized = process\.env\.GP_CAPTURE_LANGUAGE === undefined/);
 });
 
-test('idle frame limiting is an opt-out playback setting backed by the existing render throttle', () => {
+test('active and idle frame limiting are playback settings backed by deadline scheduling', () => {
   const html = read('renderer/index.html');
   const appSource = read('renderer/app.js');
   const mainSource = read('main.js');
@@ -200,10 +200,15 @@ test('idle frame limiting is an opt-out playback setting backed by the existing 
     html.indexOf('id="settings-pane-playback"'),
     html.indexOf('id="settings-pane-genre"')
   );
+  assert.match(playbackPane, /id="frame-rate-button"[\s\S]*?data-frame-rate="display"[\s\S]*?data-frame-rate="120"[\s\S]*?data-frame-rate="90"[\s\S]*?data-frame-rate="60"[\s\S]*?data-frame-rate="30"/);
   assert.match(playbackPane, /id="idle-frame-limit-toggle"[\s\S]*?role="switch"[\s\S]*?aria-checked="true"/);
+  assert.match(appSource, /let frameRateLimit = 'display';/);
+  assert.match(appSource, /function setFrameRateLimit\(value,[\s\S]*?normalizeFrameRateLimit\(value\)[\s\S]*?setConfig\(\{ frameRateLimit \}\)/);
   assert.match(appSource, /let idleFrameLimitEnabled = true;/);
   assert.match(appSource, /function setIdleFrameLimitEnabled\(enabled,[\s\S]*?idleFrameLimitEnabled = enabled !== false;/);
-  assert.match(appSource, /animationActive \|\| !idleFrameLimitEnabled[\s\S]*?1000 \/ 30/);
+  assert.match(appSource, /frameIntervalFor\(\{[\s\S]*?animationActive,[\s\S]*?frameRateLimit,[\s\S]*?idleFrameLimitEnabled[\s\S]*?scheduleFrame\(time, nextAnimationWorkAt, minimumFrameInterval\)/);
+  assert.match(mainSource, /config\.frameRateLimit = normalizeFrameRateLimit\(config\.frameRateLimit\);/);
+  assert.match(mainSource, /safe\.frameRateLimit = normalizeFrameRateLimit\(patch\.frameRateLimit\);/);
   assert.match(mainSource, /config\.idleFrameLimitEnabled = config\.idleFrameLimitEnabled !== false;/);
   assert.match(mainSource, /if \(typeof patch\?\.idleFrameLimitEnabled === 'boolean'\) safe\.idleFrameLimitEnabled = patch\.idleFrameLimitEnabled;/);
 });
@@ -225,6 +230,9 @@ test('the diagnostics panel exposes an opt-in actual-render FPS counter', () => 
   assert.match(mainSource, /config\.showFps = config\.showFps === true;/);
   assert.match(mainSource, /if \(typeof patch\?\.showFps === 'boolean'\) safe\.showFps = patch\.showFps;/);
   assert.match(styles, /#fps-counter \{[\s\S]*pointer-events: none;/);
+  assert.match(styles, /body\[data-layout="side"\] #fps-counter \{[\s\S]*?left: 110px;[\s\S]*?bottom: 78px;/);
+  assert.match(styles, /body\[data-layout="poster"\] #fps-counter \{[\s\S]*?left: 28px;[\s\S]*?bottom: 28px;/);
+  assert.match(styles, /body\[data-stage-output="true"\] #fps-counter \{[\s\S]*?left: 24px;[\s\S]*?bottom: 24px;/);
 });
 
 test('mouse passthrough is discoverable in App settings and defaults off', () => {
@@ -253,9 +261,14 @@ test('settings use stable top-level tabs and task-focused groups', () => {
 
   assert.match(tabs, /settings-tab-appearance[\s\S]*settings-tab-playback[\s\S]*settings-tab-lyrics[\s\S]*settings-tab-genre[\s\S]*settings-tab-app/);
   assert.match(appearancePane, /settings\.sectionGeneral[\s\S]*settings\.sectionLayout[\s\S]*settings\.sectionMotion[\s\S]*settings\.sectionQuickControls[\s\S]*settings\.sectionFullscreen/);
-  assert.match(playbackPane, /settings\.sectionAudio[\s\S]*settings\.sectionIdle[\s\S]*settings\.sectionTrackInfo/);
+  assert.match(playbackPane, /settings\.sectionAudio[\s\S]*settings\.sectionTrackInfo[\s\S]*settings\.sectionIdle[\s\S]*settings\.sectionPerformance/);
   assert.doesNotMatch(playbackPane, /BeatNet/);
   assert.match(genrePane, /settings\.sectionRecognition[\s\S]*settings\.sectionCorrections[\s\S]*settings\.sectionData/);
+  assert.ok(
+    genrePane.indexOf('id="settings-sources-panel"') < genrePane.indexOf('settings.sectionCorrections'),
+    'advanced online sources should stay with recognition, before corrections'
+  );
+  assert.match(appPane, /settings\.snapshot[\s\S]*settings\.videoRecording/);
   assert.match(appPane, /settings\.sectionWindow[\s\S]*settings\.sectionCapture[\s\S]*settings\.sectionMaintenance/);
   assert.match(appSource, /appearanceGeneralSection\.hidden = stageOutputActive;[\s\S]*appearanceLayoutSection\.hidden = stageOutputActive;/);
 });
@@ -308,7 +321,7 @@ test('video recording captures the app frame with loopback audio and streams chu
     html.indexOf('id="settings-pane-lyrics"')
   );
 
-  assert.match(appPane, /id="always-on-top-toggle"[\s\S]*id="recording-start-stop"[\s\S]*id="snapshot-save-button"/);
+  assert.match(appPane, /id="always-on-top-toggle"[\s\S]*id="snapshot-save-button"[\s\S]*id="recording-start-stop"/);
   assert.doesNotMatch(appPane, /id="(?:recording|snapshot)-quick-button-toggle"/);
   assert.match(appearancePane, /id="snapshot-quick-button-setting"[\s\S]*id="snapshot-quick-button-toggle"[\s\S]*id="recording-quick-button-setting"[\s\S]*id="recording-quick-button-toggle"/);
   assert.match(html, /id="recording-quick-button"[^>]+hidden[\s\S]*id="settings-button"[\s\S]*id="layout-toggle-button"[\s\S]*id="close-button"/);
@@ -407,7 +420,7 @@ test('stage output fills the current display and restores the desktop window', (
   assert.match(appSource, /const guard = 24 \/ safeScale;[\s\S]*visualOverscanX[\s\S]*visualOverscanY/);
   assert.match(appSource, /--stage-visual-width[\s\S]*920 \+ visualOverscanX \* 2[\s\S]*--stage-visual-height[\s\S]*400 \+ visualOverscanY \* 2/);
   assert.match(appSource, /function updateStageOutputScale\(\)[\s\S]*--fullscreen-heading-top[\s\S]*visual\.resize\(\);/);
-  assert.match(visualSource, /const outputScale = document\.body\.dataset\.stageOutput === 'true'[\s\S]*renderedWidth \/ this\.width[\s\S]*const nativeDpr = Math\.min\(3, \(window\.devicePixelRatio \|\| 1\) \* outputScale\)[\s\S]*this\.dpr = Math\.max\(1, nativeDpr \* this\.outputResolutionScale\)/);
+  assert.match(visualSource, /const nativeDpr = presentationPixelRatio\(\{[\s\S]*designWidth: this\.width,[\s\S]*renderedWidth,[\s\S]*devicePixelRatio: window\.devicePixelRatio \|\| 1[\s\S]*this\.dpr = adaptivePixelRatio\(nativeDpr, this\.outputResolutionScale\)/);
   assert.match(appSource, /stageOutputRestoreLayoutMode = layoutMode/);
   assert.match(appSource, /document\.body\.dataset\.fullscreenLayout = fullscreenLayoutMode/);
   assert.match(appSource, /const posterPresentation = layoutMode === 'poster'[\s\S]*capsuleBackgroundSetting\.hidden = stageOutputActive \|\| posterPresentation[\s\S]*posterBackgroundSetting\.hidden = stageOutputActive \|\| !posterPresentation[\s\S]*fullscreenEnglishFontSetting\.hidden = !stageOutputActive[\s\S]*stageOutputTextSetting\.hidden = !stageOutputActive[\s\S]*stageOutputEntrySetting\.hidden = stageOutputActive[\s\S]*layoutModeSetting\.hidden = stageOutputActive/);
@@ -459,7 +472,7 @@ test('local rhythm enhancement is an opt-out Playback setting with a DSP fallbac
     html.indexOf('id="settings-pane-playback"'),
     html.indexOf('id="settings-pane-genre"')
   );
-  assert.match(playbackPane, /id="rhythm-model-toggle"[\s\S]*id="idle-frame-limit-toggle"[\s\S]*class="media-source-settings"/);
+  assert.match(playbackPane, /id="rhythm-model-toggle"[\s\S]*class="media-source-settings"[\s\S]*id="idle-frame-limit-toggle"/);
   assert.match(playbackPane, /id="rhythm-model-toggle"[\s\S]*role="switch"[\s\S]*aria-checked="true"/);
   assert.match(appSource, /let rhythmModelEnabled = true;/);
   assert.match(audioSource, /setRhythmModelEnabled\(enabled\)[\s\S]*this\.stopRhythmFeed\(\)/);

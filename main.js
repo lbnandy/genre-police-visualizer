@@ -17,6 +17,7 @@ const {
   normalizeAudioSourceId,
   normalizeClickThrough,
   normalizeDesktopLayer,
+  normalizeFrameRateLimit,
   normalizeIdleBehavior,
   normalizeIgnoredMediaSources,
   normalizeMediaSource,
@@ -567,6 +568,7 @@ function loadConfig() {
   config.visualResponseMode = normalizeVisualResponseMode(config.visualResponseMode);
   config.audioSourceId = normalizeAudioSourceId(config.audioSourceId);
   config.idleBehavior = normalizeIdleBehavior(config.idleBehavior);
+  config.frameRateLimit = normalizeFrameRateLimit(config.frameRateLimit);
   config.idleFrameLimitEnabled = config.idleFrameLimitEnabled !== false;
   config.showFps = config.showFps === true;
   config.rhythmModelEnabled = config.rhythmModelEnabled !== false;
@@ -2563,6 +2565,7 @@ function diagnosticSnapshot(rendererState = {}) {
       uiScale: normalizeUiScale(config.uiScale),
       motionMode: normalizeMotionMode(config.motionMode),
       idleBehavior: normalizeIdleBehavior(config.idleBehavior),
+      frameRateLimit: normalizeFrameRateLimit(config.frameRateLimit),
       idleFrameLimitEnabled: config.idleFrameLimitEnabled !== false,
       showFps: config.showFps === true,
       rhythmModelEnabled: config.rhythmModelEnabled !== false,
@@ -2901,6 +2904,7 @@ ipcMain.handle('config:get', () => ({
   visualResponseMode: normalizeVisualResponseMode(config.visualResponseMode),
   audioSourceId: normalizeAudioSourceId(config.audioSourceId),
   idleBehavior: normalizeIdleBehavior(config.idleBehavior),
+  frameRateLimit: normalizeFrameRateLimit(config.frameRateLimit),
   idleFrameLimitEnabled: config.idleFrameLimitEnabled !== false,
   showFps: config.showFps === true,
   rhythmModelEnabled: config.rhythmModelEnabled !== false,
@@ -2968,6 +2972,9 @@ ipcMain.handle('config:set', async (_event, patch) => {
   }
   if (typeof patch?.audioSourceId === 'string') safe.audioSourceId = normalizeAudioSourceId(patch.audioSourceId);
   if (typeof patch?.idleBehavior === 'string') safe.idleBehavior = normalizeIdleBehavior(patch.idleBehavior);
+  if (typeof patch?.frameRateLimit === 'string' || typeof patch?.frameRateLimit === 'number') {
+    safe.frameRateLimit = normalizeFrameRateLimit(patch.frameRateLimit);
+  }
   if (typeof patch?.idleFrameLimitEnabled === 'boolean') safe.idleFrameLimitEnabled = patch.idleFrameLimitEnabled;
   if (typeof patch?.showFps === 'boolean') safe.showFps = patch.showFps;
   if (typeof patch?.rhythmModelEnabled === 'boolean') safe.rhythmModelEnabled = patch.rhythmModelEnabled;

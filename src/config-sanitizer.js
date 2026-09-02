@@ -60,6 +60,13 @@ function normalizeIdleBehavior(value) {
   return ['keep', 'dim', 'hide'].includes(value) ? value : 'keep';
 }
 
+function normalizeFrameRateLimit(value) {
+  const normalized = String(value ?? '').trim();
+  return ['display', '120', '90', '60', '30'].includes(normalized)
+    ? normalized
+    : 'display';
+}
+
 function normalizeMediaSource(value) {
   return String(value || '').trim().slice(0, 512);
 }
@@ -75,6 +82,7 @@ module.exports = {
   normalizeAudioSourceId,
   normalizeClickThrough,
   normalizeDesktopLayer,
+  normalizeFrameRateLimit,
   normalizeIdleBehavior,
   normalizeIgnoredMediaSources,
   normalizeMediaSource,

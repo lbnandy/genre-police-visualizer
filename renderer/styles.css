@@ -108,8 +108,8 @@
   --glass-edge: rgba(255, 255, 255, .14);
   --glass-highlight: rgba(255, 255, 255, .14);
   --reading-font: "DM Sans Variable", "Noto Sans SC Variable", "Noto Sans JP Variable", "Noto Sans KR Variable", sans-serif;
-  --lyric-glow-near: 48%;
-  --lyric-glow-far: 20%;
+  --lyric-glow-near: 14%;
+  --lyric-glow-far: 4%;
   /* Registered theme colours interpolate through every dependent gradient in
      adaptive mode. Structurally different genre backgrounds use two explicit
      layers below because background-image itself is discrete. */
@@ -803,30 +803,18 @@ body[data-layout="side"] #parent-genre {
   letter-spacing: var(--genre-letter-spacing, -0.5px);
   text-transform: uppercase;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
   text-shadow: none;
   transform: translateY(calc(3px + var(--genre-balance-y, 0px) + var(--genre-lift, 0px))) scale(var(--genre-scale, 1));
   transform-origin: left center;
-  filter:
-    brightness(var(--genre-brightness, 1))
-    saturate(calc(var(--genre-saturation, 1) * var(--genre-extra-saturation, 1)))
-    blur(var(--impact-text-blur, 0px))
-    drop-shadow(calc(var(--distortion, 0) * -3px) 0 0 color-mix(in srgb, var(--accent) 72%, transparent))
-    drop-shadow(calc(var(--distortion, 0) * 3px) 0 0 color-mix(in srgb, var(--accent-2) 72%, transparent))
-    drop-shadow(0 0 var(--genre-hot-blur, 5px) color-mix(in srgb, var(--hot) var(--genre-hot-alpha, 55%), transparent))
-    drop-shadow(0 0 var(--genre-glow, 18px) color-mix(in srgb, var(--accent) var(--genre-accent-alpha, 74%), transparent))
-    drop-shadow(var(--impact-echo-left, 0px) 0 var(--impact-echo-blur, 0px) color-mix(in srgb, var(--accent) var(--impact-echo-alpha, 0%), transparent))
-    drop-shadow(var(--impact-echo-right, 0px) 0 var(--impact-echo-blur, 0px) color-mix(in srgb, var(--accent-2) var(--impact-echo-alpha, 0%), transparent))
-    drop-shadow(var(--genre-depth-x, 2px) var(--genre-depth-y, 2px) var(--genre-depth-blur, 0px) color-mix(in srgb, var(--accent-2) var(--genre-depth-alpha, 42%), transparent));
-  will-change: transform, filter;
+  filter: none;
+  will-change: transform;
   transition: color var(--transition), opacity 180ms ease;
 }
 
-/* The headline owns several live filter effects. Keep the right HUD boundary,
-   but give every theme enough paint space for impact bloom and echo copies. */
+/* Let glyph-owned bloom fade naturally instead of clipping it at the HUD edge. */
 body[data-layout="side"] #genre {
-  clip-path: inset(-96px 0 -96px -96px);
+  clip-path: inset(-96px);
 }
 
 /* Keep the coloured/glitched copies behind the actual gradient face.  The
@@ -836,6 +824,8 @@ body[data-layout="side"] #genre {
   position: relative;
   z-index: 2;
   display: inline-block;
+  max-width: none;
+  overflow: visible;
   color: var(--genre-ink);
   background: linear-gradient(
     180deg,
@@ -847,6 +837,18 @@ body[data-layout="side"] #genre {
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  filter:
+    brightness(var(--genre-brightness, 1))
+    saturate(calc(var(--genre-saturation, 1) * var(--genre-extra-saturation, 1)))
+    blur(var(--impact-text-blur, 0px))
+    drop-shadow(calc(var(--distortion, 0) * -3px) 0 0 color-mix(in srgb, var(--accent) 72%, transparent))
+    drop-shadow(calc(var(--distortion, 0) * 3px) 0 0 color-mix(in srgb, var(--accent-2) 72%, transparent))
+    drop-shadow(0 0 var(--genre-hot-blur, 5px) color-mix(in srgb, var(--hot) var(--genre-hot-alpha, 55%), transparent))
+    drop-shadow(0 0 var(--genre-glow, 18px) color-mix(in srgb, var(--accent) var(--genre-accent-alpha, 74%), transparent))
+    drop-shadow(var(--impact-echo-left, 0px) 0 var(--impact-echo-blur, 0px) color-mix(in srgb, var(--accent) var(--impact-echo-alpha, 0%), transparent))
+    drop-shadow(var(--impact-echo-right, 0px) 0 var(--impact-echo-blur, 0px) color-mix(in srgb, var(--accent-2) var(--impact-echo-alpha, 0%), transparent))
+    drop-shadow(var(--genre-depth-x, 2px) var(--genre-depth-y, 2px) var(--genre-depth-blur, 0px) color-mix(in srgb, var(--accent-2) var(--genre-depth-alpha, 42%), transparent));
+  will-change: filter;
 }
 
 #genre::before,
@@ -901,7 +903,7 @@ body[data-layout="side"] #genre {
    Its vortex is already one of the richest canvas scenes, so keeping only the
    visible glow stack avoids repainting several transparent blurred copies of
    a large headline on every frame. */
-body[data-mode="trance"]:not([data-family="classical"]):not([data-genre="soundtrack"]):not([data-genre="synthwave"]) #genre {
+body[data-mode="trance"]:not([data-family="classical"]):not([data-genre="soundtrack"]):not([data-genre="synthwave"]) #genre-face {
   filter:
     brightness(var(--genre-brightness, 1))
     saturate(calc(var(--genre-saturation, 1) * var(--genre-extra-saturation, 1)))
@@ -922,6 +924,9 @@ body[data-mode="trance"]:not([data-family="classical"]):not([data-genre="soundtr
 body[data-genre="synthwave"] #genre {
   font-style: italic;
   transform: skewX(-7deg) translateY(calc(3px + var(--genre-balance-y, 0px) + var(--genre-lift, 0px))) scale(var(--genre-scale, 1));
+}
+
+body[data-genre="synthwave"] #genre-face {
   filter:
     brightness(var(--genre-brightness, 1))
     saturate(calc(var(--genre-saturation, 1) * var(--genre-extra-saturation, 1)))
@@ -1162,6 +1167,7 @@ body[data-mode="bilibili"] #genre-face {
   background: none;
   -webkit-text-fill-color: #fb7299;
   -webkit-text-stroke: 0;
+  filter: none;
 }
 
 body[data-mode="bilibili"] #genre::before,
@@ -1303,6 +1309,7 @@ body[data-layout="side"] #title.is-overflowing {
   padding-top: 1px;
   overflow: visible;
   color: rgba(255,255,255,.32);
+  text-shadow: 0 1px 2px rgba(0,0,0,.44);
   font: 500 17px/25px var(--reading-font);
   letter-spacing: .12px;
   white-space: normal;
@@ -1316,6 +1323,7 @@ body[data-layout="side"] #title.is-overflowing {
   margin-top: -1px;
   overflow: visible;
   color: rgba(255,255,255,.32);
+  text-shadow: 0 1px 2px rgba(0,0,0,.4);
   font: 500 13.3px/18px var(--reading-font);
   letter-spacing: .12px;
   opacity: 1;
@@ -1372,9 +1380,9 @@ body[data-layout="side"] #title.is-overflowing {
   overflow: visible;
   white-space: nowrap;
   text-shadow:
-    0 1px 5px rgba(0,0,0,.72),
-    0 0 3px color-mix(in srgb, var(--accent) var(--lyric-glow-near), transparent),
-    0 0 6px color-mix(in srgb, var(--accent-2) var(--lyric-glow-far), transparent);
+    0 1px 2px rgba(0,0,0,.5),
+    0 0 2px color-mix(in srgb, var(--accent) var(--lyric-glow-near), transparent),
+    0 0 4px color-mix(in srgb, var(--accent-2) var(--lyric-glow-far), transparent);
 }
 
 :where(#title, #artist, #lyric-current, #lyric-translation):lang(ja) {
@@ -1522,33 +1530,37 @@ body[data-layout="side"] #lyric-translation-fill-content {
      push the final words onto a ghost second line. */
   white-space: nowrap;
   text-shadow:
-    0 1px 5px rgba(0,0,0,.72),
-    0 0 3px color-mix(in srgb, var(--accent) var(--lyric-glow-near), transparent),
-    0 0 6px color-mix(in srgb, var(--accent-2) var(--lyric-glow-far), transparent);
+    0 1px 2px rgba(0,0,0,.5),
+    0 0 2px color-mix(in srgb, var(--accent) var(--lyric-glow-near), transparent),
+    0 0 4px color-mix(in srgb, var(--accent-2) var(--lyric-glow-far), transparent);
 }
 
 /* Lyric material follows the genre's visual language. Polished vocal styles
-   keep only a restrained bloom; tactile, acoustic and sample-led styles use
-   clean ink so the copy does not read as an unrelated neon sign. */
+   keep only a barely visible bloom; tactile, acoustic and sample-led styles
+   use clean ink so the copy does not read as an unrelated neon sign. */
 body:is(
   [data-mode="house"],
   [data-mode="pop"],
   [data-mode="j-pop"],
-  [data-mode="rnb"],
-  [data-mode="asmr"]
+  [data-mode="rnb"]
 ) {
-  --lyric-glow-near: 22%;
-  --lyric-glow-far: 8%;
+  --lyric-glow-near: 10%;
+  --lyric-glow-far: 2%;
 }
 
 body:is(
+  [data-mode="ambient"],
+  [data-mode="asmr"],
+  [data-mode="experimental"],
   [data-mode="rock"],
   [data-mode="metal"],
   [data-mode="hip-hop"],
   [data-mode="phonk"],
   [data-mode="garage"],
   [data-mode="breakbeat"],
-  [data-mode="latin"]
+  [data-mode="latin"],
+  [data-family="classical"],
+  [data-family="jazz"]
 ) {
   --lyric-glow-near: 0%;
   --lyric-glow-far: 0%;
@@ -1622,16 +1634,16 @@ body:is(
   z-index: 1;
 }
 
-#synced-lyrics[data-sweep="off"] #lyric-current-base {
+#synced-lyrics[data-sweep="off"] :is(#lyric-current-base, #lyric-translation-base) {
   color: color-mix(in srgb, var(--hot) 86%, var(--accent));
-  text-shadow: none;
-  filter:
-    drop-shadow(0 1px 2px rgba(0,0,0,.68))
-    drop-shadow(0 0 4px color-mix(in srgb, var(--accent) var(--lyric-glow-near), transparent))
-    drop-shadow(0 0 8px color-mix(in srgb, var(--accent-2) var(--lyric-glow-far), transparent));
+  text-shadow:
+    0 1px 2px rgba(0,0,0,.5),
+    0 0 2px color-mix(in srgb, var(--accent) var(--lyric-glow-near), transparent),
+    0 0 4px color-mix(in srgb, var(--accent-2) var(--lyric-glow-far), transparent);
+  filter: none;
 }
 
-#synced-lyrics[data-sweep="off"] #lyric-current-fill {
+#synced-lyrics[data-sweep="off"] :is(#lyric-current-fill, #lyric-translation-fill) {
   opacity: 0;
   visibility: hidden;
 }
@@ -1723,9 +1735,10 @@ body[data-mode="hardstyle"] #synced-lyrics.line-change :is(#lyric-current, #lyri
 
 body:is([data-mode="hardcore"], [data-mode="hardstyle"], [data-mode="metal"]) :is(#lyric-current-fill-content, #lyric-translation-fill-content) {
   text-shadow:
-    calc(var(--distortion) * -3px) 0 5px var(--accent),
-    calc(var(--distortion) * 3px) 0 5px var(--accent-2),
-    0 0 7px color-mix(in srgb, var(--accent) 58%, transparent);
+    0 1px 2px rgba(0,0,0,.52),
+    calc(var(--distortion) * -1.4px) 0 1px color-mix(in srgb, var(--accent) 14%, transparent),
+    calc(var(--distortion) * 1.4px) 0 1px color-mix(in srgb, var(--accent-2) 14%, transparent),
+    0 0 2px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 /* These families keep their motion treatment, but their steady lyric face is
@@ -1740,7 +1753,7 @@ body:is(
   [data-mode="breakbeat"],
   [data-mode="latin"]
 ) :is(#lyric-current-fill-content, #lyric-translation-fill-content) {
-  text-shadow: 0 1px 5px rgba(0,0,0,.72);
+  text-shadow: 0 1px 2px rgba(0,0,0,.5);
 }
 
 body:is([data-mode="hardcore"], [data-mode="hardstyle"], [data-mode="metal"]) #lyric-current-fill .lyric-unit {
@@ -1752,13 +1765,13 @@ body:is([data-mode="hardcore"], [data-mode="hardstyle"], [data-mode="metal"]) #l
     opacity: .1;
     transform: translateX(-9px) skewX(-7deg) scaleX(.8) scaleY(1.06);
     clip-path: inset(0 58% 0 0);
-    filter: brightness(2.15) contrast(1.18) saturate(1.4) drop-shadow(-3px 0 3px var(--accent)) drop-shadow(3px 0 3px var(--accent-2));
+    filter: brightness(1.72) contrast(1.12) saturate(1.22);
   }
   42% {
     opacity: 1;
     transform: translateX(3px) skewX(2deg) scaleX(1.055) scaleY(.975);
     clip-path: inset(0);
-    filter: brightness(1.38) contrast(1.06) saturate(1.25) drop-shadow(-1.5px 0 2px var(--accent)) drop-shadow(1.5px 0 2px var(--accent-2));
+    filter: brightness(1.24) contrast(1.04) saturate(1.14);
   }
   68% { transform: translateX(-.8px) skewX(-.45deg) scaleX(.992) scaleY(1.008); filter: brightness(1.08); }
   100% { transform: none; clip-path: inset(0); filter: none; }
@@ -1769,7 +1782,7 @@ body:is([data-mode="hardcore"], [data-mode="hardstyle"], [data-mode="metal"]) #l
     opacity: .1;
     transform: translateX(-7px) skewX(-4deg) scaleX(.86) scaleY(1.035);
     clip-path: inset(0 48% 0 0);
-    filter: brightness(1.95) contrast(1.1) saturate(1.26) drop-shadow(-2px 0 2px var(--accent)) drop-shadow(2px 0 2px var(--accent-2));
+    filter: brightness(1.62) contrast(1.08) saturate(1.16);
   }
   44% {
     opacity: 1;
@@ -2130,6 +2143,19 @@ body[data-playback="idle"] .signal-dot::before {
 #fps-counter[hidden] { display: none; }
 #fps-counter[data-status="mid"] { color: #ffd36b; }
 #fps-counter[data-status="low"] { color: #ff8397; }
+
+/* Keep the diagnostic readout inside each presentation's visible surface.
+   The capsule window includes transparent feathering outside its rounded
+   body, while the poster can use the same inset as its title-bar controls. */
+body[data-layout="side"] #fps-counter {
+  left: 110px;
+  bottom: 78px;
+}
+
+body[data-layout="poster"] #fps-counter {
+  left: 28px;
+  bottom: 28px;
+}
 
 /* The capsule's visible surface has asymmetric outer insets, so its visual
    center sits 27px left of the window center. Keep every floating notice on
@@ -3529,14 +3555,16 @@ body[data-stage-output="true"] #appearance-fullscreen-section {
   opacity: .58;
 }
 
-.ui-scale-picker {
+.ui-scale-picker,
+.frame-rate-picker {
   position: relative;
   width: 92px;
   flex: 0 0 92px;
 }
 
 #ui-scale-button,
-#language-button {
+#language-button,
+#frame-rate-button {
   width: 92px;
   height: 32px;
   padding: 2px 9px 0;
@@ -3557,10 +3585,23 @@ body[data-stage-output="true"] #appearance-fullscreen-section {
 #language-button { width: 112px; }
 .language-picker { flex-basis: 112px; }
 
+.frame-rate-picker,
+#frame-rate-button { width: 124px; }
+.frame-rate-picker { flex-basis: 124px; }
+
+#frame-rate-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #ui-scale-button:hover,
 #ui-scale-button[aria-expanded="true"],
 #language-button:hover,
-#language-button[aria-expanded="true"] {
+#language-button[aria-expanded="true"],
+#frame-rate-button:hover,
+#frame-rate-button[aria-expanded="true"] {
   border-color: color-mix(in srgb, var(--accent) 48%, rgba(255,255,255,.15));
   background: color-mix(in srgb, var(--accent) 7%, rgba(3,5,13,.5));
 }
@@ -3581,10 +3622,12 @@ body[data-stage-output="true"] #appearance-fullscreen-section {
 }
 
 #ui-scale-button[aria-expanded="true"] .scale-chevron,
-#language-button[aria-expanded="true"] .scale-chevron { transform: rotate(180deg); }
+#language-button[aria-expanded="true"] .scale-chevron,
+#frame-rate-button[aria-expanded="true"] .scale-chevron { transform: rotate(180deg); }
 
 #ui-scale-menu,
-#language-menu {
+#language-menu,
+#frame-rate-menu {
   position: absolute;
   z-index: 24;
   top: calc(100% + 6px);
@@ -3602,12 +3645,15 @@ body[data-stage-output="true"] #appearance-fullscreen-section {
 }
 
 #language-menu { width: 112px; }
+#frame-rate-menu { width: 124px; }
 
 #ui-scale-menu[hidden],
-#language-menu[hidden] { display: none; }
+#language-menu[hidden],
+#frame-rate-menu[hidden] { display: none; }
 
 #ui-scale-menu .ui-scale-option,
-#language-menu .language-option {
+#language-menu .language-option,
+#frame-rate-menu .frame-rate-option {
   position: relative;
   display: flex;
   width: 100%;
@@ -3627,19 +3673,23 @@ body[data-stage-output="true"] #appearance-fullscreen-section {
 #ui-scale-menu .ui-scale-option:hover,
 #ui-scale-menu .ui-scale-option:focus-visible,
 #language-menu .language-option:hover,
-#language-menu .language-option:focus-visible {
+#language-menu .language-option:focus-visible,
+#frame-rate-menu .frame-rate-option:hover,
+#frame-rate-menu .frame-rate-option:focus-visible {
   background: rgba(255,255,255,.075);
   color: #fff;
 }
 
 #ui-scale-menu .ui-scale-option[aria-selected="true"],
-#language-menu .language-option[aria-selected="true"] {
+#language-menu .language-option[aria-selected="true"],
+#frame-rate-menu .frame-rate-option[aria-selected="true"] {
   background: color-mix(in srgb, var(--accent) 15%, rgba(255,255,255,.055));
   color: color-mix(in srgb, var(--accent) 24%, white);
 }
 
 #ui-scale-menu .ui-scale-option[aria-selected="true"]::after,
-#language-menu .language-option[aria-selected="true"]::after {
+#language-menu .language-option[aria-selected="true"]::after,
+#frame-rate-menu .frame-rate-option[aria-selected="true"]::after {
   content: "✓";
   color: var(--accent);
   font-size: 10px;
@@ -6863,8 +6913,8 @@ body[data-stage-output="true"] #fullscreen-controls {
 }
 
 body[data-stage-output="true"] #fps-counter {
-  left: 20px;
-  bottom: 20px;
+  left: 24px;
+  bottom: 24px;
   min-width: 62px;
   padding: 6px 8px 5px;
   font-size: 13px;

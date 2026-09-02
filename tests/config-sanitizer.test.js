@@ -7,6 +7,7 @@ const {
   normalizeAudioSourceId,
   normalizeClickThrough,
   normalizeDesktopLayer,
+  normalizeFrameRateLimit,
   normalizeIdleBehavior,
   normalizeIgnoredMediaSources,
   normalizeMediaSource,
@@ -42,6 +43,9 @@ test('experience settings keep conservative defaults and sanitize media sources'
   assert.equal(normalizeAudioSourceId(''), 'system');
   assert.equal(normalizeIdleBehavior('dim'), 'dim');
   assert.equal(normalizeIdleBehavior('unexpected'), 'keep');
+  assert.equal(normalizeFrameRateLimit('90'), '90');
+  assert.equal(normalizeFrameRateLimit(60), '60');
+  assert.equal(normalizeFrameRateLimit('unlimited'), 'display');
   assert.equal(normalizeMediaSource('  Spotify.exe  '), 'Spotify.exe');
   assert.deepEqual(
     normalizeIgnoredMediaSources([' Edge ', '', 'Edge', 'Spotify']),

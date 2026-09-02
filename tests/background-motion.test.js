@@ -183,24 +183,45 @@ test('Capsule lyrics truncate on one row while sweep overlays clip cleanly', () 
   assert.match(css, /body\[data-layout="side"\] #synced-lyrics[\s\S]*padding:\s*1px 14px 1px 0/);
 });
 
+test('lyrics keep only a restrained readability glow across visual families', () => {
+  assert.match(css, /--lyric-glow-near:\s*14%;[\s\S]*?--lyric-glow-far:\s*4%;/);
+  assert.match(css, /#lyric-current-fill-content\s*\{[\s\S]*?0 1px 2px rgba\(0,0,0,\.5\),[\s\S]*?0 0 2px color-mix[\s\S]*?0 0 4px color-mix/s);
+  assert.match(css, /\[data-mode="ambient"\][\s\S]*?\[data-mode="asmr"\][\s\S]*?\[data-mode="experimental"\][\s\S]*?\[data-family="classical"\][\s\S]*?\[data-family="jazz"\][\s\S]*?--lyric-glow-near:\s*0%;[\s\S]*?--lyric-glow-far:\s*0%;/);
+  const sweepOff = css.match(/#synced-lyrics\[data-sweep="off"\] :is\(#lyric-current-base, #lyric-translation-base\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(sweepOff, /filter:\s*none/);
+  assert.doesNotMatch(sweepOff, /drop-shadow/);
+  assert.match(css, /#synced-lyrics\[data-sweep="off"\] :is\(#lyric-current-fill, #lyric-translation-fill\)\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?visibility:\s*hidden;/);
+  const hardcoreMotion = css.match(/@keyframes lyric-hardcore-punch\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+  const hardstyleMotion = css.match(/@keyframes lyric-hardstyle-recoil\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.doesNotMatch(hardcoreMotion, /drop-shadow/);
+  assert.doesNotMatch(hardstyleMotion, /drop-shadow/);
+});
+
 test('genre fitting ignores animated impact copies when measuring long labels', () => {
-  assert.match(appSource, /const genreFace = genreLabel\.querySelector\('#genre-face'\);/);
+  assert.match(appSource, /const genreFace = document\.querySelector\('#genre-face'\);/);
   assert.match(appSource, /const renderedWidth = genreFace\?\.scrollWidth \|\| genreLabel\.scrollWidth;/);
 });
 
-test('capsule headlines use concise subtype labels and clip live paint at the visible edge', () => {
+test('capsule headlines use concise subtype labels and keep live paint clear of the visible edge', () => {
   for (const label of ['INDUSTRIAL', 'EUPHORIC', 'EXPERIMENTAL', 'PROGRESSIVE']) {
     assert.match(themesSource, new RegExp(`hudLabel: '${label}'`));
   }
   assert.match(appSource, /content\.theme\.hudLabel \|\| content\.theme\.label/);
   assert.match(css, /body\[data-layout="side"\] #hud\s*\{[^}]*right:\s*108px/s);
-  assert.match(css, /body\[data-layout="side"\] #genre\s*\{[^}]*clip-path:\s*inset\(-96px 0 -96px -96px\)/s);
+  assert.match(css, /body\[data-layout="side"\] #genre\s*\{[^}]*clip-path:\s*inset\(-96px\)/s);
+  assert.match(css, /#genre\s*\{[^}]*overflow:\s*visible;[^}]*filter:\s*none;/s);
+  assert.match(css, /#genre-face\s*\{[^}]*overflow:\s*visible;[^}]*filter:\s*brightness/s);
   assert.match(css, /body\[data-layout="side"\] :is\(#visualizer, #riff-strings\)\s*\{[^}]*clip-path:\s*inset\(48px 108px 48px 54px round 152px\)/s);
 });
 
 test('genre ink is centered between the parent label and progress rule', () => {
   assert.match(appSource, /const targetCenter = \(parentInk\.bottom \+ ruleTop\) \/ 2;/);
   assert.match(appSource, /const currentCenter = \(genreInk\.top \+ genreInk\.bottom\) \/ 2;/);
+  assert.match(appSource, /const stackedFullscreen = document\.body\.dataset\.stageOutput === 'true'[\s\S]*?document\.body\.dataset\.fullscreenLayout === 'stacked';/);
+  assert.match(appSource, /const capsuleLayout = document\.body\.dataset\.layout !== 'poster' && !stackedFullscreen;/);
+  assert.match(appSource, /const offsetLimit = stackedFullscreen \? 20 : 12;[\s\S]*?clamp\(\(targetCenter - currentCenter\) \/ uiScale, -offsetLimit, offsetLimit\)/);
+  assert.match(appSource, /const lockStackedGenreCenter = stageOutputActive && fullscreenLayoutMode === 'stacked';[\s\S]*?playbackActive && !lockStackedGenreCenter/);
+  assert.match(appSource, /if \(lockStackedGenreCenter\) \{\s*genreLiftValue = 0;/);
   assert.match(appSource, /--genre-balance-y/);
   assert.match(css, /translateY\(calc\(3px \+ var\(--genre-balance-y, 0px\) \+ var\(--genre-lift, 0px\)\)\)/);
 });
@@ -405,20 +426,30 @@ test('track copy avoids rectangular HUD and row shadow layers', () => {
   );
 });
 
-test('fullscreen keeps foreground resolution while throttling only ambient backdrop writes', () => {
-  assert.match(appSource, /const backdropStyleDue = !stageOutputActive[\s\S]*time - lastFullscreenBackdropStyleAt >= 1000 \/ 20/);
+test('foreground rendering stays native while dynamic CSS writes are bounded in every layout', () => {
+  assert.match(appSource, /const backdropStyleDue = !lastBackdropStyleAt[\s\S]*time - lastBackdropStyleAt >= 1000 \/ 20/);
+  assert.match(appSource, /const foregroundStyleDue = !lastForegroundStyleAt[\s\S]*time - lastForegroundStyleAt >= 1000 \/ 60/);
+  assert.match(appSource, /const lyricStyleDue = !lastLyricStyleAt[\s\S]*time - lastLyricStyleAt >= 1000 \/ 60/);
+  assert.match(appSource, /genreLabel\.style\.transform = nextGenreTransform/);
+  assert.match(appSource, /genreFace\.style\.filter = nextGenreFilter/);
+  assert.doesNotMatch(appSource, /setDynamicStyleProperty\(genreLabel, '--genre-(?:scale|lift|glow|brightness|saturation)'/);
+  assert.match(appSource, /if \(values\.get\(name\) === normalizedValue\) return;/);
   assert.match(appSource, /backgroundStyle === 'themed' && backdropStyleDue/);
+  assert.doesNotMatch(appSource, /const backdropStyleDue = !stageOutputActive/);
   assert.doesNotMatch(appSource, /minimumFrameInterval[\s\S]{0,180}stageOutputActive/);
   assert.match(
     css,
     /body\[data-stage-output="true"\]\[data-background-style="themed"\] \.themed-backdrop\[data-mode="house"\]::before[\s\S]*?repeating-conic-gradient\(from 0deg[\s\S]*?transform: rotate\(var\(--poster-phase-quarter\)\) translateZ\(0\);[\s\S]*?will-change: transform, opacity;/
   );
   assert.match(visualSource, /this\.outputResolutionScale = 1;[\s\S]*?this\.effectiveResolutionScale = 1;/);
-  assert.match(visualSource, /this\.dpr = Math\.max\(1, nativeDpr \* this\.outputResolutionScale\);/);
+  assert.match(visualSource, /const nativeDpr = presentationPixelRatio\(\{[\s\S]*?designWidth: this\.width,[\s\S]*?renderedWidth,[\s\S]*?devicePixelRatio: window\.devicePixelRatio \|\| 1/);
+  assert.match(visualSource, /this\.dpr = adaptivePixelRatio\(nativeDpr, this\.outputResolutionScale\);/);
+  assert.match(appSource, /function applyUiScale\(value\)[\s\S]*?visual\.resize\(\);/);
+  assert.match(appSource, /const renderedWidth = riffStrings\.getBoundingClientRect\(\)\.width;[\s\S]*?presentationPixelRatio\(\{[\s\S]*?designWidth: width,[\s\S]*?renderedWidth,[\s\S]*?devicePixelRatio: window\.devicePixelRatio \|\| 1/);
   assert.match(visualSource, /setOutputResolutionScale\(value\)[\s\S]*?clamp\(Number\(value\) \|\| 1, 0\.75, 1\)[\s\S]*?this\.resize\(\);/);
   assert.match(visualSource, /applyImpactPostFx\(x, y, theme, metrics\)[\s\S]*?document\.body\.dataset\.stageOutput === 'true'\) return;/);
-  assert.match(appSource, /const gpuLimitedDrop = fps < 57\.5[\s\S]*?adaptiveLowFpsWindows >= 2[\s\S]*?visual\.setOutputResolutionScale\(nextScale\)/);
-  assert.match(appSource, /renderPerformanceWarmupUntil = time \+ 1200[\s\S]*?const comfortablyStable = fps > 58[\s\S]*?adaptiveHighFpsWindows >= 20/);
+  assert.match(appSource, /const targetFps = performanceTargetFps\(frameRateLimit\);[\s\S]*?const gpuLimitedDrop = fps < targetFps \* 0\.958[\s\S]*?adaptiveLowFpsWindows >= 2[\s\S]*?visual\.setOutputResolutionScale\(nextScale\)/);
+  assert.match(appSource, /renderPerformanceWarmupUntil = time \+ 1200[\s\S]*?const comfortablyStable = fps > targetFps \* 0\.966[\s\S]*?adaptiveHighFpsWindows >= 20/);
   assert.match(appSource, /adaptiveResolutionProfiles\.get\(renderPerformanceContext\)[\s\S]*?adaptiveResolutionProfiles\.set\(renderPerformanceContext, nextScale\)/);
   assert.match(appSource, /const resolutionLevels = stageOutputActive[\s\S]*?\[1, 0\.9, 0\.82, 0\.76\][\s\S]*?\[1, 0\.9, 0\.82\]/);
 });

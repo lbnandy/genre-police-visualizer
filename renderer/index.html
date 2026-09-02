@@ -499,29 +499,6 @@
         </div>
         </div>
         <div class="settings-section">
-        <div class="settings-section-title" role="heading" aria-level="3" data-i18n="settings.sectionIdle">无音乐时</div>
-        <div class="settings-layout-row settings-idle-row">
-          <div class="settings-toggle-copy">
-            <span id="idle-behavior-label" class="settings-label" data-i18n="settings.idleBehavior">无音乐时</span>
-            <small data-i18n="settings.idleBehaviorHelp">播放停止后保持、变暗，或在 30 秒后隐藏画面。</small>
-          </div>
-          <div id="idle-behavior-group" class="layout-segment settings-three-segment" role="radiogroup" aria-labelledby="idle-behavior-label">
-            <button class="idle-behavior-option" type="button" role="radio" aria-checked="true" data-idle-behavior="keep" data-i18n="settings.idleKeep">保持</button>
-            <button class="idle-behavior-option" type="button" role="radio" aria-checked="false" data-idle-behavior="dim" data-i18n="settings.idleDim">变暗</button>
-            <button class="idle-behavior-option" type="button" role="radio" aria-checked="false" data-idle-behavior="hide" data-i18n="settings.idleHide">隐藏</button>
-          </div>
-        </div>
-        <div class="settings-toggle-row">
-          <div class="settings-toggle-copy">
-            <span id="idle-frame-limit-label" class="settings-label" data-i18n="settings.idleFrameLimit">空闲时降低帧率</span>
-            <small data-i18n="settings.idleFrameLimitHelp">无音乐时限制为 30 FPS，降低资源占用。</small>
-          </div>
-          <button id="idle-frame-limit-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="idle-frame-limit-label">
-            <span class="settings-switch-knob" aria-hidden="true"></span>
-          </button>
-        </div>
-        </div>
-        <div class="settings-section">
         <div class="settings-section-title" role="heading" aria-level="3" data-i18n="settings.sectionTrackInfo">曲目信息</div>
         <div class="media-source-settings">
           <span id="media-source-label" class="settings-label" data-i18n="settings.mediaSource">曲目信息来源</span>
@@ -547,6 +524,53 @@
             <small data-i18n="settings.ignoredPlayersHelp">被忽略的来源不会被自动选择。</small>
           </div>
           <div id="media-source-ignore-list" class="media-source-ignore-list"></div>
+        </div>
+        </div>
+        <div class="settings-section">
+        <div class="settings-section-title" role="heading" aria-level="3" data-i18n="settings.sectionIdle">无音乐时</div>
+        <div class="settings-layout-row settings-idle-row">
+          <div class="settings-toggle-copy">
+            <span id="idle-behavior-label" class="settings-label" data-i18n="settings.idleBehavior">无音乐时</span>
+            <small data-i18n="settings.idleBehaviorHelp">播放停止后保持、变暗，或在 30 秒后隐藏画面。</small>
+          </div>
+          <div id="idle-behavior-group" class="layout-segment settings-three-segment" role="radiogroup" aria-labelledby="idle-behavior-label">
+            <button class="idle-behavior-option" type="button" role="radio" aria-checked="true" data-idle-behavior="keep" data-i18n="settings.idleKeep">保持</button>
+            <button class="idle-behavior-option" type="button" role="radio" aria-checked="false" data-idle-behavior="dim" data-i18n="settings.idleDim">变暗</button>
+            <button class="idle-behavior-option" type="button" role="radio" aria-checked="false" data-idle-behavior="hide" data-i18n="settings.idleHide">隐藏</button>
+          </div>
+        </div>
+        <div class="settings-toggle-row">
+          <div class="settings-toggle-copy">
+            <span id="idle-frame-limit-label" class="settings-label" data-i18n="settings.idleFrameLimit">空闲时降低帧率</span>
+            <small data-i18n="settings.idleFrameLimitHelp">无音乐时限制为 30 FPS，降低资源占用。</small>
+          </div>
+          <button id="idle-frame-limit-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="idle-frame-limit-label">
+            <span class="settings-switch-knob" aria-hidden="true"></span>
+          </button>
+        </div>
+        </div>
+        <div class="settings-section">
+        <div class="settings-section-title" role="heading" aria-level="3" data-i18n="settings.sectionPerformance">帧率</div>
+        <div class="settings-layout-row settings-frame-rate-row">
+          <div class="settings-toggle-copy">
+            <span id="frame-rate-limit-label" class="settings-label" data-i18n="settings.frameRateLimit">帧率上限</span>
+            <small id="frame-rate-limit-help" data-i18n="settings.frameRateLimitHelp">限制播放时的渲染帧率；跟随显示器最流畅。</small>
+          </div>
+          <div class="frame-rate-picker">
+            <button id="frame-rate-button" type="button" aria-labelledby="frame-rate-limit-label frame-rate-value" aria-describedby="frame-rate-limit-help" aria-haspopup="listbox" aria-expanded="false">
+              <span id="frame-rate-value">跟随显示器</span>
+              <svg class="scale-chevron" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="m3 4.5 3 3 3-3" />
+              </svg>
+            </button>
+            <div id="frame-rate-menu" role="listbox" aria-labelledby="frame-rate-limit-label" hidden>
+              <button class="frame-rate-option" type="button" role="option" data-frame-rate="display" data-i18n="settings.frameRateDisplay">跟随显示器</button>
+              <button class="frame-rate-option" type="button" role="option" data-frame-rate="120">120 FPS</button>
+              <button class="frame-rate-option" type="button" role="option" data-frame-rate="90">90 FPS</button>
+              <button class="frame-rate-option" type="button" role="option" data-frame-rate="60">60 FPS</button>
+              <button class="frame-rate-option" type="button" role="option" data-frame-rate="30">30 FPS</button>
+            </div>
+          </div>
         </div>
         </div>
         </section>
@@ -590,6 +614,37 @@
             <span class="settings-switch-knob" aria-hidden="true"></span>
           </button>
         </div>
+        <details id="settings-sources-panel" class="settings-disclosure settings-sources-disclosure">
+          <summary>
+            <span class="settings-disclosure-copy">
+              <span class="settings-label" data-i18n="settings.advancedSources">高级在线数据源</span>
+              <small data-i18n="settings.advancedSourcesHelp">可选。使用自己的密钥提高冷门子曲风匹配率。</small>
+            </span>
+            <svg class="settings-disclosure-chevron" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="m3 4.5 3 3 3-3" />
+            </svg>
+          </summary>
+          <div class="settings-disclosure-content">
+        <div class="lastfm-settings">
+          <label for="lastfm-key" data-i18n="settings.lastfmLabel">Last.fm API Key（可选）</label>
+          <div class="settings-row">
+            <input id="lastfm-key" type="password" autocomplete="off" placeholder="留空也可使用其他来源" data-i18n-placeholder="settings.lastfmPlaceholder" />
+          </div>
+          <small data-i18n="settings.lastfmHelp">提高子曲风匹配率；密钥仅保存在本机。在线查询不上传音频。</small>
+        </div>
+        <div class="discogs-settings">
+          <label for="discogs-token" data-i18n="settings.discogsLabel">Discogs Token（可选）</label>
+          <div class="settings-row">
+            <input id="discogs-token" type="password" autocomplete="off" placeholder="查询发行物和 Style" data-i18n-placeholder="settings.discogsPlaceholder" />
+          </div>
+          <small data-i18n="settings.discogsHelp">用于严格匹配发行物和子曲风；令牌仅保存在本机。</small>
+        </div>
+        <div class="settings-inline-action-row">
+          <button id="credentials-save" class="settings-action-button" type="button" data-i18n="actions.applyKeys">应用密钥</button>
+          <span id="credentials-state" role="status"></span>
+        </div>
+          </div>
+        </details>
         </div>
         <div class="settings-section">
         <div class="settings-section-title" role="heading" aria-level="3" data-i18n="settings.sectionCorrections">修正与自定义</div>
@@ -760,37 +815,6 @@
           </div>
           <small id="genre-data-state" role="status"></small>
         </div>
-        <details id="settings-sources-panel" class="settings-disclosure settings-sources-disclosure">
-          <summary>
-            <span class="settings-disclosure-copy">
-              <span class="settings-label" data-i18n="settings.advancedSources">高级数据源</span>
-              <small data-i18n="settings.advancedSourcesHelp">可选。使用自己的密钥提高冷门子曲风匹配率。</small>
-            </span>
-            <svg class="settings-disclosure-chevron" viewBox="0 0 12 12" aria-hidden="true">
-              <path d="m3 4.5 3 3 3-3" />
-            </svg>
-          </summary>
-          <div class="settings-disclosure-content">
-        <div class="lastfm-settings">
-          <label for="lastfm-key" data-i18n="settings.lastfmLabel">Last.fm API Key（可选）</label>
-          <div class="settings-row">
-            <input id="lastfm-key" type="password" autocomplete="off" placeholder="留空也可使用其他来源" data-i18n-placeholder="settings.lastfmPlaceholder" />
-          </div>
-          <small data-i18n="settings.lastfmHelp">提高子曲风匹配率；密钥仅保存在本机。在线查询不上传音频。</small>
-        </div>
-        <div class="discogs-settings">
-          <label for="discogs-token" data-i18n="settings.discogsLabel">Discogs Token（可选）</label>
-          <div class="settings-row">
-            <input id="discogs-token" type="password" autocomplete="off" placeholder="查询发行物和 Style" data-i18n-placeholder="settings.discogsPlaceholder" />
-          </div>
-          <small data-i18n="settings.discogsHelp">用于严格匹配发行物和子曲风；令牌仅保存在本机。</small>
-        </div>
-        <div class="settings-inline-action-row">
-          <button id="credentials-save" class="settings-action-button" type="button" data-i18n="actions.applyKeys">应用密钥</button>
-          <span id="credentials-state" role="status"></span>
-        </div>
-          </div>
-        </details>
         </div>
         </section>
         <section id="settings-pane-app" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-app" data-settings-pane="app" hidden>
@@ -836,14 +860,6 @@
         </div>
         <div class="settings-section">
         <div class="settings-section-title" role="heading" aria-level="3" data-i18n="settings.sectionCapture">录制与保存</div>
-        <div class="recording-settings-row">
-          <div class="settings-toggle-copy">
-            <span class="settings-label" data-i18n="settings.videoRecording">视频录制</span>
-            <small data-i18n="settings.videoRecordingHelp">把当前可视化和系统声音保存为视频。</small>
-          </div>
-          <button id="recording-start-stop" class="settings-action-button" type="button" data-i18n="actions.startRecording">开始录制</button>
-          <small id="recording-state" role="status" aria-live="polite"></small>
-        </div>
         <div class="recording-settings-row snapshot-settings-row">
           <div class="settings-toggle-copy">
             <span class="settings-label" data-i18n="settings.snapshot">保存当前画面</span>
@@ -851,6 +867,14 @@
           </div>
           <button id="snapshot-save-button" class="settings-action-button" type="button" data-i18n="actions.saveSnapshot">保存画面</button>
           <small id="snapshot-state" role="status" aria-live="polite"></small>
+        </div>
+        <div class="recording-settings-row">
+          <div class="settings-toggle-copy">
+            <span class="settings-label" data-i18n="settings.videoRecording">视频录制</span>
+            <small data-i18n="settings.videoRecordingHelp">把当前可视化和系统声音保存为视频。</small>
+          </div>
+          <button id="recording-start-stop" class="settings-action-button" type="button" data-i18n="actions.startRecording">开始录制</button>
+          <small id="recording-state" role="status" aria-live="polite"></small>
         </div>
         </div>
         <div class="settings-section">

@@ -7,6 +7,7 @@ import {
   genreTopFrequencyGap,
   mapFrequencyOutsideTopGap
 } from './spectrum-layout.mjs';
+import { adaptivePixelRatio, presentationPixelRatio } from './output-resolution.mjs';
 
 const TAU = Math.PI * 2;
 
@@ -99,6 +100,11 @@ export class VisualEngine {
     this.synthSceneLastAt = 0;
     this.synthCapsuleHorizonY = 0;
     this.synthCapsuleHorizonMeasuredAt = 0;
+    this.framePointBuffers = [];
+    this.frameNumberBuffers = [];
+    this.framePointBufferIndex = 0;
+    this.frameNumberBufferIndex = 0;
+    this.frequencyLayoutScratch = {};
     this.asmrReference = 0.035;
     this.bilibiliVoiceActivity = 0;
     this.bilibiliSectionDrive = 0;
@@ -145,16 +151,17 @@ export class VisualEngine {
     this.width = Math.max(1, this.canvas.clientWidth);
     this.height = Math.max(1, this.canvas.clientHeight);
     const renderedWidth = this.canvas.getBoundingClientRect().width;
-    const outputScale = document.body.dataset.stageOutput === 'true'
-      ? Math.max(1, renderedWidth / this.width)
-      : 1;
-    // Fullscreen enlarges the fixed design canvas with a CSS transform. Match
-    // that transform in the backing store so it is not upscaled as a bitmap.
-    const nativeDpr = Math.min(3, (window.devicePixelRatio || 1) * outputScale);
+    // Match the backing store to the presentation's physical pixel footprint.
+    // Small presets no longer retain the larger design-canvas resolution.
+    const nativeDpr = presentationPixelRatio({
+      designWidth: this.width,
+      renderedWidth,
+      devicePixelRatio: window.devicePixelRatio || 1
+    });
     // Keep CSS geometry and the HUD at native resolution. Only the animated
     // canvas backing store may step down when sustained compositor pressure is
-    // detected; a 1x floor prevents small desktop layouts from becoming soft.
-    this.dpr = Math.max(1, nativeDpr * this.outputResolutionScale);
+    // detected.
+    this.dpr = adaptivePixelRatio(nativeDpr, this.outputResolutionScale);
     this.effectiveResolutionScale = this.dpr / nativeDpr;
     const layoutStyles = getComputedStyle(this.canvas);
     this.centerX = Number.parseFloat(layoutStyles.getPropertyValue('--visual-center-x'));
@@ -356,10 +363,41 @@ export class VisualEngine {
     return clamp(total / weightTotal, -1, 1);
   }
 
+  resetFrameScratch() {
+    this.framePointBufferIndex = 0;
+    this.frameNumberBufferIndex = 0;
+  }
+
+  takeFramePointBuffer(length = 0) {
+    const bufferIndex = this.framePointBufferIndex++;
+    let buffer = this.framePointBuffers[bufferIndex];
+    if (!buffer) {
+      buffer = [];
+      this.framePointBuffers[bufferIndex] = buffer;
+    }
+    while (buffer.length < length) buffer.push({});
+    buffer.length = length;
+    return buffer;
+  }
+
+  takeFrameNumberBuffer(length = 0) {
+    const bufferIndex = this.frameNumberBufferIndex++;
+    let buffer = this.frameNumberBuffers[bufferIndex];
+    if (!buffer) {
+      buffer = [];
+      this.frameNumberBuffers[bufferIndex] = buffer;
+    }
+    while (buffer.length < length) buffer.push(0);
+    buffer.length = length;
+    return buffer;
+  }
+
   spectrumPoints(x, y, metrics, options = {}) {
     const points = options.points || 96;
     const profile = options.profile || this.updateSpectrumProfile(metrics, Math.floor(points / 2) + 1);
-    const sortedProfile = Array.from(profile).sort((a, b) => a - b);
+    const sortedProfile = this.takeFrameNumberBuffer(profile.length);
+    for (let index = 0; index < profile.length; index += 1) sortedProfile[index] = profile[index];
+    sortedProfile.sort((a, b) => a - b);
     const percentile = (ratio) => sortedProfile[Math.min(sortedProfile.length - 1, Math.floor((sortedProfile.length - 1) * ratio))] || 0;
     const spectralFloor = percentile(options.floorPercentile ?? 0.22);
     const spectralCeiling = Math.max(spectralFloor + 0.08, percentile(options.ceilingPercentile ?? 0.94));
@@ -395,6 +433,10 @@ export class VisualEngine {
     };
     const topGapHalfRatio = options.topFrequencyGapRatio ?? (15 / 180);
     const topGapFeather = options.topFrequencyGapFeather ?? (5 / 180);
+    const frequencyLayoutOptions = {
+      halfGapRatio: topGapHalfRatio,
+      featherRatio: topGapFeather
+    };
     const lowContourEnd = Math.max(1, Math.ceil((profile.length - 1) * 0.14));
     let lowContourEnergy = 0;
     for (let profileIndex = 0; profileIndex <= lowContourEnd; profileIndex += 1) {
@@ -433,17 +475,18 @@ export class VisualEngine {
           options.catEarMaxAngle ?? 0.76
         )
         : options.catEarAngle ?? 0.48;
-    const output = [];
+    const output = this.takeFramePointBuffer(points);
     for (let index = 0; index < points; index += 1) {
       const ratio = index / points;
       // Leave a real, frequency-free zone around twelve o'clock. Each edge of
       // that zone starts again at the lowest band, then both mirrored halves
       // progress toward the highest band at the bottom of the circle.
       const spatialFrequencyRatio = ratio <= 0.5 ? ratio * 2 : (1 - ratio) * 2;
-      const frequencyLayout = mapFrequencyOutsideTopGap(spatialFrequencyRatio, {
-        halfGapRatio: topGapHalfRatio,
-        featherRatio: topGapFeather
-      });
+      const frequencyLayout = mapFrequencyOutsideTopGap(
+        spatialFrequencyRatio,
+        frequencyLayoutOptions,
+        this.frequencyLayoutScratch
+      );
       const frequencyRatio = frequencyLayout.frequencyRatio;
       let profileIndex = frequencyRatio * (profile.length - 1);
       if (options.sectorBins) profileIndex = Math.round(profileIndex / options.sectorBins) * options.sectorBins;
@@ -641,36 +684,41 @@ export class VisualEngine {
       const drawAngle = angle + (options.spiralTwist || 0)
         * (spectrum * 0.78 + waveform * 0.22)
         * (0.45 + Math.max(0, radius - shapedBaseRadius) / Math.max(1, options.amplitude || 30));
-      output.push({
-        x: x + (options.offsetX || 0) + Math.cos(drawAngle) * radius,
-        y: y + (options.offsetY || 0) + Math.sin(drawAngle) * radius,
-        angle: drawAngle,
-        sourceAngle: angle,
-        radius,
-        catEar: catEar + catEarRootBridge,
-        catNotch,
-        sharp: catEarApex,
-        baseRadius: shapedBaseRadius,
-        spectrum,
-        frequencyRatio
-      });
+      const point = output[index];
+      point.x = x + (options.offsetX || 0) + Math.cos(drawAngle) * radius;
+      point.y = y + (options.offsetY || 0) + Math.sin(drawAngle) * radius;
+      point.angle = drawAngle;
+      point.sourceAngle = angle;
+      point.radius = radius;
+      point.catEar = catEar + catEarRootBridge;
+      point.catNotch = catNotch;
+      point.sharp = catEarApex;
+      point.baseRadius = shapedBaseRadius;
+      point.spectrum = spectrum;
+      point.frequencyRatio = frequencyRatio;
     }
     if (options.topFrequencyGapMatchLowerAverage && topGapHalfRatio > 0 && output.length > 5) {
-      const lowerHalf = output.filter((point) => Math.sin(point.sourceAngle) > 0);
-      const lowerAverageRadius = lowerHalf.reduce((total, point) => total + point.radius, 0)
-        / Math.max(1, lowerHalf.length);
-      const shoulderPeak = { left: lowerAverageRadius, right: lowerAverageRadius };
+      let lowerRadiusTotal = 0;
+      let lowerRadiusCount = 0;
+      for (const point of output) {
+        if (Math.sin(point.sourceAngle) <= 0) continue;
+        lowerRadiusTotal += point.radius;
+        lowerRadiusCount += 1;
+      }
+      const lowerAverageRadius = lowerRadiusTotal / Math.max(1, lowerRadiusCount);
+      let leftShoulderPeak = lowerAverageRadius;
+      let rightShoulderPeak = lowerAverageRadius;
       const shoulderSearchEnd = topGapHalfRatio + Math.max(topGapFeather * 3.1, 0.065);
-      output.forEach((point) => {
+      for (const point of output) {
         const topRelative = Math.atan2(
           Math.sin(point.sourceAngle + Math.PI / 2),
           Math.cos(point.sourceAngle + Math.PI / 2)
         );
         const topDistanceRatio = Math.abs(topRelative) / Math.PI;
-        if (topDistanceRatio < topGapHalfRatio || topDistanceRatio > shoulderSearchEnd) return;
-        const side = topRelative < 0 ? 'left' : 'right';
-        shoulderPeak[side] = Math.max(shoulderPeak[side], point.radius);
-      });
+        if (topDistanceRatio < topGapHalfRatio || topDistanceRatio > shoulderSearchEnd) continue;
+        if (topRelative < 0) leftShoulderPeak = Math.max(leftShoulderPeak, point.radius);
+        else rightShoulderPeak = Math.max(rightShoulderPeak, point.radius);
+      }
       const audioPresence = smoothstep(
         options.topGapPresenceFloor ?? 0.025,
         options.topGapPresenceCeiling ?? 0.18,
@@ -679,7 +727,7 @@ export class VisualEngine {
           + (metrics.mid || 0) * 0.18
       );
       const shapeFeather = Math.max(topGapFeather, 0.001);
-      output.forEach((point) => {
+      for (const point of output) {
         const topRelative = Math.atan2(
           Math.sin(point.sourceAngle + Math.PI / 2),
           Math.cos(point.sourceAngle + Math.PI / 2)
@@ -691,16 +739,16 @@ export class VisualEngine {
           topDistanceRatio
         );
         const blend = matchEnvelope * audioPresence;
-        const side = topRelative < 0 ? 'left' : 'right';
+        const shoulderPeak = topRelative < 0 ? leftShoulderPeak : rightShoulderPeak;
         const valleyProgress = smoothstep(0, topGapHalfRatio, topDistanceRatio);
         const curvedTarget = lowerAverageRadius + Math.max(
           0,
-          shoulderPeak[side] - lowerAverageRadius
+          shoulderPeak - lowerAverageRadius
         ) * valleyProgress * (options.topFrequencyGapValleyCurve || 0);
         point.radius += (curvedTarget - point.radius) * blend;
         point.x = x + (options.offsetX || 0) + Math.cos(point.angle) * point.radius;
         point.y = y + (options.offsetY || 0) + Math.sin(point.angle) * point.radius;
-      });
+      }
     }
     if ((options.topFrequencyGapWaveAmplitude || 0) > 0 && topGapHalfRatio > 0) {
       const signal = clamp(
@@ -709,13 +757,13 @@ export class VisualEngine {
           + (metrics.mid || 0) * 0.15
       );
       const signalGate = smoothstep(0.008, 0.075, signal);
-      output.forEach((point) => {
+      for (const point of output) {
         const topRelative = Math.atan2(
           Math.sin(point.sourceAngle + Math.PI / 2),
           Math.cos(point.sourceAngle + Math.PI / 2)
         );
         const topDistanceRatio = Math.abs(topRelative) / Math.PI;
-        if (topDistanceRatio > topGapHalfRatio) return;
+        if (topDistanceRatio > topGapHalfRatio) continue;
         const localRatio = clamp(topRelative / (topGapHalfRatio * Math.PI) * 0.5 + 0.5);
         const edgeFade = 1 - smoothstep(0.82, 1, topDistanceRatio / topGapHalfRatio);
         const wave = this.waveformAt(
@@ -729,7 +777,7 @@ export class VisualEngine {
           * (0.72 + edgeFade * 0.28);
         point.x = x + (options.offsetX || 0) + Math.cos(point.angle) * point.radius;
         point.y = y + (options.offsetY || 0) + Math.sin(point.angle) * point.radius;
-      });
+      }
     }
     if ((options.topFrequencyGapNotchGuard || 0) > 0 && topGapHalfRatio > 0 && output.length > 7) {
       const signal = clamp(
@@ -739,7 +787,8 @@ export class VisualEngine {
       );
       const signalGate = smoothstep(0.008, 0.065, signal);
       if (signalGate > 0) {
-        const sourceRadii = output.map((point) => point.radius);
+        const sourceRadii = this.takeFrameNumberBuffer(output.length);
+        for (let index = 0; index < output.length; index += 1) sourceRadii[index] = output[index].radius;
         const boundaryOffset = topGapHalfRatio * output.length / 2;
         const indexAt = (offset, side) => side > 0
           ? (offset + output.length) % output.length
@@ -771,7 +820,8 @@ export class VisualEngine {
       );
       const signalGate = smoothstep(0.008, 0.065, signal);
       if (signalGate > 0) {
-        const sourceRadii = output.map((point) => point.radius);
+        const sourceRadii = this.takeFrameNumberBuffer(output.length);
+        for (let index = 0; index < output.length; index += 1) sourceRadii[index] = output[index].radius;
         const halfCount = output.length / 2;
         const boundaryOffset = topGapHalfRatio * halfCount;
         const innerOffset = Math.max(0, Math.floor(
@@ -812,9 +862,11 @@ export class VisualEngine {
       }
     }
     if ((options.topFrequencyGapShoulderSmoothing || 0) > 0 && output.length > 9) {
-      const sourceRadii = output.map((point) => point.radius);
+      const sourceRadii = this.takeFrameNumberBuffer(output.length);
+      for (let index = 0; index < output.length; index += 1) sourceRadii[index] = output[index].radius;
       const windowRadius = 4;
-      const smoothedRadii = sourceRadii.map((radius, index) => {
+      const smoothedRadii = this.takeFrameNumberBuffer(output.length);
+      for (let index = 0; index < sourceRadii.length; index += 1) {
         let total = 0;
         let weightTotal = 0;
         for (let offset = -windowRadius; offset <= windowRadius; offset += 1) {
@@ -823,9 +875,10 @@ export class VisualEngine {
           total += sourceRadii[wrapped] * weight;
           weightTotal += weight;
         }
-        return total / weightTotal;
-      });
-      output.forEach((point, index) => {
+        smoothedRadii[index] = total / weightTotal;
+      }
+      for (let index = 0; index < output.length; index += 1) {
+        const point = output[index];
         const topDistanceRatio = Math.abs(Math.atan2(
           Math.sin(point.sourceAngle + Math.PI / 2),
           Math.cos(point.sourceAngle + Math.PI / 2)
@@ -849,16 +902,17 @@ export class VisualEngine {
         point.radius = point.radius * (1 - blend) + smoothedRadii[index] * blend;
         point.x = x + (options.offsetX || 0) + Math.cos(point.angle) * point.radius;
         point.y = y + (options.offsetY || 0) + Math.sin(point.angle) * point.radius;
-      });
+      }
     }
     if (options.radialSmooth && output.length > 5) {
       const smoothing = typeof options.radialSmooth === 'object' ? options.radialSmooth : {};
       const windowRadius = smoothing.window ?? 4;
       const passes = smoothing.passes ?? 2;
       const blend = smoothing.blend ?? 0.88;
-      let radii = output.map((point) => point.radius);
+      let radii = this.takeFrameNumberBuffer(output.length);
+      let next = this.takeFrameNumberBuffer(output.length);
+      for (let index = 0; index < output.length; index += 1) radii[index] = output[index].radius;
       for (let pass = 0; pass < passes; pass += 1) {
-        const next = new Array(radii.length);
         for (let index = 0; index < radii.length; index += 1) {
           let total = 0;
           let weightTotal = 0;
@@ -871,19 +925,22 @@ export class VisualEngine {
           const average = total / weightTotal;
           next[index] = radii[index] * (1 - blend) + average * blend;
         }
+        const previous = radii;
         radii = next;
+        next = previous;
       }
-      output.forEach((point, index) => {
+      for (let index = 0; index < output.length; index += 1) {
+        const point = output[index];
         point.radius = radii[index];
         point.x = x + (options.offsetX || 0) + Math.cos(point.angle) * point.radius;
         point.y = y + (options.offsetY || 0) + Math.sin(point.angle) * point.radius;
-      });
+      }
     }
-    output.forEach((point) => {
+    for (const point of output) {
       point.radius += (point.catEar || 0) - (point.catNotch || 0);
       point.x = x + (options.offsetX || 0) + Math.cos(point.angle) * point.radius;
       point.y = y + (options.offsetY || 0) + Math.sin(point.angle) * point.radius;
-    });
+    }
     return output;
   }
 
@@ -1753,15 +1810,17 @@ export class VisualEngine {
     const innerRadiusFor = (point) => point.baseRadius - (options.thickness || 20)
       + (point.radius - point.baseRadius) * (options.innerFollow ?? 0.32)
       - point.spectrum * (options.innerResponse || 3);
-    const inner = [...outer].reverse().map((point) => {
+    const inner = this.takeFramePointBuffer(outer.length);
+    for (let index = 0; index < outer.length; index += 1) {
+      const point = outer[outer.length - 1 - index];
       const radius = innerRadiusFor(point);
-      return {
-        x: x + Math.cos(point.angle) * radius,
-        y: y + Math.sin(point.angle) * radius,
-        radius,
-        angle: point.angle
-      };
-    });
+      const innerPoint = inner[index];
+      innerPoint.x = x + Math.cos(point.angle) * radius;
+      innerPoint.y = y + Math.sin(point.angle) * radius;
+      innerPoint.radius = radius;
+      innerPoint.angle = point.angle;
+      innerPoint.sharp = false;
+    }
 
     // Trance uses the sampled spectrum only as an invisible geometry field for
     // its vortex. The spiral, stardust and aperture now carry the full visual,
@@ -1840,12 +1899,16 @@ export class VisualEngine {
 
     if (options.chroma && pulse > 0.15) {
       const split = (pulse - 0.1) * 3.2;
-      for (const layer of [
-        { dx: -split, dy: split * 0.28, color: theme.accent },
-        { dx: split, dy: -split * 0.28, color: theme.accent2 }
-      ]) {
-        const shifted = outer.map((point) => ({ x: point.x + layer.dx, y: point.y + layer.dy }));
-        this.strokeGlow(layer.color, 0.8 + pulse, 10, 0.06 + pulse * 0.18);
+      for (let layerIndex = 0; layerIndex < 2; layerIndex += 1) {
+        const dx = layerIndex ? split : -split;
+        const dy = layerIndex ? -split * 0.28 : split * 0.28;
+        const shifted = this.takeFramePointBuffer(outer.length);
+        for (let index = 0; index < outer.length; index += 1) {
+          shifted[index].x = outer[index].x + dx;
+          shifted[index].y = outer[index].y + dy;
+          shifted[index].sharp = false;
+        }
+        this.strokeGlow(layerIndex ? theme.accent2 : theme.accent, 0.8 + pulse, 10, 0.06 + pulse * 0.18);
         this.tracePoints(shifted, true, options.smoothPath);
         ctx.stroke();
       }
@@ -1869,11 +1932,15 @@ export class VisualEngine {
     // Internal ridges show the band as a volume instead of one flat outline.
     const ridgeDepths = options.ridgeDepths ?? materialProfile.ridges;
     for (const [ridgeIndex, depth] of ridgeDepths.entries()) {
-      const ridge = outer.map((point) => {
+      const ridge = this.takeFramePointBuffer(outer.length);
+      for (let index = 0; index < outer.length; index += 1) {
+        const point = outer[index];
         const innerRadius = innerRadiusFor(point);
         const radius = innerRadius + (point.radius - innerRadius) * depth;
-        return { x: x + Math.cos(point.angle) * radius, y: y + Math.sin(point.angle) * radius };
-      });
+        ridge[index].x = x + Math.cos(point.angle) * radius;
+        ridge[index].y = y + Math.sin(point.angle) * radius;
+        ridge[index].sharp = false;
+      }
       this.strokeGlow(
         ridgeIndex === 1 ? theme.accent2 : theme.accent,
         0.55 + ridgeIndex * 0.12,
@@ -1895,7 +1962,7 @@ export class VisualEngine {
 
     if (!options.hideInnerEdge) {
       this.strokeGlow(theme.accent2, 0.75, 8, 0.22 + metrics.mid * 0.2);
-      this.tracePoints([...inner].reverse(), true, options.smoothPath);
+      this.tracePoints(inner, true, options.smoothPath);
       ctx.stroke();
     }
 
@@ -4422,30 +4489,41 @@ export class VisualEngine {
       scale = 1, offset = 0, shiftX = 0, shiftY = 0,
       phase = 0, lobes = 0, waveAmount = 0,
       teeth = 0, toothThreshold = 0.7, toothAmount = 0
-    } = {}) => (spectrum?.outer || []).map((point) => {
-      const sourceX = point.x - x;
-      const sourceY = point.y - y;
-      const sourceAngle = Math.atan2(sourceY, sourceX) + phase;
-      const sourceRadius = Math.hypot(sourceX, sourceY);
-      const wave = lobes ? Math.sin(sourceAngle * lobes + time * 0.0014) * waveAmount : 0;
-      const toothSignal = teeth
-        ? Math.max(0, (Math.cos(sourceAngle * teeth + time * 0.0005) - toothThreshold) / Math.max(0.01, 1 - toothThreshold))
-        : 0;
-      const contourRadius = sourceRadius * scale + offset + wave + toothSignal * toothAmount;
-      return {
-        x: Math.cos(sourceAngle) * contourRadius + shiftX,
-        y: Math.sin(sourceAngle) * contourRadius + shiftY
-      };
-    });
+    } = {}) => {
+      const outer = spectrum?.outer || [];
+      const contour = this.takeFramePointBuffer(outer.length);
+      for (let index = 0; index < outer.length; index += 1) {
+        const point = outer[index];
+        const sourceX = point.x - x;
+        const sourceY = point.y - y;
+        const sourceAngle = Math.atan2(sourceY, sourceX) + phase;
+        const sourceRadius = Math.hypot(sourceX, sourceY);
+        const wave = lobes ? Math.sin(sourceAngle * lobes + time * 0.0014) * waveAmount : 0;
+        const toothSignal = teeth
+          ? Math.max(0, (Math.cos(sourceAngle * teeth + time * 0.0005) - toothThreshold) / Math.max(0.01, 1 - toothThreshold))
+          : 0;
+        const contourRadius = sourceRadius * scale + offset + wave + toothSignal * toothAmount;
+        contour[index].x = Math.cos(sourceAngle) * contourRadius + shiftX;
+        contour[index].y = Math.sin(sourceAngle) * contourRadius + shiftY;
+        contour[index].sharp = false;
+      }
+      return contour;
+    };
 
     const spectrumShell = ({ scale = 0.72, detail = 0.3, offset = 0, smoothing = 4 } = {}) => {
-      const source = (spectrum?.outer || []).map((point) => {
+      const outer = spectrum?.outer || [];
+      const source = this.takeFramePointBuffer(outer.length);
+      for (let index = 0; index < outer.length; index += 1) {
+        const point = outer[index];
         const px = point.x - x;
         const py = point.y - y;
-        return { angle: Math.atan2(py, px), radius: Math.hypot(px, py) };
-      });
+        source[index].angle = Math.atan2(py, px);
+        source[index].radius = Math.hypot(px, py);
+      }
       if (source.length < 3) return [];
-      const smoothed = source.map((point, index) => {
+      const smoothed = this.takeFrameNumberBuffer(source.length);
+      let totalRadius = 0;
+      for (let index = 0; index < source.length; index += 1) {
         let total = 0;
         let weightTotal = 0;
         for (let shift = -smoothing; shift <= smoothing; shift += 1) {
@@ -4453,13 +4531,19 @@ export class VisualEngine {
           total += source[(index + shift + source.length) % source.length].radius * weight;
           weightTotal += weight;
         }
-        return total / Math.max(1, weightTotal);
-      });
-      const mean = smoothed.reduce((sum, value) => sum + value, 0) / smoothed.length;
-      return source.map((point, index) => {
+        smoothed[index] = total / Math.max(1, weightTotal);
+        totalRadius += smoothed[index];
+      }
+      const mean = totalRadius / smoothed.length;
+      const shell = this.takeFramePointBuffer(source.length);
+      for (let index = 0; index < source.length; index += 1) {
+        const point = source[index];
         const shellRadius = mean * scale + (smoothed[index] - mean) * detail + offset;
-        return { x: Math.cos(point.angle) * shellRadius, y: Math.sin(point.angle) * shellRadius };
-      });
+        shell[index].x = Math.cos(point.angle) * shellRadius;
+        shell[index].y = Math.sin(point.angle) * shellRadius;
+        shell[index].sharp = false;
+      }
+      return shell;
     };
 
     const strokeContourSegment = (points, centerRatio, spanRatio) => {
@@ -4477,16 +4561,21 @@ export class VisualEngine {
 
     const strokeAngularContour = (points, centerAngle, angularSpan) => {
       if (points.length < 3) return;
-      const candidates = points
-        .map((point) => ({
-          point,
-          delta: Math.atan2(
-            Math.sin(Math.atan2(point.y, point.x) - centerAngle),
-            Math.cos(Math.atan2(point.y, point.x) - centerAngle)
-          )
-        }))
-        .filter(({ delta }) => Math.abs(delta) <= angularSpan * 0.5)
-        .sort((left, right) => left.delta - right.delta);
+      const candidates = this.takeFramePointBuffer(points.length);
+      let candidateCount = 0;
+      for (const point of points) {
+        const pointAngle = Math.atan2(point.y, point.x);
+        const delta = Math.atan2(
+          Math.sin(pointAngle - centerAngle),
+          Math.cos(pointAngle - centerAngle)
+        );
+        if (Math.abs(delta) > angularSpan * 0.5) continue;
+        candidates[candidateCount].point = point;
+        candidates[candidateCount].delta = delta;
+        candidateCount += 1;
+      }
+      candidates.length = candidateCount;
+      candidates.sort((left, right) => left.delta - right.delta);
       if (candidates.length < 2) return;
       ctx.beginPath();
       candidates.forEach(({ point }, index) => {
@@ -9078,14 +9167,15 @@ export class VisualEngine {
       ctx.arc(x, y, radius, 0, TAU);
       ctx.fill();
       const deformation = 1 + pulse * style.deform;
-      const pulseShape = this.lastSpectrum.outer.map((point) => {
+      const pulseShape = this.takeFramePointBuffer(this.lastSpectrum.outer.length);
+      for (let index = 0; index < this.lastSpectrum.outer.length; index += 1) {
+        const point = this.lastSpectrum.outer[index];
         const angle = point.angle ?? Math.atan2(point.y - y, point.x - x);
         const genreShape = genreImpactRadiusRatio(theme, angle, pulse);
-        return {
-          x: x + (point.x - x) * deformation * genreShape,
-          y: y + (point.y - y) * deformation * genreShape
-        };
-      });
+        pulseShape[index].x = x + (point.x - x) * deformation * genreShape;
+        pulseShape[index].y = y + (point.y - y) * deformation * genreShape;
+        pulseShape[index].sharp = false;
+      }
       const contact = pulse ** 2.35;
       this.strokeGlow(theme.hot, style.width + contact * (heavy ? 2.4 : 1.55), heavy ? 21 : 16, contact * (0.28 + style.alpha * 0.82));
       this.tracePoints(pulseShape, true, this.lastSpectrum.options?.smoothPath);
@@ -10088,6 +10178,7 @@ export class VisualEngine {
     const ctx = this.ctx;
     const theme = this.theme;
     if (!theme) return;
+    this.resetFrameScratch();
     const renderTheme = this.trackContext.genrePolice
       ? {
           ...theme,

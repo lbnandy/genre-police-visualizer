@@ -13,6 +13,13 @@ import {
   normalizeVisualResponseMode
 } from './audio-response.mjs';
 import { synthwaveAudioResponse } from './synthwave-response.mjs';
+import { presentationPixelRatio } from './output-resolution.mjs';
+import {
+  frameIntervalFor,
+  normalizeFrameRateLimit,
+  performanceTargetFps,
+  scheduleFrame
+} from './frame-rate-limit.mjs';
 import {
   applyLyricDelay,
   LYRIC_DELAY_MAX_MS,
@@ -26,6 +33,47 @@ const smoothstep = (edge0, edge1, value) => {
   const amount = clamp((value - edge0) / Math.max(0.0001, edge1 - edge0));
   return amount * amount * (3 - 2 * amount);
 };
+
+const dynamicStyleValues = new WeakMap();
+function setDynamicStyleProperty(element, name, value) {
+  const normalizedValue = String(value);
+  let values = dynamicStyleValues.get(element);
+  if (!values) {
+    values = new Map();
+    dynamicStyleValues.set(element, values);
+  }
+  if (values.get(name) === normalizedValue) return;
+  values.set(name, normalizedValue);
+  element.style.setProperty(name, normalizedValue);
+}
+
+function genreFilterValue({
+  bilibiliMode,
+  tranceMode,
+  synthwaveMode,
+  brightness,
+  saturation,
+  blur,
+  distortion,
+  glow,
+  echoLeft,
+  echoRight,
+  echoBlur,
+  echoAlpha
+}) {
+  if (bilibiliMode) return 'none';
+  const exposure = `brightness(${brightness}) saturate(calc(${saturation} * var(--genre-extra-saturation, 1)))`;
+  const hotGlow = `drop-shadow(0 0 var(--genre-hot-blur, 5px) color-mix(in srgb, var(--hot) var(--genre-hot-alpha, 55%), transparent))`;
+  const accentGlow = `drop-shadow(0 0 ${glow}px color-mix(in srgb, var(--accent) var(--genre-accent-alpha, 74%), transparent))`;
+
+  if (tranceMode) {
+    return `${exposure} ${hotGlow} ${accentGlow} drop-shadow(var(--genre-depth-x, 2px) var(--genre-depth-y, 2px) var(--genre-depth-blur, 0px) color-mix(in srgb, var(--accent-2) var(--genre-depth-alpha, 42%), transparent))`;
+  }
+  if (synthwaveMode) {
+    return `${exposure} drop-shadow(0 0 4px color-mix(in srgb, white 50%, transparent)) drop-shadow(0 0 var(--genre-hot-blur, 7px) color-mix(in srgb, var(--accent-2) var(--genre-hot-alpha, 52%), transparent)) drop-shadow(0 0 ${glow}px color-mix(in srgb, var(--accent) var(--genre-accent-alpha, 68%), transparent)) drop-shadow(2px 3px 0 color-mix(in srgb, #12052b 68%, var(--accent) 32%))`;
+  }
+  return `${exposure} blur(${blur}px) drop-shadow(${(-distortion * 3).toFixed(3)}px 0 0 color-mix(in srgb, var(--accent) 72%, transparent)) drop-shadow(${(distortion * 3).toFixed(3)}px 0 0 color-mix(in srgb, var(--accent-2) 72%, transparent)) ${hotGlow} ${accentGlow} drop-shadow(${echoLeft}px 0 ${echoBlur}px color-mix(in srgb, var(--accent) ${echoAlpha}%, transparent)) drop-shadow(${echoRight}px 0 ${echoBlur}px color-mix(in srgb, var(--accent-2) ${echoAlpha}%, transparent)) drop-shadow(var(--genre-depth-x, 2px) var(--genre-depth-y, 2px) var(--genre-depth-blur, 0px) color-mix(in srgb, var(--accent-2) var(--genre-depth-alpha, 42%), transparent))`;
+}
 
 const UI_SCALE_BASE = 1.2;
 const UI_SCALES = [0.6, 0.72, 0.84, 0.96, 1.08, 1.2, 1.32, 1.44, 1.56, 1.68, 1.8];
@@ -41,6 +89,7 @@ const monogram = document.querySelector('#monogram');
 const jurisdictionLabel = document.querySelector('.jurisdiction > span:nth-child(2)');
 const parentGenre = document.querySelector('#parent-genre');
 const genreLabel = document.querySelector('#genre');
+const genreFace = document.querySelector('#genre-face');
 const genreQuickPanel = document.querySelector('#genre-quick-panel');
 const genreQuickTrack = document.querySelector('#genre-quick-track');
 const genreQuickCandidates = document.querySelector('#genre-quick-candidates');
@@ -100,6 +149,10 @@ const motionModeOptions = [...document.querySelectorAll('.motion-mode-option')];
 const motionModeGroup = document.querySelector('#motion-mode-group');
 const idleBehaviorOptions = [...document.querySelectorAll('.idle-behavior-option')];
 const idleBehaviorGroup = document.querySelector('#idle-behavior-group');
+const frameRateButton = document.querySelector('#frame-rate-button');
+const frameRateValue = document.querySelector('#frame-rate-value');
+const frameRateMenu = document.querySelector('#frame-rate-menu');
+const frameRateOptions = [...document.querySelectorAll('.frame-rate-option')];
 const idleFrameLimitToggle = document.querySelector('#idle-frame-limit-toggle');
 const rhythmModelToggle = document.querySelector('#rhythm-model-toggle');
 const captureAudioSourceButton = document.querySelector('#audio-source-button');
@@ -289,6 +342,7 @@ let capsuleThemedBackground = true;
 let posterThemedBackground = true;
 let motionMode = 'standard';
 let idleBehavior = 'keep';
+let frameRateLimit = 'display';
 let idleFrameLimitEnabled = true;
 let rhythmModelEnabled = true;
 let captureAudioSourceId = 'system';
@@ -344,6 +398,8 @@ let currentDisplayContent = null;
 let currentTheme = { ...fallbackTheme };
 let artworkPaletteSerial = 0;
 let demoTheme = null;
+const demoFrequency = new Uint8Array(1024);
+const demoWaveform = new Uint8Array(2048);
 let transitionToken = 0;
 let backdropCrossfadeSerial = 0;
 let backdropCrossfadeAnimations = [];
@@ -369,9 +425,13 @@ let posterPhase = 0;
 let posterOrbitPhase = 0;
 let posterSoftPhase = 0;
 let posterTravel = 0;
-let lastFullscreenBackdropStyleAt = 0;
+let lastBackdropStyleAt = 0;
+let lastForegroundStyleAt = 0;
+let lastLyricStyleAt = 0;
 let previousAnimationTime = 0;
 let lastAnimationWorkAt = 0;
+let nextAnimationWorkAt = 0;
+let scheduledFrameInterval = 0;
 let renderPerformanceStartedAt = 0;
 let renderPerformanceWarmupUntil = 0;
 let renderPerformanceContext = '';
@@ -463,7 +523,12 @@ function drawForegroundRiffStrings(metrics, time) {
   const width = riffStrings.clientWidth;
   const height = riffStrings.clientHeight;
   if (!width || !height) return;
-  const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+  const renderedWidth = riffStrings.getBoundingClientRect().width;
+  const pixelRatio = presentationPixelRatio({
+    designWidth: width,
+    renderedWidth,
+    devicePixelRatio: window.devicePixelRatio || 1
+  });
   const pixelWidth = Math.round(width * pixelRatio);
   const pixelHeight = Math.round(height * pixelRatio);
   if (riffStrings.width !== pixelWidth || riffStrings.height !== pixelHeight) {
@@ -1055,9 +1120,33 @@ function setIdleBehavior(value, { persist = false } = {}) {
   if (persist) window.genrePolice.setConfig({ idleBehavior }).catch(() => {});
 }
 
+function renderFrameRateLimit() {
+  frameRateValue.textContent = frameRateLimit === 'display'
+    ? tr('settings.frameRateDisplay')
+    : `${frameRateLimit} FPS`;
+  frameRateOptions.forEach((option) => {
+    option.setAttribute('aria-selected', String(option.dataset.frameRate === frameRateLimit));
+  });
+}
+
+function setFrameRateLimit(value, { persist = false } = {}) {
+  frameRateLimit = normalizeFrameRateLimit(value);
+  nextAnimationWorkAt = 0;
+  scheduledFrameInterval = 0;
+  lastAnimationWorkAt = 0;
+  previousAnimationTime = 0;
+  fpsCounterStartedAt = 0;
+  fpsCounterFrameCount = 0;
+  renderPerformanceContext = '';
+  renderFrameRateLimit();
+  if (persist) window.genrePolice.setConfig({ frameRateLimit }).catch(() => {});
+}
+
 function setIdleFrameLimitEnabled(enabled, { persist = false } = {}) {
   idleFrameLimitEnabled = enabled !== false;
   idleFrameLimitToggle.setAttribute('aria-checked', String(idleFrameLimitEnabled));
+  nextAnimationWorkAt = 0;
+  scheduledFrameInterval = 0;
   lastAnimationWorkAt = 0;
   if (persist) window.genrePolice.setConfig({ idleFrameLimitEnabled }).catch(() => {});
 }
@@ -1089,8 +1178,13 @@ function updateFpsCounter(time) {
   const elapsed = time - fpsCounterStartedAt;
   if (elapsed < 500) return;
   const fps = fpsCounterFrameCount * 1000 / Math.max(1, elapsed);
+  const targetFps = performanceTargetFps(frameRateLimit);
   fpsCounterValue.textContent = String(Math.round(fps));
-  fpsCounter.dataset.status = fps < 45 ? 'low' : fps < 56 ? 'mid' : 'good';
+  fpsCounter.dataset.status = fps < targetFps * 0.75
+    ? 'low'
+    : fps < targetFps * 0.93
+      ? 'mid'
+      : 'good';
   fpsCounterStartedAt = time;
   fpsCounterFrameCount = 0;
 }
@@ -2186,11 +2280,11 @@ function setLyricSweepProgress(value) {
   const revealDistance = (width, fadeWidth, progress = normalized) => progress >= 0.999
     ? width + fadeWidth
     : width * progress;
-  lyricsPanel.style.setProperty('--lyric-progress', `${(normalized * 100).toFixed(2)}%`);
+  setDynamicStyleProperty(lyricsPanel, '--lyric-progress', `${(normalized * 100).toFixed(2)}%`);
   // Both lines use their actual rendered ink widths and the same normalized
   // provider-clock progress, so their left-to-right wipes finish together.
-  lyricsPanel.style.setProperty('--lyric-reveal-px', `${revealDistance(lyricTextWidth, lyricFadeWidth).toFixed(2)}px`);
-  lyricsPanel.style.setProperty('--lyric-translation-reveal-px', `${revealDistance(lyricTranslationWidth, lyricTranslationFadeWidth).toFixed(2)}px`);
+  setDynamicStyleProperty(lyricsPanel, '--lyric-reveal-px', `${revealDistance(lyricTextWidth, lyricFadeWidth).toFixed(2)}px`);
+  setDynamicStyleProperty(lyricsPanel, '--lyric-translation-reveal-px', `${revealDistance(lyricTranslationWidth, lyricTranslationFadeWidth).toFixed(2)}px`);
 }
 
 function updateTitleOverflow() {
@@ -2456,8 +2550,9 @@ function textInkBounds(element, text, uiScale) {
 }
 
 function balanceCapsuleGenreStack() {
-  const genreFace = genreLabel.querySelector('#genre-face');
-  const capsuleLayout = document.body.dataset.layout !== 'poster';
+  const stackedFullscreen = document.body.dataset.stageOutput === 'true'
+    && document.body.dataset.fullscreenLayout === 'stacked';
+  const capsuleLayout = document.body.dataset.layout !== 'poster' && !stackedFullscreen;
   if (!capsuleLayout || !jurisdictionLabel || !genreFace || !trackRule
       || !parentGenre.textContent.trim() || !genreFace.textContent.trim()) {
     parentGenre.style.removeProperty('--parent-balance-y');
@@ -2466,6 +2561,8 @@ function balanceCapsuleGenreStack() {
 
   const savedScale = genreLabel.style.getPropertyValue('--genre-scale');
   const savedLift = genreLabel.style.getPropertyValue('--genre-lift');
+  const savedTransform = genreLabel.style.transform;
+  genreLabel.style.removeProperty('transform');
   parentGenre.style.setProperty('--parent-balance-y', '0px');
   genreLabel.style.setProperty('--genre-scale', '1');
   genreLabel.style.setProperty('--genre-lift', '0px');
@@ -2482,6 +2579,8 @@ function balanceCapsuleGenreStack() {
   else genreLabel.style.removeProperty('--genre-scale');
   if (savedLift) genreLabel.style.setProperty('--genre-lift', savedLift);
   else genreLabel.style.removeProperty('--genre-lift');
+  if (savedTransform) genreLabel.style.transform = savedTransform;
+  else genreLabel.style.removeProperty('transform');
 
   if (!jurisdictionInk || !parentInk || !genreInk || !(uiScale > 0)) {
     parentGenre.style.removeProperty('--parent-balance-y');
@@ -2511,7 +2610,6 @@ function balanceCapsuleGenreStack() {
 function balanceGenreLabel() {
   if (balanceCapsuleGenreStack()) return;
 
-  const genreFace = genreLabel.querySelector('#genre-face');
   if (!genreFace || !parentGenre.textContent.trim() || !genreFace.textContent.trim() || !trackRule) {
     genreLabel.style.removeProperty('--genre-balance-y');
     return;
@@ -2519,6 +2617,8 @@ function balanceGenreLabel() {
 
   const savedScale = genreLabel.style.getPropertyValue('--genre-scale');
   const savedLift = genreLabel.style.getPropertyValue('--genre-lift');
+  const savedTransform = genreLabel.style.transform;
+  genreLabel.style.removeProperty('transform');
   genreLabel.style.setProperty('--genre-scale', '1');
   genreLabel.style.setProperty('--genre-lift', '0px');
   genreLabel.style.setProperty('--genre-balance-y', '0px');
@@ -2533,6 +2633,8 @@ function balanceGenreLabel() {
   else genreLabel.style.removeProperty('--genre-scale');
   if (savedLift) genreLabel.style.setProperty('--genre-lift', savedLift);
   else genreLabel.style.removeProperty('--genre-lift');
+  if (savedTransform) genreLabel.style.transform = savedTransform;
+  else genreLabel.style.removeProperty('transform');
 
   if (!parentInk || !genreInk || !(uiScale > 0)) {
     genreLabel.style.removeProperty('--genre-balance-y');
@@ -2541,7 +2643,10 @@ function balanceGenreLabel() {
 
   const targetCenter = (parentInk.bottom + ruleTop) / 2;
   const currentCenter = (genreInk.top + genreInk.bottom) / 2;
-  const offset = clamp((targetCenter - currentCenter) / uiScale, -12, 12);
+  const stackedFullscreen = document.body.dataset.stageOutput === 'true'
+    && document.body.dataset.fullscreenLayout === 'stacked';
+  const offsetLimit = stackedFullscreen ? 20 : 12;
+  const offset = clamp((targetCenter - currentCenter) / uiScale, -offsetLimit, offsetLimit);
   genreLabel.style.setProperty('--genre-balance-y', `${offset.toFixed(2)}px`);
 }
 
@@ -2552,7 +2657,6 @@ function fitGenreLabel() {
   // otherwise make long labels refit by fractions of a pixel during playback.
   genreLabel.style.removeProperty('font-size');
   const availableWidth = genreLabel.clientWidth;
-  const genreFace = genreLabel.querySelector('#genre-face');
   const renderedWidth = genreFace?.scrollWidth || genreLabel.scrollWidth;
   if (!availableWidth || !renderedWidth) {
     balanceGenreLabel();
@@ -2670,7 +2774,6 @@ function renderLocalizedHud(content = currentDisplayContent) {
   genreLabel.setAttribute('aria-label', genreSelectable
     ? tr('genreQuick.open', { genre: nextGenreText })
     : nextGenreText);
-  const genreFace = genreLabel.querySelector('#genre-face');
   if (genreFace) genreFace.textContent = nextGenreText;
   else genreLabel.textContent = nextGenreText;
   genreLabel.dataset.state = content.resolving
@@ -2712,6 +2815,7 @@ function applyLanguage(value, { persist = false } = {}) {
     option.setAttribute('aria-selected', String(option.dataset.language === uiLanguage));
   });
   applyStaticTranslations();
+  renderFrameRateLimit();
   renderUpdateUi();
   lyricTranslationSetting.hidden = !supportsLyricTranslationForUiLanguage();
   renderCaptureAudioSources();
@@ -2785,6 +2889,7 @@ function applyUiScale(value) {
   uiScaleOptions.forEach((option) => {
     option.setAttribute('aria-selected', String(Number(option.dataset.scale) === scale));
   });
+  visual.resize();
   requestAnimationFrame(updateSettingsScrollbar);
   refreshPresentationTypography();
 }
@@ -2988,7 +3093,9 @@ function applyStageOutputState(payload = {}) {
       '--stage-stacked-visual-center-y',
       '--stage-hidden-visual-center-y'
     ].forEach((property) => document.documentElement.style.removeProperty(property));
-    lastFullscreenBackdropStyleAt = 0;
+    lastBackdropStyleAt = 0;
+    lastForegroundStyleAt = 0;
+    lastLyricStyleAt = 0;
     if (leaving && stageOutputRestoreLayoutMode && layoutMode !== stageOutputRestoreLayoutMode) {
       const restoreLayoutMode = stageOutputRestoreLayoutMode;
       stageOutputRestoreLayoutMode = '';
@@ -3101,6 +3208,7 @@ async function chooseLayoutMode(value) {
 function setScaleMenuOpen(open, { focus = false } = {}) {
   const nextOpen = Boolean(open);
   if (nextOpen) {
+    setFrameRateMenuOpen(false);
     setLanguageMenuOpen(false);
     setMediaSourceMenuOpen(false);
     setCustomGenreVisualMenuOpen(false);
@@ -3116,6 +3224,7 @@ function setScaleMenuOpen(open, { focus = false } = {}) {
 function setLanguageMenuOpen(open, { focus = false } = {}) {
   const nextOpen = Boolean(open);
   if (nextOpen) {
+    setFrameRateMenuOpen(false);
     setScaleMenuOpen(false);
     setMediaSourceMenuOpen(false);
     setCustomGenreVisualMenuOpen(false);
@@ -3126,6 +3235,30 @@ function setLanguageMenuOpen(open, { focus = false } = {}) {
   if (!nextOpen) return;
   const selected = languageOptions.find((option) => option.getAttribute('aria-selected') === 'true') || languageOptions[0];
   if (focus) selected?.focus();
+}
+
+function setFrameRateMenuOpen(open, { focus = false } = {}) {
+  const nextOpen = Boolean(open);
+  if (nextOpen) {
+    setScaleMenuOpen(false);
+    setLanguageMenuOpen(false);
+    setMediaSourceMenuOpen(false);
+    setCaptureAudioSourceMenuOpen(false);
+    setCustomGenreVisualMenuOpen(false);
+    setGenreArtistMenuOpen(false);
+  }
+  frameRateMenu.hidden = !nextOpen;
+  frameRateButton.setAttribute('aria-expanded', String(nextOpen));
+  if (!nextOpen) return;
+  const selected = frameRateOptions.find((option) => option.getAttribute('aria-selected') === 'true')
+    || frameRateOptions[0];
+  if (focus) selected?.focus();
+}
+
+function chooseFrameRateLimit(value) {
+  setFrameRateMenuOpen(false);
+  setFrameRateLimit(value, { persist: true });
+  frameRateButton.focus();
 }
 
 function chooseLanguage(value) {
@@ -3833,7 +3966,7 @@ function syntheticDemoMetrics(metrics, time) {
   let frequency = metrics.frequency;
   let waveform = metrics.waveform;
   if (demoTheme.synthetic) {
-    frequency = new Uint8Array(1024);
+    frequency = demoFrequency;
     for (let index = 0; index < 470; index += 1) {
       const ratio = index / 469;
       const lowBody = Math.exp(-Math.pow((ratio - 0.12) / 0.13, 2)) * (0.48 + pulse * 0.35);
@@ -3842,7 +3975,7 @@ function syntheticDemoMetrics(metrics, time) {
       const texture = 0.1 + Math.sin(index * 0.19 + time * 0.004) * 0.055;
       frequency[index] = Math.round(clamp((lowBody + presencePeak + upperPeak + texture) * (asmrDemo ? 24 : 210), 0, 255));
     }
-    waveform = new Uint8Array(2048);
+    waveform = demoWaveform;
     for (let index = 0; index < waveform.length; index += 1) {
       const ratio = index / waveform.length;
       const sample = Math.sin(ratio * Math.PI * 18 + time * 0.004) * 0.52
@@ -3883,12 +4016,19 @@ function syntheticDemoMetrics(metrics, time) {
 
 function animate(time) {
   const animationActive = Boolean(recordingPresentationActive || demoTheme || currentMetadata?.playing);
-  const minimumFrameInterval = document.hidden
-    ? 250
-    : animationActive || !idleFrameLimitEnabled
-      ? 0
-      : 1000 / 30;
-  if (lastAnimationWorkAt && time - lastAnimationWorkAt < minimumFrameInterval) {
+  const minimumFrameInterval = frameIntervalFor({
+    hidden: document.hidden,
+    animationActive,
+    frameRateLimit,
+    idleFrameLimitEnabled
+  });
+  if (Math.abs(minimumFrameInterval - scheduledFrameInterval) > 0.01) {
+    scheduledFrameInterval = minimumFrameInterval;
+    nextAnimationWorkAt = 0;
+  }
+  const frameSchedule = scheduleFrame(time, nextAnimationWorkAt, minimumFrameInterval);
+  nextAnimationWorkAt = frameSchedule.deadline;
+  if (!frameSchedule.due) {
     requestAnimationFrame(animate);
     return;
   }
@@ -3899,6 +4039,12 @@ function animate(time) {
   const frameScale = Math.min(2, elapsedMs / 16.667);
   previousAnimationTime = time;
   const frameWorkStartedAt = performance.now();
+  const foregroundStyleDue = !lastForegroundStyleAt
+    || time - lastForegroundStyleAt >= 1000 / 60;
+  const lyricStyleDue = !lastLyricStyleAt
+    || time - lastLyricStyleAt >= 1000 / 60;
+  if (foregroundStyleDue) lastForegroundStyleAt = time;
+  if (lyricStyleDue) lastLyricStyleAt = time;
   let metrics = audio.update(time);
   metrics = syntheticDemoMetrics(metrics, time);
   metrics = applyVisualResponse(metrics, visualResponseMode);
@@ -3950,10 +4096,13 @@ function animate(time) {
   // Quiet sections retain the soft black-hole aperture. A sustained climax
   // resolves it slightly, while a kick produces a short, clearer exposure;
   // geometry and scale remain completely fixed.
-  appShell.style.setProperty(
-    '--trance-artwork-blur',
-    `${(2.65 - tranceArtworkClarity * 2.2).toFixed(3)}px`
-  );
+  if (foregroundStyleDue) {
+    setDynamicStyleProperty(
+      appShell,
+      '--trance-artwork-blur',
+      `${(2.65 - tranceArtworkClarity * 2.2).toFixed(3)}px`
+    );
+  }
   posterPhase = (posterPhase + elapsedMs * (0.0028 + posterEnergy * 0.0062)) % 360;
   // Independent clocks must each complete a full 360-degree loop. Deriving a
   // slow clock by multiplying a wrapped angle made House jump whenever the
@@ -3961,11 +4110,10 @@ function animate(time) {
   posterOrbitPhase = (posterOrbitPhase + elapsedMs * (0.0022 + posterEnergy * 0.0055)) % 360;
   posterSoftPhase = (posterSoftPhase + elapsedMs * (0.00042 + posterEnergy * 0.00105)) % 360;
   posterTravel += elapsedMs * (0.012 + posterEnergy * 0.032);
-  const backdropStyleDue = !stageOutputActive
-    || !lastFullscreenBackdropStyleAt
-    || time - lastFullscreenBackdropStyleAt >= 1000 / 20;
+  const backdropStyleDue = !lastBackdropStyleAt
+    || time - lastBackdropStyleAt >= 1000 / 20;
   if (document.body.dataset.backgroundStyle === 'themed' && backdropStyleDue) {
-    if (stageOutputActive) lastFullscreenBackdropStyleAt = time;
+    lastBackdropStyleAt = time;
     const posterDriftX = Math.sin(time * 0.00019) * (1.2 + posterEnergy * 2.2);
     const posterDriftY = Math.cos(time * 0.00016) * (0.8 + posterEnergy * 1.5);
     const posterSwingX = Math.sin(time * 0.0022) * (1.1 + posterEnergy * 2.7);
@@ -3989,38 +4137,38 @@ function animate(time) {
       Math.pow(Math.sin(Math.PI * phase), 1.35)
       * (0.15 + posterEnergy * 0.16 + posterImpact * 0.055)
     );
-    appShell.style.setProperty('--poster-energy', posterEnergy.toFixed(4));
-    appShell.style.setProperty('--poster-impact', posterImpact.toFixed(4));
-    appShell.style.setProperty('--poster-bass', clamp(metrics.bass || 0).toFixed(4));
-    appShell.style.setProperty('--poster-phase', `${posterPhase.toFixed(4)}deg`);
-    appShell.style.setProperty('--poster-phase-quarter', `${posterOrbitPhase.toFixed(4)}deg`);
-    appShell.style.setProperty('--poster-phase-soft', `${posterSoftPhase.toFixed(4)}deg`);
-    appShell.style.setProperty('--poster-wobble-x', `${(Math.sin(time * 0.0034) * (1.4 + clamp(metrics.lowMid || 0) * 4.8)).toFixed(3)}px`);
-    appShell.style.setProperty('--poster-wobble-y', `${(Math.sin(time * 0.00225 + 1.15) * (0.9 + clamp(metrics.bass || 0) * 3.2)).toFixed(3)}px`);
-    appShell.style.setProperty('--poster-skew', `${(-2 - posterImpact * 1.5).toFixed(3)}deg`);
-    appShell.style.setProperty('--poster-drift-x', `${posterDriftX.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-drift-y', `${posterDriftY.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-swing-x', `${posterSwingX.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-swing-y', `${posterSwingY.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-float-x', `${posterFloatX.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-float-y', `${posterFloatY.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-wave-x', `${posterWaveX.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-wave-y', `${posterWaveY.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-line-phase-a', `${linePhaseA.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-line-phase-b', `${linePhaseB.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-line-phase-c', `${linePhaseC.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-vortex-phase', `${posterVortexPhase.toFixed(5)}rad`);
-    appShell.style.setProperty('--poster-kick-y', `${(posterDriftY - posterImpact * 5.5).toFixed(3)}px`);
-    appShell.style.setProperty('--poster-drop-y', `${(posterDriftY + posterImpact * 4.2).toFixed(3)}px`);
-    appShell.style.setProperty('--poster-impact-angle', `${(posterImpact * 1.8).toFixed(3)}deg`);
-    appShell.style.setProperty('--poster-sway-angle', `${(Math.sin(time * 0.0008) * (0.8 + posterEnergy * 1.5)).toFixed(3)}deg`);
-    appShell.style.setProperty('--poster-flow-slow', `${posterTravel.toFixed(3)}px`);
-    appShell.style.setProperty('--poster-flow-reverse', `${(-posterTravel * 0.72).toFixed(3)}px`);
-    appShell.style.setProperty('--poster-flow-fast', `${(posterTravel * 2.35).toFixed(3)}px`);
-    appShell.style.setProperty('--poster-depth-scale-a', (0.72 + posterDepthA * 0.64 + posterImpact * 0.018).toFixed(4));
-    appShell.style.setProperty('--poster-depth-scale-b', (0.72 + posterDepthB * 0.64 + posterImpact * 0.018).toFixed(4));
-    appShell.style.setProperty('--poster-depth-opacity-a', depthOpacity(posterDepthA).toFixed(4));
-    appShell.style.setProperty('--poster-depth-opacity-b', depthOpacity(posterDepthB).toFixed(4));
+    setDynamicStyleProperty(appShell, '--poster-energy', posterEnergy.toFixed(4));
+    setDynamicStyleProperty(appShell, '--poster-impact', posterImpact.toFixed(4));
+    setDynamicStyleProperty(appShell, '--poster-bass', clamp(metrics.bass || 0).toFixed(4));
+    setDynamicStyleProperty(appShell, '--poster-phase', `${posterPhase.toFixed(4)}deg`);
+    setDynamicStyleProperty(appShell, '--poster-phase-quarter', `${posterOrbitPhase.toFixed(4)}deg`);
+    setDynamicStyleProperty(appShell, '--poster-phase-soft', `${posterSoftPhase.toFixed(4)}deg`);
+    setDynamicStyleProperty(appShell, '--poster-wobble-x', `${(Math.sin(time * 0.0034) * (1.4 + clamp(metrics.lowMid || 0) * 4.8)).toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-wobble-y', `${(Math.sin(time * 0.00225 + 1.15) * (0.9 + clamp(metrics.bass || 0) * 3.2)).toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-skew', `${(-2 - posterImpact * 1.5).toFixed(3)}deg`);
+    setDynamicStyleProperty(appShell, '--poster-drift-x', `${posterDriftX.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-drift-y', `${posterDriftY.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-swing-x', `${posterSwingX.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-swing-y', `${posterSwingY.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-float-x', `${posterFloatX.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-float-y', `${posterFloatY.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-wave-x', `${posterWaveX.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-wave-y', `${posterWaveY.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-line-phase-a', `${linePhaseA.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-line-phase-b', `${linePhaseB.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-line-phase-c', `${linePhaseC.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-vortex-phase', `${posterVortexPhase.toFixed(5)}rad`);
+    setDynamicStyleProperty(appShell, '--poster-kick-y', `${(posterDriftY - posterImpact * 5.5).toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-drop-y', `${(posterDriftY + posterImpact * 4.2).toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-impact-angle', `${(posterImpact * 1.8).toFixed(3)}deg`);
+    setDynamicStyleProperty(appShell, '--poster-sway-angle', `${(Math.sin(time * 0.0008) * (0.8 + posterEnergy * 1.5)).toFixed(3)}deg`);
+    setDynamicStyleProperty(appShell, '--poster-flow-slow', `${posterTravel.toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-flow-reverse', `${(-posterTravel * 0.72).toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-flow-fast', `${(posterTravel * 2.35).toFixed(3)}px`);
+    setDynamicStyleProperty(appShell, '--poster-depth-scale-a', (0.72 + posterDepthA * 0.64 + posterImpact * 0.018).toFixed(4));
+    setDynamicStyleProperty(appShell, '--poster-depth-scale-b', (0.72 + posterDepthB * 0.64 + posterImpact * 0.018).toFixed(4));
+    setDynamicStyleProperty(appShell, '--poster-depth-opacity-a', depthOpacity(posterDepthA).toFixed(4));
+    setDynamicStyleProperty(appShell, '--poster-depth-opacity-b', depthOpacity(posterDepthB).toFixed(4));
   }
   if (tranceMode || synthwaveMode || bilibiliMode) {
     // The artwork is the vortex aperture. Letting the generic impact spring
@@ -4076,12 +4224,14 @@ function animate(time) {
   // Hidden face layers used to receive a dozen style mutations every frame.
   // Updating only the active face keeps the Trance title on the compositor.
   if (kawaiiActive) {
-    kawaiiFace.style.setProperty('--kawaii-open', kawaiiState.expression.toFixed(4));
-    kawaiiFace.style.setProperty('--kawaii-energy', kawaiiState.energy.toFixed(4));
-    kawaiiFace.style.setProperty('--kawaii-pulse', clamp(metrics.rhythmPulse || 0).toFixed(4));
-    kawaiiFace.style.setProperty('--kawaii-wave-scale', coreScale.toFixed(4));
-    kawaiiFace.style.setProperty('--kawaii-line-hot', `${(lineHot * 100).toFixed(2)}%`);
-    kawaiiFace.style.setProperty('--kawaii-mouth-hot', `${(lineHot * 100).toFixed(2)}%`);
+    if (foregroundStyleDue) {
+      setDynamicStyleProperty(kawaiiFace, '--kawaii-open', kawaiiState.expression.toFixed(4));
+      setDynamicStyleProperty(kawaiiFace, '--kawaii-energy', kawaiiState.energy.toFixed(4));
+      setDynamicStyleProperty(kawaiiFace, '--kawaii-pulse', clamp(metrics.rhythmPulse || 0).toFixed(4));
+      setDynamicStyleProperty(kawaiiFace, '--kawaii-wave-scale', coreScale.toFixed(4));
+      setDynamicStyleProperty(kawaiiFace, '--kawaii-line-hot', `${(lineHot * 100).toFixed(2)}%`);
+      setDynamicStyleProperty(kawaiiFace, '--kawaii-mouth-hot', `${(lineHot * 100).toFixed(2)}%`);
+    }
     if (metrics.rhythmNow) {
       kawaiiBeatAt = time;
       kawaiiBeatStrength = clamp(metrics.rhythmStrength ?? metrics.rhythmPulse ?? 0.5);
@@ -4098,13 +4248,17 @@ function animate(time) {
       const browAmplitude = 0.25 + kawaiiBeatStrength * (0.55 + kawaiiState.expression * 0.45);
       kawaiiBrowLift = -(envelope ** 1.2) * browAmplitude;
     }
-    kawaiiFace.style.setProperty('--kawaii-bob', `${kawaiiBob.toFixed(3)}px`);
-    kawaiiFace.style.setProperty('--kawaii-brow-lift', `${kawaiiBrowLift.toFixed(3)}px`);
+    if (foregroundStyleDue) {
+      setDynamicStyleProperty(kawaiiFace, '--kawaii-bob', `${kawaiiBob.toFixed(3)}px`);
+      setDynamicStyleProperty(kawaiiFace, '--kawaii-brow-lift', `${kawaiiBrowLift.toFixed(3)}px`);
+    }
   }
 
   if (currentTanocVariant) {
-    tanocFace.style.setProperty('--tanoc-core-scale', coreScale.toFixed(4));
-    tanocFace.style.setProperty('--tanoc-line-hot', `${(lineHot * 100).toFixed(2)}%`);
+    if (foregroundStyleDue) {
+      setDynamicStyleProperty(tanocFace, '--tanoc-core-scale', coreScale.toFixed(4));
+      setDynamicStyleProperty(tanocFace, '--tanoc-line-hot', `${(lineHot * 100).toFixed(2)}%`);
+    }
     if (metrics.rhythmNow) {
       tanocBeatAt = time;
       tanocBeatStrength = clamp(metrics.rhythmStrength ?? metrics.rhythmPulse ?? 0.5);
@@ -4120,8 +4274,10 @@ function animate(time) {
       tanocBob = -Math.sin(Math.PI * 2 * phase) * envelope * amplitude;
       tanocEyeShift = -(envelope ** 1.25) * (0.28 + tanocBeatStrength * 0.72);
     }
-    tanocFace.style.setProperty('--tanoc-bob', `${tanocBob.toFixed(3)}px`);
-    tanocFace.style.setProperty('--tanoc-eye-shift', `${tanocEyeShift.toFixed(3)}px`);
+    if (foregroundStyleDue) {
+      setDynamicStyleProperty(tanocFace, '--tanoc-bob', `${tanocBob.toFixed(3)}px`);
+      setDynamicStyleProperty(tanocFace, '--tanoc-eye-shift', `${tanocEyeShift.toFixed(3)}px`);
+    }
   }
   if (bilibiliMode) {
     const bilibiliGenreTarget = playbackActive
@@ -4150,48 +4306,82 @@ function animate(time) {
     genreScale += genreVelocity * frameScale;
     genreScale = Math.max(.93, Math.min(1.145, genreScale));
   }
-  genreLabel.style.setProperty('--genre-scale', genreScale.toFixed(4));
-  const genreLiftTarget = playbackActive
+  const lockStackedGenreCenter = stageOutputActive && fullscreenLayoutMode === 'stacked';
+  const genreLiftTarget = playbackActive && !lockStackedGenreCenter
     ? bilibiliMode
       ? 0
       : asmrMode
       ? -0.35 - asmrBreath * 0.55
       : -textPulse * (tranceMode ? 4.4 : 4.2)
     : 0;
-  if (tranceMode) {
+  if (lockStackedGenreCenter) {
+    genreLiftValue = 0;
+  } else if (tranceMode) {
     const liftResponse = 1 - Math.exp(-frameScale * 0.18);
     genreLiftValue += (genreLiftTarget - genreLiftValue) * liftResponse;
   } else {
     genreLiftValue = genreLiftTarget;
   }
-  genreLabel.style.setProperty('--genre-lift', `${genreLiftValue.toFixed(2)}px`);
+  const genreTranslateY = synthwaveMode && document.body.dataset.layout === 'poster'
+    ? `calc(var(--genre-balance-y, 0px) + ${genreLiftValue.toFixed(2)}px)`
+    : `calc(3px + var(--genre-balance-y, 0px) + ${genreLiftValue.toFixed(2)}px)`;
+  const genreSkew = synthwaveMode
+    ? 'skewX(-7deg) '
+    : document.body.dataset.family === 'hardstyle'
+      ? 'skewX(-4deg) '
+      : '';
+  const nextGenreTransform = `${genreSkew}translateY(${genreTranslateY}) scale(${genreScale.toFixed(4)})`;
+  if (genreLabel.style.transform !== nextGenreTransform) genreLabel.style.transform = nextGenreTransform;
   const textBaseGlow = bilibiliMode ? 0 : Number(currentTheme.textBaseGlow) || 18;
   const textSliceFx = clamp(currentTheme.textSliceFx ?? textFx, 0.05, 1.15);
   const textEchoFx = clamp(currentTheme.textEchoFx ?? textFx, 0.05, 1.15);
   const textMotionGate = playbackActive && !bilibiliMode ? 1 : 0;
-  genreLabel.style.setProperty('--genre-flare', genreFlare.toFixed(3));
-  genreLabel.style.setProperty('--genre-glow', `${(textBaseGlow + (genreFlare * 11 + impactFx.bloom * 18) * textFx).toFixed(2)}px`);
-  genreLabel.style.setProperty('--genre-brightness', (1 + (genreFlare * .2 + impactFx.exposure - 1) * textFx).toFixed(3));
-  genreLabel.style.setProperty('--genre-saturation', (1 + (genreFlare * .12 + impactFx.saturation - 1) * textFx).toFixed(3));
-  genreLabel.style.setProperty('--impact-text-blur', `${(impactFx.blur * .72 * textFx).toFixed(3)}px`);
-  genreLabel.style.setProperty('--impact-echo-left', `${(-impactFx.echo * 8 * textEchoFx * textMotionGate).toFixed(2)}px`);
-  genreLabel.style.setProperty('--impact-echo-right', `${(impactFx.echo * 8 * textEchoFx * textMotionGate).toFixed(2)}px`);
-  genreLabel.style.setProperty('--impact-echo-blur', `${(impactFx.bloom * 12 * textEchoFx * textMotionGate).toFixed(2)}px`);
-  genreLabel.style.setProperty('--impact-echo-alpha', `${Math.min(42, impactFx.echo * 72 * textEchoFx * textMotionGate).toFixed(1)}%`);
-  genreLabel.style.setProperty('--impact-slice-left', `${((-impactFx.slice * 9 - impactFx.chroma * 3) * textSliceFx * textMotionGate).toFixed(2)}px`);
-  genreLabel.style.setProperty('--impact-slice-right', `${((impactFx.slice * 9 + impactFx.chroma * 3) * textSliceFx * textMotionGate).toFixed(2)}px`);
-  genreLabel.style.setProperty('--impact-slice-opacity', Math.min(.68, (impactFx.slice * .72 + impactFx.chroma * .28) * textSliceFx * textMotionGate).toFixed(3));
-  genreLabel.style.setProperty('--impact-ghost-blur', `${(impactFx.blur * 2.2 * textSliceFx * textMotionGate).toFixed(2)}px`);
   const gentleHardcore = currentTheme.mode === 'hardcore'
     && ['happy-hardcore', 'uk-hardcore'].includes(currentTheme.id);
   const distortedGenre = (['hardcore', 'hardstyle'].includes(currentTheme.mode) && !gentleHardcore)
     || currentTheme.mode === 'phonk'
     || currentTheme.id === 'industrial-metal';
-  document.documentElement.style.setProperty('--distortion', (playbackActive && distortedGenre ? metrics.rhythmPulse : 0).toFixed(3));
-  renderSyncedLyrics(time);
+  const genreGlow = textBaseGlow + (genreFlare * 11 + impactFx.bloom * 18) * textFx;
+  const genreBrightness = 1 + (genreFlare * .2 + impactFx.exposure - 1) * textFx;
+  const genreSaturation = 1 + (genreFlare * .12 + impactFx.saturation - 1) * textFx;
+  const genreBlur = impactFx.blur * .72 * textFx;
+  const genreDistortion = playbackActive && distortedGenre ? metrics.rhythmPulse : 0;
+  const genreEchoLeft = -impactFx.echo * 8 * textEchoFx * textMotionGate;
+  const genreEchoRight = impactFx.echo * 8 * textEchoFx * textMotionGate;
+  const genreEchoBlur = impactFx.bloom * 12 * textEchoFx * textMotionGate;
+  const genreEchoAlpha = Math.min(42, impactFx.echo * 72 * textEchoFx * textMotionGate);
+  const nextGenreFilter = genreFilterValue({
+    bilibiliMode,
+    tranceMode,
+    synthwaveMode,
+    brightness: genreBrightness.toFixed(3),
+    saturation: genreSaturation.toFixed(3),
+    blur: genreBlur.toFixed(3),
+    distortion: genreDistortion,
+    glow: genreGlow.toFixed(2),
+    echoLeft: genreEchoLeft.toFixed(2),
+    echoRight: genreEchoRight.toFixed(2),
+    echoBlur: genreEchoBlur.toFixed(2),
+    echoAlpha: genreEchoAlpha.toFixed(1)
+  });
+  if (genreFace.style.filter !== nextGenreFilter) genreFace.style.filter = nextGenreFilter;
+  if (foregroundStyleDue) {
+    setDynamicStyleProperty(genreLabel, '--impact-slice-left', `${((-impactFx.slice * 9 - impactFx.chroma * 3) * textSliceFx * textMotionGate).toFixed(2)}px`);
+    setDynamicStyleProperty(genreLabel, '--impact-slice-right', `${((impactFx.slice * 9 + impactFx.chroma * 3) * textSliceFx * textMotionGate).toFixed(2)}px`);
+    setDynamicStyleProperty(genreLabel, '--impact-slice-opacity', Math.min(.68, (impactFx.slice * .72 + impactFx.chroma * .28) * textSliceFx * textMotionGate).toFixed(3));
+    setDynamicStyleProperty(genreLabel, '--impact-ghost-blur', `${(impactFx.blur * 2.2 * textSliceFx * textMotionGate).toFixed(2)}px`);
+  }
+  if (foregroundStyleDue) {
+    setDynamicStyleProperty(
+      document.documentElement,
+      '--distortion',
+      genreDistortion.toFixed(3)
+    );
+  }
+  if (lyricStyleDue) renderSyncedLyrics(time);
   const nextRenderPerformanceContext = stageOutputActive
-    ? `fullscreen:${stageOutputTextVisible ? fullscreenLayoutMode : 'textless'}:${currentTheme.id}`
-    : `desktop:${layoutMode}:${currentTheme.id}`;
+    ? `fullscreen:${stageOutputTextVisible ? fullscreenLayoutMode : 'textless'}:${currentTheme.id}:fps-${frameRateLimit}`
+    : `desktop:${layoutMode}:${currentTheme.id}:fps-${frameRateLimit}`;
   if (animationActive && !document.hidden
     && nextRenderPerformanceContext !== renderPerformanceContext) {
     renderPerformanceContext = nextRenderPerformanceContext;
@@ -4225,8 +4415,13 @@ function animate(time) {
       const resolutionLevels = stageOutputActive
         ? [1, 0.9, 0.82, 0.76]
         : [1, 0.9, 0.82];
-      const gpuLimitedDrop = fps < 57.5 && frameP95 >= 25 && workP95 < 14;
-      const comfortablyStable = fps > 58 && frameP95 < 20.5;
+      const targetFps = performanceTargetFps(frameRateLimit);
+      const targetFrameInterval = 1000 / targetFps;
+      const gpuLimitedDrop = fps < targetFps * 0.958
+        && frameP95 >= targetFrameInterval * 1.5
+        && workP95 < 14;
+      const comfortablyStable = fps > targetFps * 0.966
+        && frameP95 < targetFrameInterval * 1.23;
 
       adaptiveLowFpsWindows = gpuLimitedDrop ? adaptiveLowFpsWindows + 1 : 0;
       adaptiveHighFpsWindows = comfortablyStable ? adaptiveHighFpsWindows + 1 : 0;
@@ -4526,6 +4721,15 @@ uiScaleButton.addEventListener('keydown', (event) => {
   event.preventDefault();
   setScaleMenuOpen(true, { focus: true });
 });
+frameRateButton.addEventListener('click', () => {
+  const opening = frameRateMenu.hidden;
+  setFrameRateMenuOpen(opening, { focus: opening });
+});
+frameRateButton.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  event.preventDefault();
+  setFrameRateMenuOpen(true, { focus: true });
+});
 languageButton.addEventListener('click', () => {
   const opening = languageMenu.hidden;
   setLanguageMenuOpen(opening, { focus: opening });
@@ -4563,6 +4767,9 @@ languageMenu.addEventListener('keydown', (event) => {
 });
 uiScaleOptions.forEach((option) => {
   option.addEventListener('click', () => chooseUiScale(option.dataset.scale));
+});
+frameRateOptions.forEach((option) => {
+  option.addEventListener('click', () => chooseFrameRateLimit(option.dataset.frameRate));
 });
 layoutModeOptions.forEach((option) => {
   option.addEventListener('click', () => chooseLayoutMode(option.dataset.layoutMode));
@@ -4878,8 +5085,32 @@ uiScaleMenu.addEventListener('keydown', (event) => {
       : (currentIndex + movement + uiScaleOptions.length) % uiScaleOptions.length;
   uiScaleOptions[nextIndex].focus();
 });
+frameRateMenu.addEventListener('keydown', (event) => {
+  const currentIndex = Math.max(0, frameRateOptions.indexOf(document.activeElement));
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setFrameRateMenuOpen(false);
+    frameRateButton.focus();
+    return;
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    chooseFrameRateLimit(frameRateOptions[currentIndex].dataset.frameRate);
+    return;
+  }
+  const movement = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+  if (!movement && event.key !== 'Home' && event.key !== 'End') return;
+  event.preventDefault();
+  const nextIndex = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? frameRateOptions.length - 1
+      : (currentIndex + movement + frameRateOptions.length) % frameRateOptions.length;
+  frameRateOptions[nextIndex].focus();
+});
 document.addEventListener('pointerdown', (event) => {
   if (!event.target.closest('.ui-scale-picker')) setScaleMenuOpen(false);
+  if (!event.target.closest('.frame-rate-picker')) setFrameRateMenuOpen(false);
   if (!event.target.closest('.language-picker')) setLanguageMenuOpen(false);
   if (!event.target.closest('.audio-source-picker')) setCaptureAudioSourceMenuOpen(false);
   if (!event.target.closest('.media-source-picker')) setMediaSourceMenuOpen(false);
@@ -5329,6 +5560,7 @@ window.genrePolice.getConfig().then((config) => {
   setMotionMode(config.motionMode);
   setVisualResponseMode(config.visualResponseMode);
   setIdleBehavior(config.idleBehavior);
+  setFrameRateLimit(config.frameRateLimit);
   setIdleFrameLimitEnabled(config.idleFrameLimitEnabled !== false);
   setShowFps(config.showFps === true);
   setRhythmModelEnabled(config.rhythmModelEnabled !== false);
