@@ -174,9 +174,15 @@ function recordingSenderAllowed(event) {
   return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
 }
 
+function setRecordingBackgroundPriority(active) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.setBackgroundThrottling(active !== true);
+}
+
 function closeRecordingFile({ keepPartial = false } = {}) {
   const active = recordingSession;
   recordingSession = null;
+  setRecordingBackgroundPriority(false);
   if (!active) return;
   try {
     fs.closeSync(active.fd);
@@ -278,7 +284,7 @@ function ensureRecordingControlsWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      backgroundThrottling: false
+      backgroundThrottling: true
     }
   });
   recordingControlsWindow.setAlwaysOnTop(true, 'floating');
@@ -322,7 +328,7 @@ function ensureRecordingTransportWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      backgroundThrottling: false
+      backgroundThrottling: true
     }
   });
   recordingTransportWindow.setAlwaysOnTop(true, 'floating');
@@ -1349,7 +1355,10 @@ function updateMainWindowPointerHitTest() {
 }
 
 function startMainWindowPointerHitTest() {
-  if (pointerHitTestTimer) clearInterval(pointerHitTestTimer);
+  if (pointerHitTestTimer) {
+    updateMainWindowPointerHitTest();
+    return;
+  }
   pointerHitTestTimer = setInterval(updateMainWindowPointerHitTest, 24);
   updateMainWindowPointerHitTest();
 }
@@ -1359,6 +1368,18 @@ function stopMainWindowPointerHitTest() {
   pointerHitTestTimer = null;
   mainWindowMouseEventsIgnored = null;
   mainWindowBeingMoved = false;
+}
+
+function syncMainWindowBackgroundActivity() {
+  const visible = Boolean(mainWindow && !mainWindow.isDestroyed()
+    && mainWindow.isVisible() && !mainWindow.isMinimized());
+  if (visible) {
+    startMainWindowPointerHitTest();
+    startBackdropSampler();
+    return;
+  }
+  stopMainWindowPointerHitTest();
+  stopBackdropSampler();
 }
 
 async function openGenreCorrection() {
@@ -1785,7 +1806,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      backgroundThrottling: false
+      backgroundThrottling: true
     }
   });
 
@@ -1810,6 +1831,10 @@ function createWindow() {
     positionRecordingControlsWindow();
     updateMainWindowPointerHitTest();
   });
+  mainWindow.on('show', syncMainWindowBackgroundActivity);
+  mainWindow.on('hide', syncMainWindowBackgroundActivity);
+  mainWindow.on('minimize', syncMainWindowBackgroundActivity);
+  mainWindow.on('restore', syncMainWindowBackgroundActivity);
   mainWindow.webContents.on('console-message', (event) => {
     if (event.level === 'error') {
       console.error(`[renderer] ${event.message} (${event.sourceId || 'unknown'}:${event.lineNumber || 0})`);
@@ -1828,7 +1853,7 @@ function createWindow() {
     mainWindow.webContents.send('layout-mode', { mode: normalizeLayoutMode(config.layoutMode) });
     mainWindow.webContents.send('stage-output-state', stageOutputState());
     mainWindow.webContents.send('rhythm-model', rhythmModelState);
-    startBackdropSampler();
+    syncMainWindowBackgroundActivity();
     scheduleAutomaticUpdateCheck();
     if (process.env.GP_DEMO_THEME) {
       setDemoTheme(process.env.GP_DEMO_THEME);
@@ -2137,6 +2162,7 @@ async function prepareRecording(event, payload) {
       bytes: 0,
       startedAt: Date.now()
     };
+    setRecordingBackgroundPriority(true);
     if (tray && !tray.isDestroyed()) {
       tray.setToolTip(recordingLocaleText('recording.trayActive'));
     }
@@ -2178,6 +2204,7 @@ function finishRecording(event, payload) {
   const active = recordingSession;
   if (!active || payload?.id !== active.id) return { ok: false, error: 'invalid-session' };
   recordingSession = null;
+  setRecordingBackgroundPriority(false);
   try {
     const reportedDuration = Number(payload?.durationMs);
     const durationMs = Number.isFinite(reportedDuration) && reportedDuration > 0
@@ -2280,6 +2307,10 @@ async function sampleWindowBackdrop() {
 }
 
 function startBackdropSampler() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible() || mainWindow.isMinimized()) {
+    stopBackdropSampler();
+    return;
+  }
   if (!usesAdaptiveBackdrop()) {
     stopBackdropSampler();
     return;

@@ -52,3 +52,22 @@ test('adaptive performance uses the selected limit as its healthy baseline', asy
   assert.equal(performanceTargetFps('60'), 60);
   assert.equal(performanceTargetFps('30'), 30);
 });
+
+test('hidden windows suspend renderer and audio work unless a recording is active', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const appSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'app.js'), 'utf8');
+  const audioSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'audio-engine.js'), 'utf8');
+  const mainSource = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+
+  assert.match(mainSource, /backgroundThrottling:\s*true/g);
+  assert.doesNotMatch(mainSource, /backgroundThrottling:\s*false/);
+  assert.match(mainSource, /setBackgroundThrottling\(active !== true\)/);
+  assert.match(appSource, /return document\.hidden && !recordingPresentationActive;/);
+  assert.match(appSource, /document\.addEventListener\('visibilitychange', applyVisibilityPerformancePolicy\)/);
+  assert.match(appSource, /void audio\.setSuspended\(suspended\)/);
+  assert.match(appSource, /if \(animationFrameId\) cancelAnimationFrame\(animationFrameId\)/);
+  assert.match(audioSource, /async setSuspended\(suspended\)/);
+  assert.match(audioSource, /const contexts = \[this\.context, this\.rhythmContext, this\.genreContext\]/);
+  assert.match(audioSource, /if \(this\.suspended\) return this\.metrics;/);
+});

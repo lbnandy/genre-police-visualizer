@@ -432,6 +432,7 @@ let previousAnimationTime = 0;
 let lastAnimationWorkAt = 0;
 let nextAnimationWorkAt = 0;
 let scheduledFrameInterval = 0;
+let animationFrameId = 0;
 let renderPerformanceStartedAt = 0;
 let renderPerformanceWarmupUntil = 0;
 let renderPerformanceContext = '';
@@ -3616,6 +3617,7 @@ function setRecordingPresentation(active) {
   const nextActive = active === true;
   if (nextActive) recordingControlsOverlayPayload(false);
   recordingPresentationActive = nextActive;
+  applyVisibilityPerformancePolicy();
   recordingOverlayVisible = false;
   syncRecordingControlsOverlay(false);
   [controls, transport, fullscreenControls, fullscreenTransport, settings, neteaseSmtcToast, recordingToast].forEach((element) => {
@@ -4014,10 +4016,46 @@ function syntheticDemoMetrics(metrics, time) {
   };
 }
 
+function shouldSuspendForVisibility() {
+  return document.hidden && !recordingPresentationActive;
+}
+
+function requestAnimationLoop() {
+  if (animationFrameId || shouldSuspendForVisibility()) return;
+  animationFrameId = requestAnimationFrame(animate);
+}
+
+function resetAnimationSchedule() {
+  previousAnimationTime = 0;
+  lastAnimationWorkAt = 0;
+  nextAnimationWorkAt = 0;
+  scheduledFrameInterval = 0;
+  lastBackdropStyleAt = 0;
+  lastForegroundStyleAt = 0;
+  lastLyricStyleAt = 0;
+}
+
+function applyVisibilityPerformancePolicy() {
+  const suspended = shouldSuspendForVisibility();
+  void audio.setSuspended(suspended);
+  if (suspended) {
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    animationFrameId = 0;
+    return;
+  }
+  resetAnimationSchedule();
+  requestAnimationLoop();
+}
+
 function animate(time) {
+  animationFrameId = 0;
+  if (shouldSuspendForVisibility()) {
+    applyVisibilityPerformancePolicy();
+    return;
+  }
   const animationActive = Boolean(recordingPresentationActive || demoTheme || currentMetadata?.playing);
   const minimumFrameInterval = frameIntervalFor({
-    hidden: document.hidden,
+    hidden: shouldSuspendForVisibility(),
     animationActive,
     frameRateLimit,
     idleFrameLimitEnabled
@@ -4029,7 +4067,7 @@ function animate(time) {
   const frameSchedule = scheduleFrame(time, nextAnimationWorkAt, minimumFrameInterval);
   nextAnimationWorkAt = frameSchedule.deadline;
   if (!frameSchedule.due) {
-    requestAnimationFrame(animate);
+    requestAnimationLoop();
     return;
   }
   lastAnimationWorkAt = time;
@@ -4474,8 +4512,10 @@ function animate(time) {
     renderDurations = [];
     renderWorkDurations = [];
   }
-  requestAnimationFrame(animate);
+  requestAnimationLoop();
 }
+
+document.addEventListener('visibilitychange', applyVisibilityPerformancePolicy);
 
 audio.addEventListener('status', ({ detail }) => {
   updateDiagnosticsUi();
@@ -5619,4 +5659,4 @@ renderRecordingUi();
 genreLabel.dataset.text = genreLabel.textContent;
 transitionTo(null, true);
 audio.start();
-requestAnimationFrame(animate);
+applyVisibilityPerformancePolicy();

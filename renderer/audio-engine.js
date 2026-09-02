@@ -52,6 +52,8 @@ export class AudioEngine extends EventTarget {
     this.audioSourceId = 'system';
     this.rhythmModelEnabled = true;
     this.localGenreModelEnabled = true;
+    this.suspended = false;
+    this.contextStateSerial = 0;
     this.installOutputDeviceMonitor();
   }
 
@@ -64,7 +66,7 @@ export class AudioEngine extends EventTarget {
     // endpoint. Polling the small device list is a fallback for drivers that
     // update the default pseudo-device without emitting the event.
     this.devicePollTimer = window.setInterval(async () => {
-      if (this.audioSourceId !== 'system') return;
+      if (this.suspended || this.audioSourceId !== 'system') return;
       const changed = await this.refreshOutputDeviceSignature(true);
       if (changed) this.scheduleOutputDeviceRestart('default-output-changed', true, 260);
     }, 2400);
@@ -200,6 +202,29 @@ export class AudioEngine extends EventTarget {
       return;
     }
     if (this.stream && this.status === 'live') this.start();
+  }
+
+  async syncContextState(serial = this.contextStateSerial) {
+    const method = this.suspended ? 'suspend' : 'resume';
+    const contexts = [this.context, this.rhythmContext, this.genreContext]
+      .filter((context) => context && context.state !== 'closed');
+    await Promise.allSettled(contexts.map((context) => {
+      if (this.suspended && context.state === 'suspended') return Promise.resolve();
+      if (!this.suspended && context.state === 'running') return Promise.resolve();
+      return context[method]();
+    }));
+    if (serial !== this.contextStateSerial) return this.syncContextState(this.contextStateSerial);
+    return undefined;
+  }
+
+  async setSuspended(suspended) {
+    const next = suspended === true;
+    if (next !== this.suspended) {
+      this.suspended = next;
+      this.contextStateSerial += 1;
+      this.resetDetectionState();
+    }
+    await this.syncContextState(this.contextStateSerial);
   }
 
   setModelAssist(payload = {}) {
@@ -369,6 +394,8 @@ export class AudioEngine extends EventTarget {
           this.stopGenreFeed();
         }
       }
+      await this.syncContextState(this.contextStateSerial);
+      if (serial !== this.startSerial) return;
       this.status = 'live';
       this.captureStartedAt = performance.now();
       if (this.audioSourceId === 'system') this.refreshOutputDeviceSignature(false);
@@ -449,6 +476,7 @@ export class AudioEngine extends EventTarget {
   }
 
   update(now = performance.now()) {
+    if (this.suspended) return this.metrics;
     const deltaMs = this.lastAnalysisAt ? clamp(now - this.lastAnalysisAt, 4, 80) : 16.667;
     this.lastAnalysisAt = now;
     if (
