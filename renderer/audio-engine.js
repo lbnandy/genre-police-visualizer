@@ -219,10 +219,18 @@ export class AudioEngine extends EventTarget {
 
   async setSuspended(suspended) {
     const next = suspended === true;
+    const wasSuspended = this.suspended;
     if (next !== this.suspended) {
       this.suspended = next;
       this.contextStateSerial += 1;
       this.resetDetectionState();
+    }
+    // Chromium can leave a system-loopback track marked live after the app
+    // producing audio is restarted while capture is suspended. Rebuild the
+    // graph on restore so it binds to the current Windows audio session.
+    if (wasSuspended && !next && this.audioSourceId === 'system') {
+      await this.start();
+      return;
     }
     await this.syncContextState(this.contextStateSerial);
   }

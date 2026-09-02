@@ -2482,6 +2482,7 @@ function cancelBackdropCrossfade() {
 async function applyThemeWithBackdropTransition(theme) {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const shouldCrossfade = document.body.dataset.backgroundStyle === 'themed'
+    && !document.hidden
     && !reducedMotion
     && currentTheme?.id !== (theme?.id || 'unknown');
   if (!shouldCrossfade) {
@@ -3908,7 +3909,9 @@ async function transitionTo(metadata, immediate = false, subtle = false) {
   const token = ++transitionToken;
   const content = contentFor(metadata);
   currentDisplayContent = content;
-  if (!immediate) {
+  const hidden = document.hidden;
+  if (hidden) hud.classList.remove('entering', 'leaving');
+  if (!immediate && !hidden) {
     hud.classList.remove('entering');
     hud.classList.add('leaving');
     await new Promise((resolve) => setTimeout(resolve, 170));
@@ -3939,7 +3942,7 @@ async function transitionTo(metadata, immediate = false, subtle = false) {
   setSyncedLyrics(content.lyrics);
 
   hud.classList.remove('leaving');
-  if (subtle) return;
+  if (subtle || hidden) return;
   void hud.offsetWidth;
   hud.classList.add('entering');
   setTimeout(() => hud.classList.remove('entering'), 1000);
@@ -4033,17 +4036,31 @@ function resetAnimationSchedule() {
   lastBackdropStyleAt = 0;
   lastForegroundStyleAt = 0;
   lastLyricStyleAt = 0;
+  fpsCounterStartedAt = 0;
+  fpsCounterFrameCount = 0;
+  renderPerformanceStartedAt = 0;
+  renderPerformanceWarmupUntil = 0;
+  renderPerformanceContext = '';
+  renderFrameIntervals = [];
+  renderDurations = [];
+  renderWorkDurations = [];
+  adaptiveLowFpsWindows = 0;
+  adaptiveHighFpsWindows = 0;
 }
 
 function applyVisibilityPerformancePolicy() {
   const suspended = shouldSuspendForVisibility();
   void audio.setSuspended(suspended);
+  resetAnimationSchedule();
   if (suspended) {
+    cancelBackdropCrossfade();
+    if (hud.classList.contains('leaving') && currentMetadata && !demoTheme) {
+      void transitionTo(currentMetadata, true, true);
+    }
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     animationFrameId = 0;
     return;
   }
-  resetAnimationSchedule();
   requestAnimationLoop();
 }
 

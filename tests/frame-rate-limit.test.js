@@ -66,8 +66,15 @@ test('hidden windows suspend renderer and audio work unless a recording is activ
   assert.match(appSource, /return document\.hidden && !recordingPresentationActive;/);
   assert.match(appSource, /document\.addEventListener\('visibilitychange', applyVisibilityPerformancePolicy\)/);
   assert.match(appSource, /void audio\.setSuspended\(suspended\)/);
+  assert.match(appSource, /function resetAnimationSchedule\(\) \{[\s\S]*fpsCounterStartedAt = 0;[\s\S]*renderPerformanceContext = '';[\s\S]*adaptiveHighFpsWindows = 0;\s*\}/);
+  assert.match(appSource, /function applyVisibilityPerformancePolicy\(\) \{[\s\S]*resetAnimationSchedule\(\);[\s\S]*if \(suspended\)/);
+  assert.match(appSource, /if \(hud\.classList\.contains\('leaving'\) && currentMetadata && !demoTheme\) \{\s*void transitionTo\(currentMetadata, true, true\);/);
+  assert.match(appSource, /const shouldCrossfade = document\.body\.dataset\.backgroundStyle === 'themed'\s*&& !document\.hidden/);
+  assert.match(appSource, /if \(!immediate && !hidden\)/);
   assert.match(appSource, /if \(animationFrameId\) cancelAnimationFrame\(animationFrameId\)/);
   assert.match(audioSource, /async setSuspended\(suspended\)/);
+  assert.match(audioSource, /const wasSuspended = this\.suspended;/);
+  assert.match(audioSource, /if \(wasSuspended && !next && this\.audioSourceId === 'system'\) \{\s*await this\.start\(\);\s*return;/);
   assert.match(audioSource, /const contexts = \[this\.context, this\.rhythmContext, this\.genreContext\]/);
   assert.match(audioSource, /if \(this\.suspended\) return this\.metrics;/);
 });
