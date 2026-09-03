@@ -12,6 +12,8 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 
 **演示视频：** [哔哩哔哩](https://www.bilibili.com/video/BV1bi426EEAg) · [YouTube](https://www.youtube.com/watch?v=sDvQqHSm7dU)
 
+⭐ 如果你喜欢这个项目，欢迎点个 Star 支持一下。
+
 ## 下载
 
 **[前往 Releases 下载 Windows 便携版](../../releases)**
@@ -134,8 +136,6 @@ npm run dist
 ```
 
 ## 反馈与许可
-
-如果你喜欢这个项目，欢迎点个 Star 支持一下。
 
 如果遇到问题或有改进建议，可以在 [Issues](../../issues) 中提交。问题报告可附带软件导出的脱敏诊断文件，但请不要公开 Last.fm Key、Discogs Token 或其他凭据。
 

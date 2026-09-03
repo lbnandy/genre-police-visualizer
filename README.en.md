@@ -12,6 +12,8 @@ The current release is the `0.3.0` beta, with 140 selectable genre visuals acros
 
 **Demo videos:** [YouTube](https://www.youtube.com/watch?v=sDvQqHSm7dU) · [Bilibili](https://www.bilibili.com/video/BV1bi426EEAg)
 
+⭐ If you like this project, consider giving it a star on GitHub.
+
 ## Download
 
 **[Open Releases to download the Windows portable build](../../releases)**
@@ -134,8 +136,6 @@ npm run dist
 ```
 
 ## Feedback and license
-
-If you like this project, consider giving it a star on GitHub.
 
 Use [Issues](../../issues) for bug reports and suggestions. You may attach the application's redacted diagnostics export, but do not post a Last.fm key, Discogs token, or any other credential publicly.
 
