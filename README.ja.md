@@ -10,6 +10,8 @@ Genre Police Visualizer は、Windows の再生中メディア情報とシステ
 
 現在のリリースは `0.3.0` ベータ版です。選択可能な 140 種類のジャンルビジュアルで、20 以上の主要なジャンル系統をカバーしています。電子音楽を主なデザイン対象としながら、Pop、Rock、Hip-Hop、R&B、Jazz、Classical の各系統も追加・調整しています。
 
+**デモ動画：** [YouTube](https://www.youtube.com/watch?v=sDvQqHSm7dU) · [Bilibili](https://www.bilibili.com/video/BV1bi426EEAg)
+
 ## ダウンロード
 
 **[Releases から Windows ポータブル版をダウンロード](../../releases)**
@@ -132,6 +134,8 @@ npm run dist
 ```
 
 ## フィードバックとライセンス
+
+気に入っていただけたら、GitHub で Star を付けていただけるとうれしいです。
 
 不具合報告や提案は [Issues](../../issues) から送信できます。アプリが出力する匿名化済み診断ファイルを添付できますが、Last.fm Key、Discogs Token、その他の認証情報は公開しないでください。
 
