@@ -71,6 +71,7 @@ test('J-Pop subgenres keep distinct background and spectrum-attached visual lang
   const vocaloid = ruleContaining('[data-mode="j-pop"][data-genre="vocaloid"]');
   assert.match(cityPop, /repeating-linear-gradient\(0deg/);
   assert.match(anime, /repeating-conic-gradient/);
+  assert.doesNotMatch(anime, /linear-gradient\(154deg/, 'Anime should not cross its radial launch lines with diagonal bars');
   assert.match(vocaloid, /repeating-linear-gradient\(90deg/);
 
   const signatureStart = visualSource.indexOf("} else if (mode === 'j-pop')", visualSource.indexOf('drawGenreSignature'));
@@ -80,6 +81,26 @@ test('J-Pop subgenres keep distinct background and spectrum-attached visual lang
   assert.match(signature, /Paired sweeps trade places/);
   assert.match(signature, /Quantized ticks are anchored/);
   assert.match(signature, /for \(let step = 0; step < 12; step \+= 1\)/);
+});
+
+test('radial backdrop languages do not stack unrelated crossing line systems', () => {
+  const glitch = ruleContaining('[data-genre="glitch"]');
+  assert.match(glitch, /repeating-conic-gradient/);
+  assert.match(glitch, /repeating-linear-gradient\(0deg/);
+  assert.doesNotMatch(glitch, /repeating-linear-gradient\(93deg/, 'Glitch should not add vertical bars over its rays');
+
+  const idm = ruleContaining('[data-genre="idm"]');
+  assert.match(idm, /repeating-linear-gradient\(90deg/);
+  assert.match(idm, /repeating-linear-gradient\(0deg/);
+  assert.doesNotMatch(idm, /conic-gradient/, 'IDM should keep its grid without a competing radial fan');
+
+  const jazzFusion = ruleContaining('[data-genre="jazz-fusion"]');
+  assert.match(jazzFusion, /repeating-conic-gradient/);
+  assert.doesNotMatch(jazzFusion, /repeating-linear-gradient/, 'Jazz Fusion should keep one radial background language');
+
+  const house = ruleContaining('[data-mode="house"]');
+  assert.match(house, /repeating-conic-gradient/);
+  assert.doesNotMatch(house, /linear-gradient\([^)]*1px/, 'House should not overlay a grid on its radial pulse');
 });
 
 test('Jazz and Classical subgenres keep distinct reviewed visual languages', () => {

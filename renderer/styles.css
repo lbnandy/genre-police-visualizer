@@ -5430,11 +5430,8 @@ body[data-background-style="themed"] .themed-backdrop[data-mode="hardstyle"]::be
 body[data-background-style="themed"] .themed-backdrop[data-mode="house"]::before {
   background:
     repeating-conic-gradient(from var(--poster-phase-quarter) at var(--backdrop-focus-x) var(--backdrop-focus-y), color-mix(in srgb, var(--accent) 24%, transparent) 0 7deg, transparent 13deg 82deg, color-mix(in srgb, var(--accent-2) 20%, transparent) 86deg 90deg),
-    radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 108px, color-mix(in srgb, var(--accent) 17%, transparent) 110px 115px, transparent 118px 152px, color-mix(in srgb, var(--accent-2) 11%, transparent) 154px 156px, transparent 159px),
-    linear-gradient(color-mix(in srgb, var(--accent) 7%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--accent-2) 7%, transparent) 1px, transparent 1px);
-  background-size: auto, auto, 42px 42px, 42px 42px;
-  background-position: 0 0, 0 0, var(--poster-flow-reverse) var(--poster-flow-slow), var(--poster-flow-slow) var(--poster-flow-reverse);
+    radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 108px, color-mix(in srgb, var(--accent) 17%, transparent) 110px 115px, transparent 118px 152px, color-mix(in srgb, var(--accent-2) 11%, transparent) 154px 156px, transparent 159px);
+  background-position: 0 0;
   transform: none;
   opacity: calc(.31 + var(--poster-energy) * .23 + var(--poster-impact) * .1);
   -webkit-mask-image: radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 116px, #000 120px 145px, rgba(0,0,0,.18) 164px);
@@ -5943,7 +5940,6 @@ body[data-background-style="themed"] .themed-backdrop[data-mode="j-pop"][data-ge
       transparent 0 13deg,
       color-mix(in srgb, var(--accent-2) 16%, transparent) 13.5deg 14.5deg,
       transparent 15deg 29deg),
-    linear-gradient(154deg, transparent 0 36%, color-mix(in srgb, var(--hot) 13%, transparent) 36.5% 37.2%, transparent 37.8% 62%, color-mix(in srgb, var(--accent) 12%, transparent) 62.5% 63.3%, transparent 64%),
     radial-gradient(ellipse 66% 28% at calc(26% + var(--poster-wave-x)) calc(38% + var(--poster-wave-y)), color-mix(in srgb, var(--hot) 18%, transparent), transparent 72%),
     radial-gradient(ellipse 54% 20% at 78% 68%, color-mix(in srgb, var(--accent) 17%, transparent), transparent 74%);
   background-position: 0 0;
@@ -6034,9 +6030,8 @@ body[data-background-style="themed"] .themed-backdrop[data-genre="chillout"]::be
 body[data-background-style="themed"] .themed-backdrop[data-genre="idm"]::before {
   background:
     repeating-linear-gradient(90deg, transparent 0 36px, color-mix(in srgb, var(--accent) 11%, transparent) 37px 39px, transparent 40px 77px),
-    repeating-linear-gradient(0deg, transparent 0 52px, color-mix(in srgb, var(--accent-2) 10%, transparent) 53px 55px, transparent 56px 108px),
-    repeating-conic-gradient(from var(--poster-phase-soft) at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 23deg, color-mix(in srgb, var(--hot) 8%, transparent) 23.5deg 24.5deg, transparent 25deg 51deg);
-  background-position: var(--poster-flow-slow) 0, 0 var(--poster-flow-reverse), 0 0;
+    repeating-linear-gradient(0deg, transparent 0 52px, color-mix(in srgb, var(--accent-2) 10%, transparent) 53px 55px, transparent 56px 108px);
+  background-position: var(--poster-flow-slow) 0, 0 var(--poster-flow-reverse);
   transform: none;
   opacity: calc(.24 + var(--poster-energy) * .2 + var(--poster-impact) * .055);
 }
@@ -6044,9 +6039,8 @@ body[data-background-style="themed"] .themed-backdrop[data-genre="idm"]::before 
 body[data-background-style="themed"] .themed-backdrop[data-genre="glitch"]::before {
   background:
     repeating-linear-gradient(0deg, transparent 0 13px, color-mix(in srgb, var(--accent-2) 13%, transparent) 14px 16px, transparent 17px 31px),
-    repeating-linear-gradient(93deg, transparent 0 67px, color-mix(in srgb, var(--hot) 10%, transparent) 68px 73px, transparent 74px 139px),
     repeating-conic-gradient(from var(--poster-phase-quarter) at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 16deg, color-mix(in srgb, var(--accent) 13%, transparent) 16.5deg 18deg, transparent 18.5deg 39deg);
-  background-position: 0 var(--poster-flow-reverse), var(--poster-flow-slow) 0, 0 0;
+  background-position: 0 var(--poster-flow-reverse), 0 0;
   transform: none;
   opacity: calc(.27 + var(--poster-energy) * .23 + var(--poster-impact) * .075);
 }
@@ -6214,9 +6208,8 @@ body[data-background-style="themed"] .themed-backdrop[data-genre="bossa-nova"]::
 body[data-background-style="themed"] .themed-backdrop[data-genre="jazz-fusion"]::before {
   background:
     repeating-conic-gradient(from var(--poster-phase-soft) at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 25deg, color-mix(in srgb, var(--accent-2) 15%, transparent) 25.5deg 27deg, transparent 27.5deg 52deg),
-    repeating-linear-gradient(112deg, transparent 0 47px, color-mix(in srgb, var(--accent) 12%, transparent) 48px 50px, transparent 51px 96px),
     radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), color-mix(in srgb, var(--hot) 9%, transparent), transparent 174px);
-  background-position: 0 0, var(--poster-flow-reverse) 0, 0 0;
+  background-position: 0 0;
   opacity: calc(.3 + var(--poster-energy) * .25 + var(--poster-impact) * .09);
 }
 
@@ -6796,10 +6789,7 @@ body[data-stage-output="true"] .themed-backdrop {
 body[data-stage-output="true"][data-background-style="themed"] .themed-backdrop[data-mode="house"]::before {
   background:
     repeating-conic-gradient(from 0deg at var(--backdrop-focus-x) var(--backdrop-focus-y), color-mix(in srgb, var(--accent) 24%, transparent) 0 7deg, transparent 13deg 82deg, color-mix(in srgb, var(--accent-2) 20%, transparent) 86deg 90deg),
-    radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 108px, color-mix(in srgb, var(--accent) 17%, transparent) 110px 115px, transparent 118px 152px, color-mix(in srgb, var(--accent-2) 11%, transparent) 154px 156px, transparent 159px),
-    linear-gradient(color-mix(in srgb, var(--accent) 7%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--accent-2) 7%, transparent) 1px, transparent 1px);
-  background-size: auto, auto, 42px 42px, 42px 42px;
+    radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 108px, color-mix(in srgb, var(--accent) 17%, transparent) 110px 115px, transparent 118px 152px, color-mix(in srgb, var(--accent-2) 11%, transparent) 154px 156px, transparent 159px);
   background-position: 0 0;
   transform: rotate(var(--poster-phase-quarter)) translateZ(0);
   opacity: calc(.31 + var(--poster-energy) * .23 + var(--poster-impact) * .1);
