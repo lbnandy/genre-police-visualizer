@@ -1,6 +1,6 @@
 {
   "name": "genre-police-visualizer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Transparent, genre-aware now-playing visualizer for Windows media players.",
   "main": "main.js",
   "author": "LBN",
@@ -77,8 +77,15 @@
       "node_modules/onnxruntime-node/package.json",
       "!node_modules/onnxruntime-node/bin/**/*",
       "node_modules/onnxruntime-node/bin/napi-v6/win32/x64/**/*",
+      "!node_modules/onnxruntime-node/dist/**/*.map",
+      "!node_modules/onnxruntime-node/dist/**/*.d.ts",
+      "!node_modules/onnxruntime-node/lib/**/*",
+      "!node_modules/onnxruntime-node/script/**/*",
       "node_modules/onnxruntime-common/dist/cjs/**/*",
       "node_modules/onnxruntime-common/package.json",
+      "!node_modules/onnxruntime-common/dist/esm/**/*",
+      "!node_modules/onnxruntime-common/dist/**/*.map",
+      "!node_modules/onnxruntime-common/dist/**/*.d.ts",
       "package.json"
     ],
     "win": {

@@ -123,6 +123,11 @@ const updateToast = document.querySelector('#update-toast');
 const updateToastMessage = document.querySelector('#update-toast-message');
 const updateToastDismiss = document.querySelector('#update-toast-dismiss');
 const updateToastView = document.querySelector('#update-toast-view');
+const localAiRuntimeToast = document.querySelector('#local-ai-runtime-toast');
+const localAiRuntimeDismiss = document.querySelector('#local-ai-runtime-dismiss');
+const localAiFailureTitle = document.querySelector('#local-ai-failure-title');
+const localAiFailureMessage = document.querySelector('#local-ai-failure-message');
+const localAiRuntimeAction = document.querySelector('#local-ai-runtime-action');
 const fpsCounter = document.querySelector('#fps-counter');
 const fpsCounterValue = document.querySelector('#fps-counter-value');
 const genreCorrectionInput = document.querySelector('#genre-correction-input');
@@ -269,6 +274,14 @@ const onlineLookupToggle = document.querySelector('#online-lookup-toggle');
 const artistGenreReferenceToggle = document.querySelector('#artist-genre-reference-toggle');
 const localGenreModelSetting = document.querySelector('#local-genre-model-setting');
 const localGenreModelToggle = document.querySelector('#local-genre-model-toggle');
+const localGenreRuntimeHint = document.querySelector('#local-genre-runtime-hint');
+const localGenreRuntimeMessage = document.querySelector('#local-genre-runtime-message');
+const localGenreRuntimeAction = document.querySelector('#local-genre-runtime-action');
+const audioGenreMemorySetting = document.querySelector('#audio-genre-memory-setting');
+const audioGenreMemoryToggle = document.querySelector('#audio-genre-memory-toggle');
+const audioGenreMemoryActions = document.querySelector('#audio-genre-memory-actions');
+const audioGenreMemoryClear = document.querySelector('#audio-genre-memory-clear');
+const audioGenreMemoryState = document.querySelector('#audio-genre-memory-state');
 const dynamicGenreDetectionSetting = document.querySelector('#dynamic-genre-detection-setting');
 const dynamicGenreDetectionToggle = document.querySelector('#dynamic-genre-detection-toggle');
 const alwaysOnTopToggle = document.querySelector('#always-on-top-toggle');
@@ -354,6 +367,16 @@ let availableMediaSources = [];
 let currentMediaSource = '';
 let detectedMediaPlayers = { neteaseRunning: false, neteaseSmtcAvailable: false };
 let neteaseSmtcToastShown = false;
+let localAiRuntimeToastShown = false;
+let localAiRuntimeToastPending = false;
+const LOCAL_AI_LOAD_FAILURE_CODES = new Set([
+  'MODEL_FILES_MISSING',
+  'ONNX_VC_RUNTIME_UNAVAILABLE',
+  'ONNX_COMPONENT_MISSING',
+  'ONNX_COMPONENT_BLOCKED',
+  'ONNX_COMPONENT_INVALID',
+  'ONNX_RUNTIME_LOAD_FAILED'
+]);
 let customGenres = [];
 let genreArtistRules = [];
 let editingCustomGenreId = '';
@@ -474,7 +497,10 @@ let onlineGenreLookupEnabled = true;
 let artistGenreReferenceEnabled = true;
 let localGenreModelEnabled = true;
 let localGenreModelAvailable = true;
+let audioGenreMemoryEnabled = true;
 let dynamicGenreDetectionEnabled = false;
+let audioGenreMemoryClearPending = false;
+let audioGenreMemoryClearTimer = 0;
 let alwaysOnTopEnabled = false;
 let desktopLayerEnabled = false;
 let desktopLayerAvailable = true;
@@ -944,19 +970,55 @@ function setArtistGenreReferenceEnabled(enabled, { persist = false } = {}) {
 }
 
 function updateLocalGenreSettingState() {
+  const runtimeUnavailable = LOCAL_AI_LOAD_FAILURE_CODES.has(latestAudioGenreModelState?.code);
   localGenreModelToggle.disabled = !localGenreModelAvailable;
   localGenreModelSetting.classList.toggle('is-unavailable', !localGenreModelAvailable);
+  localGenreRuntimeHint.hidden = !runtimeUnavailable;
+  renderLocalAiFailureUi();
   localGenreModelToggle.setAttribute('aria-checked', String(localGenreModelEnabled));
   localGenreModelToggle.title = !localGenreModelAvailable
     ? tr('settings.localGenreModelUnavailable')
     : localGenreModelEnabled
       ? tr('settings.localGenreModelOn')
       : tr('settings.localGenreModelOff');
-  dynamicGenreDetectionSetting.hidden = !localGenreModelAvailable || !localGenreModelEnabled;
+  const showLocalAiOptions = localGenreModelAvailable && localGenreModelEnabled;
+  audioGenreMemorySetting.hidden = !showLocalAiOptions;
+  audioGenreMemoryActions.hidden = !showLocalAiOptions;
+  audioGenreMemoryToggle.setAttribute('aria-checked', String(audioGenreMemoryEnabled));
+  audioGenreMemoryToggle.title = audioGenreMemoryEnabled
+    ? tr('settings.audioGenreMemoryOn')
+    : tr('settings.audioGenreMemoryOff');
+  dynamicGenreDetectionSetting.hidden = !showLocalAiOptions;
   dynamicGenreDetectionToggle.setAttribute('aria-checked', String(dynamicGenreDetectionEnabled));
   dynamicGenreDetectionToggle.title = dynamicGenreDetectionEnabled
     ? tr('settings.dynamicGenreDetectionOn')
     : tr('settings.dynamicGenreDetectionOff');
+}
+
+function setAudioGenreMemoryEnabled(enabled, { persist = false } = {}) {
+  audioGenreMemoryEnabled = enabled !== false;
+  updateLocalGenreSettingState();
+  if (persist) {
+    window.genrePolice.setConfig({ audioGenreMemoryEnabled }).then((result) => {
+      if (typeof result?.audioGenreMemoryEnabled === 'boolean') {
+        setAudioGenreMemoryEnabled(result.audioGenreMemoryEnabled);
+      }
+    }).catch(() => setAudioGenreMemoryEnabled(!audioGenreMemoryEnabled));
+  }
+}
+
+function renderAudioGenreMemoryClearAction() {
+  audioGenreMemoryClear.classList.toggle('is-confirming', audioGenreMemoryClearPending);
+  audioGenreMemoryClear.textContent = tr(audioGenreMemoryClearPending
+    ? 'actions.confirmClearAudioGenreMemory'
+    : 'actions.clearAudioGenreMemory');
+}
+
+function cancelAudioGenreMemoryClear() {
+  window.clearTimeout(audioGenreMemoryClearTimer);
+  audioGenreMemoryClearTimer = 0;
+  audioGenreMemoryClearPending = false;
+  renderAudioGenreMemoryClearAction();
 }
 
 function setDynamicGenreDetectionEnabled(enabled, { persist = false } = {}) {
@@ -985,11 +1047,26 @@ function setLocalGenreModelEnabled(enabled, { persist = false, available = local
     window.genrePolice.setConfig(patch).then((result) => {
       if (typeof result?.localGenreModelEnabled !== 'boolean') return;
       dynamicGenreDetectionEnabled = result.dynamicGenreDetectionEnabled === true;
-      setLocalGenreModelEnabled(result.localGenreModelEnabled, {
-        available: result.localGenreModelAvailable !== false
+      applyLocalGenreModelStatus({
+        enabled: result.localGenreModelEnabled,
+        available: result.localGenreModelAvailable !== false,
+        state: result.audioGenreModelState
       });
     }).catch(() => setLocalGenreModelEnabled(!localGenreModelEnabled));
   }
+}
+
+function applyLocalGenreModelStatus(status = {}) {
+  if (status.state) latestAudioGenreModelState = status.state;
+  const enabled = typeof status.enabled === 'boolean' ? status.enabled : localGenreModelEnabled;
+  const available = typeof status.available === 'boolean' ? status.available : localGenreModelAvailable;
+  setLocalGenreModelEnabled(enabled, { available });
+  if (LOCAL_AI_LOAD_FAILURE_CODES.has(latestAudioGenreModelState?.code)
+    && !localAiRuntimeToastShown) {
+    localAiRuntimeToastPending = true;
+    showPendingLocalAiRuntimeToast();
+  }
+  updateDiagnosticsUi();
 }
 
 function setAlwaysOnTopEnabled(enabled, { persist = false } = {}) {
@@ -1357,7 +1434,7 @@ function renderMediaSourceSettings() {
 
 function dismissNeteaseSmtcToast() {
   neteaseSmtcToast.hidden = true;
-  showPendingUpdateToast();
+  showPendingNotices();
 }
 
 function updateNeteaseSmtcToast(missingNeteaseSmtc) {
@@ -1365,6 +1442,7 @@ function updateNeteaseSmtcToast(missingNeteaseSmtc) {
     dismissNeteaseSmtcToast();
     return;
   }
+  if (!localAiRuntimeToast.hidden || localAiRuntimeToastPending) return;
   if (neteaseSmtcToastShown) return;
   neteaseSmtcToastShown = true;
   if (!settings.hidden) return;
@@ -1373,6 +1451,103 @@ function updateNeteaseSmtcToast(missingNeteaseSmtc) {
     updateToast.hidden = true;
   }
   neteaseSmtcToast.hidden = false;
+}
+
+function localAiRuntimeToastBlocked() {
+  return !settings.hidden || !recordingToast.hidden || !neteaseSmtcToast.hidden;
+}
+
+function showPendingLocalAiRuntimeToast() {
+  if (!localAiRuntimeToastPending || localAiRuntimeToastShown || localAiRuntimeToastBlocked()) return;
+  if (!updateToast.hidden) {
+    pendingUpdateResult = latestUpdateResult;
+    updateToast.hidden = true;
+  }
+  localAiRuntimeToastPending = false;
+  localAiRuntimeToastShown = true;
+  localAiRuntimeToast.hidden = false;
+}
+
+function dismissLocalAiRuntimeToast() {
+  localAiRuntimeToastPending = false;
+  localAiRuntimeToast.hidden = true;
+  updateNeteaseSmtcToast(
+    detectedMediaPlayers.neteaseRunning && !detectedMediaPlayers.neteaseSmtcAvailable
+  );
+  showPendingUpdateToast();
+}
+
+function localAiFailurePresentation(state = latestAudioGenreModelState) {
+  if (state?.code === 'ONNX_VC_RUNTIME_UNAVAILABLE') {
+    return {
+      titleKey: 'runtime.localAiUnavailableTitle',
+      messageKey: 'runtime.localAiUnavailableMessage',
+      settingsKey: 'settings.localGenreRuntimeUnavailable',
+      actionKey: 'actions.installRuntime',
+      action: 'runtime'
+    };
+  }
+  if (['MODEL_FILES_MISSING', 'ONNX_COMPONENT_MISSING'].includes(state?.code)) {
+    return {
+      titleKey: 'runtime.localAiComponentMissingTitle',
+      messageKey: 'runtime.localAiComponentMissingMessage',
+      settingsKey: 'settings.localGenreComponentMissing',
+      actionKey: 'actions.downloadAgain',
+      action: 'download'
+    };
+  }
+  if (state?.code === 'ONNX_COMPONENT_BLOCKED') {
+    return {
+      titleKey: 'runtime.localAiComponentBlockedTitle',
+      messageKey: 'runtime.localAiComponentBlockedMessage',
+      settingsKey: 'settings.localGenreComponentBlocked',
+      actionKey: '',
+      action: ''
+    };
+  }
+  if (state?.code === 'ONNX_COMPONENT_INVALID') {
+    return {
+      titleKey: 'runtime.localAiComponentInvalidTitle',
+      messageKey: 'runtime.localAiComponentInvalidMessage',
+      settingsKey: 'settings.localGenreComponentInvalid',
+      actionKey: 'actions.downloadAgain',
+      action: 'download'
+    };
+  }
+  return {
+    titleKey: 'runtime.localAiLoadFailedTitle',
+    messageKey: 'runtime.localAiLoadFailedMessage',
+    settingsKey: 'settings.localGenreLoadFailed',
+    actionKey: 'actions.downloadAgain',
+    action: 'download'
+  };
+}
+
+function renderLocalAiFailureUi() {
+  const presentation = localAiFailurePresentation();
+  localAiFailureTitle.textContent = tr(presentation.titleKey);
+  localAiFailureMessage.textContent = tr(presentation.messageKey);
+  localGenreRuntimeMessage.textContent = tr(presentation.settingsKey);
+  for (const button of [localAiRuntimeAction, localGenreRuntimeAction]) {
+    button.hidden = !presentation.action;
+    button.dataset.recoveryAction = presentation.action;
+    button.textContent = presentation.actionKey ? tr(presentation.actionKey) : '';
+  }
+}
+
+function openLocalAiRecoveryAction(button) {
+  if (button.dataset.recoveryAction === 'runtime') {
+    return window.genrePolice.openVcRuntimeDownload().catch(() => {});
+  }
+  if (button.dataset.recoveryAction === 'download') {
+    return window.genrePolice.openAppDownloadPage().catch(() => {});
+  }
+  return Promise.resolve();
+}
+
+function showPendingNotices() {
+  showPendingLocalAiRuntimeToast();
+  showPendingUpdateToast();
 }
 
 function normalizedUpdateResult(value) {
@@ -1407,7 +1582,10 @@ function renderUpdateUi() {
 }
 
 function updateToastBlocked() {
-  return !settings.hidden || !recordingToast.hidden || !neteaseSmtcToast.hidden;
+  return !settings.hidden
+    || !recordingToast.hidden
+    || !neteaseSmtcToast.hidden
+    || !localAiRuntimeToast.hidden;
 }
 
 function showPendingUpdateToast() {
@@ -2021,6 +2199,18 @@ function audioGenreModelDiagnostic() {
   if (!localGenreModelEnabled || state.type === 'disabled') {
     return { label: tr('diagnostics.genreModelDisabled'), title: state.reason || '' };
   }
+  if (state.code === 'ONNX_VC_RUNTIME_UNAVAILABLE') {
+    return { label: tr('diagnostics.genreModelRuntimeUnavailable'), title: state.reason || '' };
+  }
+  if (state.code === 'ONNX_COMPONENT_MISSING') {
+    return { label: tr('diagnostics.genreModelComponentMissing'), title: state.reason || '' };
+  }
+  if (state.code === 'ONNX_COMPONENT_BLOCKED') {
+    return { label: tr('diagnostics.genreModelComponentBlocked'), title: state.reason || '' };
+  }
+  if (['ONNX_COMPONENT_INVALID', 'ONNX_RUNTIME_LOAD_FAILED'].includes(state.code)) {
+    return { label: tr('diagnostics.genreModelLoadFailed'), title: state.reason || '' };
+  }
   if (!localGenreModelAvailable || state.type === 'unavailable') {
     return { label: tr('diagnostics.genreModelUnavailable'), title: state.reason || '' };
   }
@@ -2034,12 +2224,21 @@ function audioGenreModelDiagnostic() {
     return { label: tr('diagnostics.genreModelSilence'), title: state.reason || '' };
   }
   if (state.type === 'prediction') {
-    const genre = diagnosticGenreName(state.genreId);
+    const candidateGenreId = String(state.genreId || '');
+    const adoptedGenreId = String(state.currentGenreId || '');
+    const genre = diagnosticGenreName(adoptedGenreId || candidateGenreId);
+    const challenger = adoptedGenreId
+      && candidateGenreId
+      && adoptedGenreId !== candidateGenreId
+      ? diagnosticGenreName(candidateGenreId)
+      : '';
     const windows = Number(state.acceptedWindows) || 0;
-    const label = tr(
-      latestAudioGenreAnalyzing ? 'diagnostics.genreModelAnalyzing' : 'diagnostics.genreModelResult',
-      { genre, windows }
-    );
+    const label = challenger
+      ? tr('diagnostics.genreModelChallenger', { genre, challenger, windows })
+      : tr(
+          latestAudioGenreAnalyzing ? 'diagnostics.genreModelAnalyzing' : 'diagnostics.genreModelResult',
+          { genre, windows }
+        );
     const details = [
       state.stage && `stage ${state.stage}`,
       Number.isFinite(Number(state.confidence)) && `score ${Number(state.confidence).toFixed(3)}`,
@@ -2798,13 +2997,17 @@ function renderLocalizedHud(content = currentDisplayContent) {
   genreSource.removeAttribute('title');
   genreSource.tabIndex = -1;
   genreSource.setAttribute('role', 'status');
+  const genreAnalysisPending = content.genreAnalysisPending && !content.resolving;
+  caseId.dataset.state = genreAnalysisPending ? 'analyzing' : '';
   caseId.textContent = content.genrePoliceEasterEgg
     ? trMain('hud.specialCase')
     : content.placeholder
       ? trMain('hud.standby')
       : content.resolving
         ? trMain('hud.caseOpen')
-        : `${trMain('hud.classified')}${content.genreUncertain ? '?' : ''}`;
+        : genreAnalysisPending
+          ? trMain('hud.aiAnalyzing')
+          : `${trMain('hud.classified')}${content.genreUncertain ? '?' : ''}`;
   playState.textContent = localizedPlaybackStatus(content.playing);
 }
 
@@ -2847,6 +3050,7 @@ function applyLanguage(value, { persist = false } = {}) {
     ? tr('settings.artistGenreReferenceOn')
     : tr('settings.artistGenreReferenceOff');
   updateLocalGenreSettingState();
+  renderAudioGenreMemoryClearAction();
   alwaysOnTopToggle.title = alwaysOnTopEnabled
     ? tr('settings.alwaysOnTopOn')
     : tr('settings.alwaysOnTopOff');
@@ -3331,7 +3535,7 @@ function closeSettings() {
   settingsButton.setAttribute('aria-expanded', 'false');
   showControls();
   scheduleIdleDim();
-  showPendingUpdateToast();
+  showPendingNotices();
 }
 
 function genreCandidateBasis(candidate) {
@@ -3462,7 +3666,7 @@ function hideRecordingToast() {
   recordingToastTimer = 0;
   recordingToast.hidden = true;
   recordingToast.classList.remove('is-error');
-  showPendingUpdateToast();
+  showPendingNotices();
 }
 
 function showRecordingToast(message, { error = false } = {}) {
@@ -3471,6 +3675,7 @@ function showRecordingToast(message, { error = false } = {}) {
     pendingUpdateResult = latestUpdateResult;
     updateToast.hidden = true;
   }
+  localAiRuntimeToast.hidden = true;
   recordingToastText.textContent = message;
   recordingToast.classList.toggle('is-error', error);
   recordingToast.hidden = false;
@@ -3794,6 +3999,7 @@ function openSettings({ focusCorrection = false } = {}) {
     pendingUpdateResult = latestUpdateResult;
     updateToast.hidden = true;
   }
+  localAiRuntimeToast.hidden = true;
   settings.hidden = false;
   window.genrePolice.setSettingsOpen(true);
   document.body.classList.add('settings-open', 'pointer-active');
@@ -3899,6 +4105,7 @@ function contentFor(metadata) {
     lyrics: metadata?.lyrics || null,
     playing: Boolean(metadata?.playing),
     resolving: Boolean(metadata?.resolving),
+    genreAnalysisPending: Boolean(metadata?.genreAnalysisPending),
     genreUncertain: Boolean(metadata?.genreUncertain),
     hardcoreTanoc: Boolean(metadata?.hardcoreTanoc),
     genrePoliceEasterEgg: isGenrePoliceTrack(metadata)
@@ -4740,6 +4947,35 @@ localGenreModelToggle.addEventListener('click', () => {
     setLocalGenreModelEnabled(!localGenreModelEnabled, { persist: true });
   }
 });
+audioGenreMemoryToggle.addEventListener('click', () => {
+  setAudioGenreMemoryEnabled(!audioGenreMemoryEnabled, { persist: true });
+});
+audioGenreMemoryClear.addEventListener('click', async () => {
+  if (!audioGenreMemoryClearPending) {
+    audioGenreMemoryClearPending = true;
+    audioGenreMemoryState.textContent = tr('settings.audioGenreMemoryClearConfirm');
+    renderAudioGenreMemoryClearAction();
+    audioGenreMemoryClearTimer = window.setTimeout(() => {
+      cancelAudioGenreMemoryClear();
+      audioGenreMemoryState.textContent = '';
+    }, 5000);
+    return;
+  }
+  cancelAudioGenreMemoryClear();
+  audioGenreMemoryClear.disabled = true;
+  try {
+    const result = await window.genrePolice.clearAudioGenreMemory();
+    audioGenreMemoryState.textContent = result?.ok
+      ? result.cleared > 0
+        ? tr('settings.audioGenreMemoryCleared')
+        : tr('settings.audioGenreMemoryEmpty')
+      : tr('settings.audioGenreMemoryClearFailed');
+  } catch {
+    audioGenreMemoryState.textContent = tr('settings.audioGenreMemoryClearFailed');
+  } finally {
+    audioGenreMemoryClear.disabled = false;
+  }
+});
 dynamicGenreDetectionToggle.addEventListener('click', () => {
   setDynamicGenreDetectionEnabled(!dynamicGenreDetectionEnabled, { persist: true });
 });
@@ -5499,6 +5735,9 @@ updateToastDismiss.addEventListener('click', () => {
   if (version) window.genrePolice.dismissUpdate(version).catch(() => {});
 });
 updateToastView.addEventListener('click', () => openAvailableUpdate({ acknowledge: true }));
+localAiRuntimeDismiss.addEventListener('click', dismissLocalAiRuntimeToast);
+localAiRuntimeAction.addEventListener('click', () => void openLocalAiRecoveryAction(localAiRuntimeAction));
+localGenreRuntimeAction.addEventListener('click', () => void openLocalAiRecoveryAction(localGenreRuntimeAction));
 stageOutputStartStop.addEventListener('click', () => void toggleStageOutput());
 stageOutputTextToggle.addEventListener('click', () => {
   setStageOutputTextVisible(!stageOutputTextVisible, { persist: true });
@@ -5585,7 +5824,7 @@ window.genrePolice.getConfig().then((config) => {
   latestAudioGenreModelState = config.audioGenreModelState || latestAudioGenreModelState;
   lastFmInput.value = config.lastFmApiKey || '';
   discogsTokenInput.value = config.discogsToken || '';
-  appVersionLabel.textContent = config.appVersion || '0.3.0';
+  appVersionLabel.textContent = config.appVersion || '0.3.1';
   genreOptions = Array.isArray(config.genreOptions) ? config.genreOptions : [];
   applyLanguage(config.language);
   setLyricsEnabled(config.lyricsEnabled !== false);
@@ -5598,10 +5837,14 @@ window.genrePolice.getConfig().then((config) => {
   setLyricSweepEnabled(config.lyricSweepEnabled !== false);
   setOnlineGenreLookupEnabled(config.onlineGenreLookupEnabled !== false);
   setArtistGenreReferenceEnabled(config.artistGenreReferenceEnabled !== false);
+  audioGenreMemoryEnabled = config.audioGenreMemoryEnabled !== false;
   dynamicGenreDetectionEnabled = config.dynamicGenreDetectionEnabled === true;
-  setLocalGenreModelEnabled(config.localGenreModelEnabled !== false, {
-    available: config.localGenreModelAvailable !== false
+  applyLocalGenreModelStatus({
+    enabled: config.localGenreModelEnabled !== false,
+    available: config.localGenreModelAvailable !== false,
+    state: config.audioGenreModelState
   });
+  setAudioGenreMemoryEnabled(config.audioGenreMemoryEnabled !== false);
   setDynamicGenreDetectionEnabled(config.dynamicGenreDetectionEnabled === true);
   setAlwaysOnTopEnabled(config.alwaysOnTop === true);
   setDesktopLayerEnabled(config.desktopLayer === true, {
@@ -5652,6 +5895,7 @@ window.genrePolice.onLayoutMode((payload) => {
   if (requestedLayoutMode !== layoutMode) applyLayoutMode(requestedLayoutMode);
 });
 window.genrePolice.onStageOutputState(applyStageOutputState);
+window.genrePolice.onLocalGenreModelStatus(applyLocalGenreModelStatus);
 window.genrePolice.onOpenSettings(() => openSettings());
 window.genrePolice.onOpenGenreCorrection(() => openSettings({ focusCorrection: true }));
 window.genrePolice.onRecordingCommand((command) => {

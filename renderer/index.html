@@ -168,6 +168,18 @@
         </button>
       </div>
 
+      <div id="local-ai-runtime-toast" role="status" aria-live="polite" hidden>
+        <span class="local-ai-runtime-toast-dot" aria-hidden="true"></span>
+        <div class="update-toast-copy">
+          <strong id="local-ai-failure-title">本地 AI 暂不可用</strong>
+          <span id="local-ai-failure-message">其他功能不受影响。请安装或修复 Microsoft Visual C++ x64 运行库，然后重启软件。</span>
+        </div>
+        <div class="update-toast-actions">
+          <button id="local-ai-runtime-dismiss" type="button" data-i18n="actions.close">关闭</button>
+          <button id="local-ai-runtime-action" type="button">安装运行库</button>
+        </div>
+      </div>
+
       <div id="update-toast" role="status" aria-live="polite" hidden>
         <span class="update-toast-dot" aria-hidden="true"></span>
         <div class="update-toast-copy">
@@ -215,6 +227,12 @@
             <rect class="recording-icon-stop icon-fill" x="280" y="-680" width="400" height="400" rx="60" />
           </svg>
         </button>
+        <button id="layout-toggle-button" class="ui-icon-button" title="切换到海报" aria-label="切换到海报">
+          <svg class="control-icon material-symbol" viewBox="0 -960 960 960" aria-hidden="true">
+            <path class="layout-icon-poster icon-fill" d="M720-80H240q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h480q33 0 56.5 23.5T800-800v640q0 33-23.5 56.5T720-80Zm-480-80h480v-640H240v640Zm0 0v-640 640Z" />
+            <path class="layout-icon-capsule icon-fill" d="M320-200q-117 0-198.5-81.5T40-480q0-117 81.5-198.5T320-760h320q117 0 198.5 81.5T920-480q0 117-81.5 198.5T640-200H320Zm0-80h320q83 0 141.5-58.5T840-480q0-83-58.5-141.5T640-680H320q-83 0-141.5 58.5T120-480q0 83 58.5 141.5T320-280Z" />
+          </svg>
+        </button>
         <button id="fullscreen-quick-button" class="ui-icon-button" type="button" title="全屏模式" aria-label="全屏模式" data-i18n-title="controls.enterFullscreen" data-i18n-aria="controls.enterFullscreen">
           <svg class="control-icon material-symbol" viewBox="0 -960 960 960" aria-hidden="true">
             <path class="icon-fill" d="M120-120v-200h80v120h120v80H120Zm520 0v-80h120v-120h80v200H640ZM120-640v-200h200v80H200v120h-80Zm640 0v-120H640v-80h200v200h-80Z" />
@@ -223,12 +241,6 @@
         <button id="settings-button" class="ui-icon-button" title="设置" aria-label="设置" aria-controls="settings" aria-expanded="false" data-i18n-title="controls.settings" data-i18n-aria="controls.settings">
           <svg class="control-icon material-symbol" viewBox="0 -960 960 960" aria-hidden="true">
             <path class="icon-fill" d="M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Z" />
-          </svg>
-        </button>
-        <button id="layout-toggle-button" class="ui-icon-button" title="切换到海报" aria-label="切换到海报">
-          <svg class="control-icon material-symbol" viewBox="0 -960 960 960" aria-hidden="true">
-            <path class="layout-icon-poster icon-fill" d="M720-80H240q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h480q33 0 56.5 23.5T800-800v640q0 33-23.5 56.5T720-80Zm-480-80h480v-640H240v640Zm0 0v-640 640Z" />
-            <path class="layout-icon-capsule icon-fill" d="M320-200q-117 0-198.5-81.5T40-480q0-117 81.5-198.5T320-760h320q117 0 198.5 81.5T920-480q0 117-81.5 198.5T640-200H320Zm0-80h320q83 0 141.5-58.5T840-480q0-83-58.5-141.5T640-680H320q-83 0-141.5 58.5T120-480q0 83 58.5 141.5T320-280Z" />
           </svg>
         </button>
         <button id="close-button" class="ui-icon-button" title="退出" aria-label="退出" data-i18n-title="controls.quit" data-i18n-aria="controls.quit">
@@ -596,6 +608,27 @@
             <span class="settings-switch-knob" aria-hidden="true"></span>
           </button>
         </div>
+        <div id="local-genre-runtime-hint" class="settings-notice settings-runtime-notice" role="status" hidden>
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="8" />
+            <path d="M10 8.5v5M10 6.2v.2" />
+          </svg>
+          <span id="local-genre-runtime-message">本地 AI 运行库未能加载，其他功能不受影响。</span>
+          <button id="local-genre-runtime-action" type="button">安装运行库</button>
+        </div>
+        <div id="audio-genre-memory-setting" class="settings-toggle-row settings-dependent-row" hidden>
+          <div class="settings-toggle-copy">
+            <span id="audio-genre-memory-label" class="settings-label" data-i18n="settings.audioGenreMemory">记住 AI 识别结果</span>
+            <small data-i18n="settings.audioGenreMemoryHelp">完整播放后保存在本机，供同一首歌下次识别参考；不会保存音频。</small>
+          </div>
+          <button id="audio-genre-memory-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="audio-genre-memory-label">
+            <span class="settings-switch-knob" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="audio-genre-memory-actions" class="audio-genre-memory-actions settings-dependent-row" hidden>
+          <span id="audio-genre-memory-state" role="status"></span>
+          <button id="audio-genre-memory-clear" class="settings-action-button" type="button">清除 AI 识别记录</button>
+        </div>
         <div class="settings-toggle-row">
           <div class="settings-toggle-copy">
             <span id="artist-genre-reference-label" class="settings-label" data-i18n="settings.artistGenreReference">使用艺术家曲风参考</span>
@@ -882,7 +915,7 @@
         <div class="settings-update-row">
           <div class="settings-update-copy">
             <span class="settings-label" data-i18n="settings.softwareUpdate">软件更新</span>
-            <small><span data-i18n="settings.currentVersion">当前版本</span> <strong id="app-version">0.3.0</strong></small>
+            <small><span data-i18n="settings.currentVersion">当前版本</span> <strong id="app-version">0.3.1</strong></small>
             <small id="update-check-state" role="status" aria-live="polite"></small>
           </div>
           <div class="settings-update-actions">
@@ -950,11 +983,6 @@
           <rect class="recording-icon-stop icon-fill" x="280" y="-680" width="400" height="400" rx="60" />
         </svg>
       </button>
-      <button id="fullscreen-settings-button" class="fullscreen-control-button" type="button" title="设置" aria-label="设置" data-i18n-title="controls.settings" data-i18n-aria="controls.settings">
-        <svg class="control-icon material-symbol" viewBox="0 -960 960 960" aria-hidden="true">
-          <path class="icon-fill" d="M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Z" />
-        </svg>
-      </button>
       <button id="fullscreen-layout-button" class="fullscreen-control-button" type="button" title="切换到上下结构" aria-label="切换到上下结构">
         <svg class="control-icon fullscreen-layout-icon" viewBox="0 -960 960 960" aria-hidden="true">
           <g class="fullscreen-layout-symbol">
@@ -975,6 +1003,11 @@
             <path class="icon-fill" mask="url(#fullscreen-text-off-mask)" d="M420-160v-520H200v-120h560v120H540v520H420Z" />
             <path class="fullscreen-text-off-mark" d="M84-820 820-84" />
           </g>
+        </svg>
+      </button>
+      <button id="fullscreen-settings-button" class="fullscreen-control-button" type="button" title="设置" aria-label="设置" data-i18n-title="controls.settings" data-i18n-aria="controls.settings">
+        <svg class="control-icon material-symbol" viewBox="0 -960 960 960" aria-hidden="true">
+          <path class="icon-fill" d="M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Z" />
         </svg>
       </button>
       <button id="fullscreen-exit-button" class="fullscreen-control-button fullscreen-exit-button" type="button" title="退出全屏" aria-label="退出全屏" data-i18n-title="controls.exitFullscreen" data-i18n-aria="controls.exitFullscreen">

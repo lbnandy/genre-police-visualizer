@@ -1,5 +1,7 @@
 'use strict';
 
+const { loadOnnxRuntime } = require('./onnx-runtime-loader');
+
 const { performance } = require('node:perf_hooks');
 
 const SAMPLE_RATE = 22050;
@@ -344,7 +346,7 @@ class LocalRhythmModel {
   async initialize() {
     if (this.session || this.closed) return Boolean(this.session);
     try {
-      this.ort ||= require('onnxruntime-node');
+      this.ort ||= loadOnnxRuntime();
       const session = await this.ort.InferenceSession.create(this.modelPath, {
         executionProviders: ['cpu'],
         graphOptimizationLevel: 'all',
@@ -360,7 +362,13 @@ class LocalRhythmModel {
       this.onEvent({ type: 'ready', model: 'BeatNet-1 causal ONNX', hopMs: 20 });
       return true;
     } catch (error) {
-      this.onEvent({ type: 'unavailable', reason: `local ONNX model unavailable: ${error.message}` });
+      this.onEvent({
+        type: 'unavailable',
+        code: error?.code || 'MODEL_INITIALIZATION_FAILED',
+        category: error?.category || 'model-initialization',
+        causeCode: error?.causeCode || error?.cause?.code || '',
+        reason: `local ONNX model unavailable: ${error.message}`
+      });
       return false;
     }
   }

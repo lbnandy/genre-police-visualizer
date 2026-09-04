@@ -10,9 +10,43 @@ const MEL_BANDS = 96;
 const PATCH_FRAMES = 128;
 const PATCH_HOP = 62;
 const STATIC_ANALYSIS_WINDOW_LIMIT = 100;
-const RELATIVE_LEAD_MIN_CONFIDENCE = 0.18;
-const RELATIVE_LEAD_MIN_MARGIN = 0.09;
-const RELATIVE_LEAD_MIN_RATIO = 1.8;
+const MEMORY_PRIOR_EQUIVALENT_WINDOWS = 5;
+const MEMORY_PRIOR_HORIZON_WINDOWS = 24;
+const LOW_SCORE_MIN_CONFIDENCE = 0.15;
+const LOW_SCORE_MIN_MARGIN = 0.005;
+const STABLE_MIN_CONFIDENCE = 0.18;
+const STABLE_MIN_MARGIN = 0.015;
+const SUPPORTED_MIN_CONFIDENCE = 0.22;
+const SUPPORTED_MIN_MARGIN = 0.02;
+const STRONG_MIN_CONFIDENCE = 0.32;
+const STRONG_MIN_MARGIN = 0.04;
+const STATIC_CORRECTION_MIN_CONFIDENCE = LOW_SCORE_MIN_CONFIDENCE;
+const STATIC_CORRECTION_MIN_MARGIN = LOW_SCORE_MIN_MARGIN;
+const AUTHOR_PRIOR_EARLY_MIN_CONFIDENCE = 0.4;
+const AUTHOR_PRIOR_EARLY_MIN_MARGIN = 0.08;
+const HIERARCHICAL_MIN_CONFIDENCE = STABLE_MIN_CONFIDENCE;
+const HIERARCHICAL_MIN_MARGIN = 0.01;
+const COMPATIBILITY_SUPPORT_MIN_CONFIDENCE = 0.2;
+const COMPATIBILITY_SUPPORT_MIN_ADVANTAGE = 0.03;
+const COMPATIBILITY_CORRECTION_MIN_CONFIDENCE = 0.24;
+const COMPATIBILITY_CORRECTION_MIN_MARGIN = 0.03;
+const COMPATIBILITY_CORRECTION_MIN_ADVANTAGE = 0.04;
+const DYNAMIC_FAMILY_MIN_CONFIDENCE = SUPPORTED_MIN_CONFIDENCE;
+const DYNAMIC_FAMILY_MIN_MARGIN = 0.025;
+const DYNAMIC_FAMILY_MIN_ADVANTAGE = 0.03;
+const DYNAMIC_LEAF_MIN_CONFIDENCE = 0.2;
+const DYNAMIC_LEAF_MIN_MARGIN = 0.015;
+const DYNAMIC_LEAF_MIN_ADVANTAGE = 0.015;
+const DYNAMIC_PERSISTENT_MIN_ADVANTAGE = LOW_SCORE_MIN_MARGIN;
+const DYNAMIC_HIERARCHICAL_COOLDOWN_WINDOWS = 3;
+const CONFIRMATION_MIN_MARGIN = STABLE_MIN_MARGIN;
+const AMBIENT_FIRST_MIN_WINDOWS = 12;
+const AMBIENT_FIRST_RECENT_WINDOWS = 8;
+const AMBIENT_FIRST_RECENT_AGREEMENT = 7 / 8;
+const STATIC_CORRECTION_WINDOW = 8;
+const STATIC_CORRECTION_AGREEMENT = 7 / 8;
+const STATIC_FINAL_CORRECTION_WINDOW = 12;
+const STATIC_FINAL_CORRECTION_AGREEMENT = 10 / 12;
 
 function clamp(value, minimum = 0, maximum = 1) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -468,6 +502,38 @@ const DISCOGS_EXACT_STYLE_MAP = new Map(Object.entries({
   'Hip Hop---Trip Hop': 'downtempo'
 }));
 
+// The bundled Discogs model has no direct Future Bass or Phonk class. Keep a
+// separate evidence profile for those display families instead of relabeling
+// any real model output. This lets metadata remain authoritative while nearby
+// model activations still count as support for the current genre.
+const AUDIO_GENRE_COMPATIBILITY_LABELS = Object.freeze({
+  'future-bass': Object.freeze([
+    'Electronic---Dubstep',
+    'Hip Hop---Trap',
+    'Electronic---Electro House',
+    'Electronic---Progressive House',
+    'Electronic---Chillwave',
+    'Electronic---UK Garage'
+  ]),
+  phonk: Object.freeze([
+    'Hip Hop---Trap',
+    'Hip Hop---Cloud Rap',
+    'Hip Hop---Horrorcore',
+    'Hip Hop---Instrumental',
+    'Electronic---Electro',
+    'Electronic---Ghetto'
+  ])
+});
+
+function audioGenreCompatibilityId(value) {
+  const id = normalizeAudioGenreTreeId(value);
+  return Object.hasOwn(AUDIO_GENRE_COMPATIBILITY_LABELS, id) ? id : '';
+}
+
+function hasAudioGenreCompatibilityProfile(value) {
+  return Boolean(audioGenreCompatibilityId(value));
+}
+
 function isBroadAudioGenre(value) {
   return ['unknown', 'electronic'].includes(String(value || 'unknown'));
 }
@@ -477,17 +543,26 @@ function shouldAnalyzeAudioGenre({
   playing = true,
   hasTrack = true,
   dynamicEnabled = false,
+  fullTrackLearning = false,
   metadataKind = 'broad',
   decisionGenreId = '',
   acceptedWindows = 0,
+  correctionCount = 0,
+  finalCorrectionCount = 0,
   settleWindowLimit = STATIC_ANALYSIS_WINDOW_LIMIT
 } = {}) {
   if (!enabled || !playing || !hasTrack) return false;
   if (metadataKind === 'authoritative') return false;
   if (dynamicEnabled) return true;
   if (!['broad', 'artist'].includes(metadataKind)) return false;
+  if (fullTrackLearning) return true;
   const hasConcreteAudioDecision = decisionGenreId && !isBroadAudioGenre(decisionGenreId);
-  return !hasConcreteAudioDecision || acceptedWindows < settleWindowLimit;
+  if (!hasConcreteAudioDecision) return true;
+  const ordinaryCorrectionAvailable = Number(correctionCount || 0) < 1;
+  const finalCumulativeCorrectionAvailable = Number(finalCorrectionCount || 0) < 1
+    && Number(correctionCount || 0) < 2;
+  return acceptedWindows < settleWindowLimit
+    && (ordinaryCorrectionAvailable || finalCumulativeCorrectionAvailable);
 }
 
 function shouldKeepGenreIdentifying({
@@ -585,6 +660,42 @@ function combineFamilyEntries(entries) {
   return 1 - inverse;
 }
 
+function audioGenreModelOutputIds(classes = []) {
+  return new Set(classes.map((label) => discogsClassToMajor(label)));
+}
+
+function audioGenreCompatibilityScores(classScores, classes) {
+  const scoresByLabel = new Map(
+    classes.map((label, index) => [String(label), clamp(Number(classScores[index]) || 0)])
+  );
+  return Object.fromEntries(
+    Object.entries(AUDIO_GENRE_COMPATIBILITY_LABELS).map(([id, labels]) => [
+      id,
+      combineFamilyEntries(labels
+        .filter((label) => scoresByLabel.has(label))
+        .map((label) => ({ label, score: scoresByLabel.get(label) })))
+    ])
+  );
+}
+
+function audioGenreSupportScore(result, value) {
+  const id = normalizeAudioGenreTreeId(value);
+  const directScore = Number(result?.scores?.[id]);
+  if (Number.isFinite(directScore)) return clamp(directScore);
+  const compatibilityId = audioGenreCompatibilityId(id);
+  const compatibilityScore = Number(result?.compatibilityScores?.[compatibilityId]);
+  if (Number.isFinite(compatibilityScore)) return clamp(compatibilityScore);
+
+  // Older saved/test results do not carry raw compatibility scores. Treat an
+  // exact proxy winner as support rather than manufacturing a zero baseline.
+  if (compatibilityId && result?.id) {
+    const compatibleOutputs = AUDIO_GENRE_COMPATIBILITY_LABELS[compatibilityId]
+      .map((label) => discogsClassToMajor(label));
+    if (compatibleOutputs.includes(result.id)) return clamp(Number(result.confidence) || 0);
+  }
+  return 0;
+}
+
 function resultFromScores(scores, extra = {}) {
   const ranked = Object.entries(scores)
     .map(([id, score]) => ({ id, score }))
@@ -601,17 +712,99 @@ function resultFromScores(scores, extra = {}) {
   };
 }
 
-function hasStrongRelativeLead(result) {
+function audioGenreFamilyScores(scores = {}) {
+  const groups = new Map();
+  for (const [id, score] of Object.entries(scores)) {
+    const familyId = normalizeAudioGenreTreeId(id) || id;
+    if (!groups.has(familyId)) groups.set(familyId, []);
+    groups.get(familyId).push({ id, score: clamp(Number(score) || 0) });
+  }
+  // Tree breadth is a presentation detail, not additional model evidence.
+  // Use the strongest member so a family with many child visuals cannot
+  // outscore a branchless genre merely by accumulating more entries.
+  return Object.fromEntries(
+    [...groups].map(([id, entries]) => [
+      id,
+      entries.reduce((maximum, entry) => Math.max(maximum, entry.score), 0)
+    ])
+  );
+}
+
+function audioGenreFamilyResult(result = {}) {
+  return resultFromScores(audioGenreFamilyScores(result.scores), {
+    compatibilityScores: result.compatibilityScores,
+    topLabels: result.topLabels,
+    leafGenreId: result.id,
+    memoryPriorGenreId: result.memoryPriorGenreId,
+    memoryPriorWeight: result.memoryPriorWeight
+  });
+}
+
+function audioGenreResultForFamily(result = {}, familyId = '') {
+  const scores = Object.fromEntries(
+    Object.entries(result.scores || {})
+      .filter(([id]) => normalizeAudioGenreTreeId(id) === familyId)
+  );
+  return resultFromScores(scores, {
+    compatibilityScores: result.compatibilityScores,
+    topLabels: result.topLabels,
+    leafGenreId: result.id,
+    memoryPriorGenreId: result.memoryPriorGenreId,
+    memoryPriorWeight: result.memoryPriorWeight
+  });
+}
+
+function audioGenreSiblingMargin(result = {}, candidateId = result.id) {
+  const candidate = String(candidateId || '');
+  const familyId = normalizeAudioGenreTreeId(candidate);
+  const candidateScore = Number(result.scores?.[candidate]);
+  if (!candidate || !familyId || !Number.isFinite(candidateScore)) return Number(result.margin) || 0;
+  const siblingScore = Object.entries(result.scores || {})
+    .filter(([id]) => id !== candidate && normalizeAudioGenreTreeId(id) === familyId)
+    .reduce((maximum, [, score]) => Math.max(maximum, Number(score) || 0), 0);
+  return siblingScore > 0 ? candidateScore - siblingScore : Number(result.margin) || 0;
+}
+
+function applyAudioGenreMemoryPrior(result, memory, acceptedWindows) {
+  if (!result?.scores
+    || memory?.fullPlaybackEvidence !== true
+    || !memory.genreId
+    || isBroadAudioGenre(memory.genreId)) return result;
+  const liveWindows = Math.max(1, Math.round(Number(acceptedWindows) || 0));
+  if (liveWindows > MEMORY_PRIOR_HORIZON_WINDOWS) return result;
+  const horizonProgress = (liveWindows - 1) / MEMORY_PRIOR_HORIZON_WINDOWS;
+  const priorMass = MEMORY_PRIOR_EQUIVALENT_WINDOWS * clamp(1 - horizonProgress);
+  const priorWeight = priorMass / (liveWindows + priorMass);
+  if (priorWeight <= 0) return result;
+
+  const memoryScores = memory.scores && typeof memory.scores === 'object'
+    ? memory.scores
+    : {};
+  const ids = new Set([...Object.keys(result.scores), ...Object.keys(memoryScores), memory.genreId]);
+  const scores = {};
+  for (const id of ids) {
+    const liveScore = clamp(Number(result.scores[id]) || 0);
+    const storedValue = Object.hasOwn(memoryScores, id)
+      ? Number(memoryScores[id])
+      : id === memory.genreId
+        ? Number(memory.confidence)
+        : 0;
+    const memoryScore = clamp(Number.isFinite(storedValue) ? storedValue : 0);
+    scores[id] = liveScore * (1 - priorWeight) + memoryScore * priorWeight;
+  }
+  return resultFromScores(scores, {
+    topLabels: result.topLabels,
+    compatibilityScores: result.compatibilityScores,
+    memoryPriorGenreId: memory.genreId,
+    memoryPriorWeight: priorWeight
+  });
+}
+
+function hasPersistentLowScoreLead(result) {
   const confidence = Number(result?.confidence) || 0;
   const margin = Number(result?.margin) || 0;
-  const rankedRunnerUp = Number(result?.ranked?.[1]?.score);
-  const runnerUp = Number.isFinite(rankedRunnerUp)
-    ? Math.max(0, rankedRunnerUp)
-    : Math.max(0, confidence - margin);
-  const ratio = runnerUp > 0 ? confidence / runnerUp : confidence > 0 ? Infinity : 0;
-  return confidence >= RELATIVE_LEAD_MIN_CONFIDENCE
-    && margin >= RELATIVE_LEAD_MIN_MARGIN
-    && ratio >= RELATIVE_LEAD_MIN_RATIO;
+  return confidence >= LOW_SCORE_MIN_CONFIDENCE
+    && margin >= LOW_SCORE_MIN_MARGIN;
 }
 
 function authorPriorEvidenceGate({
@@ -630,9 +823,10 @@ function authorPriorEvidenceGate({
   const disconnected = !Number.isFinite(distance);
   const earlyWindows = disconnected ? 8 : 6;
   const earlyAgreement = disconnected ? 7 / 8 : 5 / 6;
-  const strongEvidence = (result.confidence >= 0.4 && result.margin >= 0.08)
-    || hasStrongRelativeLead(result);
-  const earlyReady = acceptedWindows >= earlyWindows
+  const strongEvidence = result.confidence >= AUTHOR_PRIOR_EARLY_MIN_CONFIDENCE
+    && result.margin >= AUTHOR_PRIOR_EARLY_MIN_MARGIN;
+  const earlyReady = !disconnected
+    && acceptedWindows >= earlyWindows
     && strongEvidence
     && agreementRatio(history, candidate, earlyWindows) >= earlyAgreement;
 
@@ -640,8 +834,8 @@ function authorPriorEvidenceGate({
   // is a plausibility hint, not a rule about what an artist is allowed to make.
   const persistentWindows = disconnected ? 14 : 12;
   const persistentReady = acceptedWindows >= persistentWindows
-    && result.confidence >= 0.28
-    && result.margin >= 0.05
+    && result.confidence >= STABLE_MIN_CONFIDENCE
+    && result.margin >= STABLE_MIN_MARGIN
     && agreementRatio(history, candidate, persistentWindows) >= 0.85;
   return { ready: earlyReady || persistentReady, distance };
 }
@@ -660,7 +854,10 @@ function aggregateGenreScores(classScores, classes) {
   }
   const scores = {};
   for (const [id, entries] of groups) scores[id] = combineFamilyEntries(entries);
-  return resultFromScores(scores, { topLabels });
+  return resultFromScores(scores, {
+    topLabels,
+    compatibilityScores: audioGenreCompatibilityScores(classScores, classes)
+  });
 }
 
 function summarizeActivationRows(activations, patchCount, classes) {
@@ -706,65 +903,125 @@ function agreementRatio(history, id, size = history.length) {
   return sample.filter((entry) => entry === id).length / sample.length;
 }
 
+function resultForGenreSupport(result, id, confidence, margin) {
+  const scores = { ...(result?.scores || {}), [id]: confidence };
+  return {
+    ...result,
+    id,
+    confidence,
+    margin,
+    scores,
+    ranked: Object.entries(scores)
+      .map(([genreId, score]) => ({ id: genreId, score }))
+      .sort((left, right) => right.score - left.score),
+    inferredFromCompatibility: true
+  };
+}
+
 class GenreDecisionTracker {
   constructor(options = {}) {
     this.options = {
-      earliestWindows: options.earliestWindows || 3,
-      mediumWindows: options.mediumWindows || 6,
+      earliestWindows: options.earliestWindows || 4,
+      independentFirstWindows: options.independentFirstWindows || 8,
+      mediumWindows: options.mediumWindows || 8,
       confirmationWindows: options.confirmationWindows || 8,
       correctionWindowLimit: options.correctionWindowLimit ?? STATIC_ANALYSIS_WINDOW_LIMIT,
       postFirstCorrectionWindows: options.postFirstCorrectionWindows ?? 12,
       recentWindowSize: options.recentWindowSize || 6,
+      firstPersistentWindows: options.firstPersistentWindows || 12,
       relativeLeadWindows: options.relativeLeadWindows || 10,
-      dynamicWindowSize: options.dynamicWindowSize || 6,
-      dynamicCooldownWindows: options.dynamicCooldownWindows || 8
+      dynamicWindowSize: options.dynamicWindowSize || 8,
+      dynamicCooldownWindows: options.dynamicCooldownWindows || 10
     };
     this.reset();
   }
 
   reset(context = {}) {
     const baselineGenreId = String(context.baselineGenreId || '');
+    const memoryPrior = context.memoryPrior && typeof context.memoryPrior === 'object'
+      ? context.memoryPrior
+      : null;
+    const memoryBaselineGenreId = memoryPrior?.fullPlaybackEvidence === true
+      ? String(memoryPrior.genreId || '')
+      : '';
+    const useMemoryBaseline = Boolean(memoryBaselineGenreId)
+      && !isBroadAudioGenre(memoryBaselineGenreId);
+    const useExternalBaseline = !useMemoryBaseline
+      && !isBroadAudioGenre(baselineGenreId)
+      && (context.dynamicEnabled === true || hasAudioGenreCompatibilityProfile(baselineGenreId));
     this.context = {
       dynamicEnabled: context.dynamicEnabled === true,
+      fullTrackLearning: context.fullTrackLearning === true,
       priorGenreIds: new Set((context.priorGenreIds || []).filter(Boolean)),
       guardGenreIds: new Set((context.guardGenreIds || []).filter(Boolean)),
+      memoryPrior,
       baselineGenreId
     };
     this.acceptedWindows = 0;
     this.winnerHistory = [];
     this.trackWinnerHistory = [];
-    this.currentId = this.context.dynamicEnabled && !isBroadAudioGenre(baselineGenreId)
+    this.familyWinnerHistory = [];
+    this.trackFamilyWinnerHistory = [];
+    this.baselineSupportHistory = [];
+    this.currentId = useExternalBaseline
       ? baselineGenreId
-      : '';
-    this.externalBaseline = Boolean(this.currentId);
+      : useMemoryBaseline ? memoryBaselineGenreId : '';
+    this.externalBaseline = useExternalBaseline;
+    this.externalBaselineGenreId = useExternalBaseline ? baselineGenreId : '';
+    this.memoryBaseline = useMemoryBaseline;
+    this.memoryBaselineGenreId = useMemoryBaseline ? memoryBaselineGenreId : '';
     this.broadBaselineId = '';
-    this.confirmed = this.externalBaseline;
+    this.confirmed = this.externalBaseline || this.memoryBaseline;
     this.correctionCount = 0;
+    this.finalCorrectionCount = 0;
     this.analysisWindowLimit = this.options.correctionWindowLimit;
-    this.correctionCandidateId = '';
-    this.correctionEvidenceStreak = 0;
     this.dynamicSwitchCount = 0;
-    this.lastSwitchWindow = this.externalBaseline ? 0 : -Infinity;
+    this.lastSwitchWindow = this.currentId ? 0 : -Infinity;
     this.lastResult = null;
   }
 
   setContext(context = {}) {
     this.context.dynamicEnabled = context.dynamicEnabled === true;
+    this.context.fullTrackLearning = context.fullTrackLearning === true;
     this.context.priorGenreIds = new Set((context.priorGenreIds || []).filter(Boolean));
     this.context.guardGenreIds = new Set((context.guardGenreIds || []).filter(Boolean));
+    this.context.memoryPrior = context.memoryPrior && typeof context.memoryPrior === 'object'
+      ? context.memoryPrior
+      : null;
     this.context.baselineGenreId = String(context.baselineGenreId || '');
+    const memoryBaselineGenreId = this.context.memoryPrior?.fullPlaybackEvidence === true
+      ? String(this.context.memoryPrior.genreId || '')
+      : '';
+    const canAdoptMemoryBaseline = Boolean(memoryBaselineGenreId)
+      && !isBroadAudioGenre(memoryBaselineGenreId)
+      && this.dynamicSwitchCount === 0
+      && (this.acceptedWindows === 0 || this.externalBaseline || this.memoryBaseline);
+    if (canAdoptMemoryBaseline
+      && !(this.memoryBaseline && this.currentId === memoryBaselineGenreId)) {
+      this.currentId = memoryBaselineGenreId;
+      this.externalBaseline = false;
+      this.externalBaselineGenreId = '';
+      this.memoryBaseline = true;
+      this.memoryBaselineGenreId = memoryBaselineGenreId;
+      this.broadBaselineId = '';
+      this.confirmed = true;
+      this.lastSwitchWindow = this.acceptedWindows;
+    }
     const baselineGenreId = this.context.baselineGenreId;
-    const canAdoptBaseline = this.context.dynamicEnabled
+    const canAdoptBaseline = !this.memoryBaseline
+      && (this.context.dynamicEnabled
+        || hasAudioGenreCompatibilityProfile(baselineGenreId))
       && !isBroadAudioGenre(baselineGenreId)
       && this.dynamicSwitchCount === 0;
     if (canAdoptBaseline && !(this.externalBaseline && this.currentId === baselineGenreId)) {
       this.currentId = baselineGenreId;
       this.externalBaseline = true;
+      this.externalBaselineGenreId = baselineGenreId;
+      this.memoryBaseline = false;
+      this.memoryBaselineGenreId = '';
       this.broadBaselineId = '';
       this.confirmed = true;
       this.lastSwitchWindow = this.acceptedWindows;
-      this.correctionCandidateId = '';
-      this.correctionEvidenceStreak = 0;
     }
   }
 
@@ -776,6 +1033,11 @@ class GenreDecisionTracker {
       margin: result.margin,
       acceptedWindows: this.acceptedWindows,
       analysisWindowLimit: this.analysisWindowLimit,
+      correctionCount: this.correctionCount,
+      finalCorrectionCount: this.finalCorrectionCount,
+      memoryPriorGenreId: result.memoryPriorGenreId || '',
+      memoryPriorWeight: Number(result.memoryPriorWeight) || 0,
+      currentGenreId: this.currentId,
       confirmed: this.confirmed,
       ...extra
     };
@@ -789,14 +1051,22 @@ class GenreDecisionTracker {
         this.acceptedWindows + this.options.postFirstCorrectionWindows
       );
     }
+    if (stage === 'correction' && this.correctionCount === 0) {
+      this.analysisWindowLimit = Math.max(
+        this.analysisWindowLimit,
+        this.acceptedWindows + this.options.postFirstCorrectionWindows
+      );
+    }
     this.currentId = result.id;
     this.externalBaseline = false;
+    this.memoryBaseline = false;
     this.broadBaselineId = '';
     this.confirmed = false;
     this.lastSwitchWindow = this.acceptedWindows;
-    this.correctionCandidateId = '';
-    this.correctionEvidenceStreak = 0;
-    if (stage === 'correction') this.correctionCount += 1;
+    if (stage === 'correction') {
+      this.correctionCount += 1;
+      if (extra.correctionEvidence === 'cumulative-final') this.finalCorrectionCount += 1;
+    }
     if (stage === 'dynamic') this.dynamicSwitchCount += 1;
     return this.event(stage, result, { previousGenreId, ...extra });
   }
@@ -804,79 +1074,126 @@ class GenreDecisionTracker {
   push({ shortResult, trackResult, segmentResult = trackResult }) {
     if (!shortResult?.id || !trackResult?.id) throw new Error('Genre decisions require short and track results');
     this.acceptedWindows += 1;
+    trackResult = applyAudioGenreMemoryPrior(
+      trackResult,
+      this.context.memoryPrior,
+      this.acceptedWindows
+    );
+    const shortFamilyResult = audioGenreFamilyResult(shortResult);
+    const trackFamilyResult = audioGenreFamilyResult(trackResult);
+    const segmentFamilyResult = audioGenreFamilyResult(segmentResult);
     this.winnerHistory.push(shortResult.id);
     this.trackWinnerHistory.push(trackResult.id);
+    this.familyWinnerHistory.push(shortFamilyResult.id);
+    this.trackFamilyWinnerHistory.push(trackFamilyResult.id);
     if (this.winnerHistory.length > 24) this.winnerHistory.shift();
     if (this.trackWinnerHistory.length > 24) this.trackWinnerHistory.shift();
+    if (this.familyWinnerHistory.length > 24) this.familyWinnerHistory.shift();
+    if (this.trackFamilyWinnerHistory.length > 24) this.trackFamilyWinnerHistory.shift();
+    const compatibilityBaselineId = audioGenreCompatibilityId(this.externalBaselineGenreId);
+    const baselineSupportScore = compatibilityBaselineId
+      ? audioGenreSupportScore(segmentResult, compatibilityBaselineId)
+      : 0;
+    const currentSupportScore = this.currentId
+      ? audioGenreSupportScore(segmentResult, this.currentId)
+      : 0;
+    const baselineSupportAdvantage = baselineSupportScore - currentSupportScore;
+    const baselineSupportWinner = compatibilityBaselineId
+      && this.currentId !== compatibilityBaselineId
+      && baselineSupportScore >= COMPATIBILITY_SUPPORT_MIN_CONFIDENCE
+      && baselineSupportAdvantage >= COMPATIBILITY_SUPPORT_MIN_ADVANTAGE
+      ? compatibilityBaselineId
+      : '';
+    this.baselineSupportHistory.push(baselineSupportWinner);
+    if (this.baselineSupportHistory.length > 24) this.baselineSupportHistory.shift();
     this.lastResult = trackResult;
 
     if (!this.currentId) {
-      const candidate = trackResult.id;
+      const candidate = trackFamilyResult.id;
       const stableThree = this.acceptedWindows >= this.options.earliestWindows
-        && agreementRatio(this.trackWinnerHistory, candidate, this.options.earliestWindows) === 1;
-      const priorAgreement = this.context.priorGenreIds.has(candidate);
+        && agreementRatio(this.trackFamilyWinnerHistory, candidate, this.options.earliestWindows) === 1;
+      const priorAgreement = [...this.context.priorGenreIds]
+        .some((id) => normalizeAudioGenreTreeId(id) === candidate);
+      // Exact external support keeps the fast path. Audio-only evidence waits
+      // through the intro and must still agree with the current segment.
+      const recentCandidateCompatible = segmentFamilyResult.id === candidate
+        || isBroadAudioGenre(segmentFamilyResult.id);
+      const firstWarmupReady = priorAgreement
+        || (this.acceptedWindows >= this.options.independentFirstWindows
+          && recentCandidateCompatible);
       const recentAgreement = this.acceptedWindows > this.options.recentWindowSize
-        && segmentResult.id === candidate
-        && segmentResult.confidence >= 0.34
-        && segmentResult.margin >= 0.055
-        && agreementRatio(this.winnerHistory, candidate, 5) >= 0.8;
+        && segmentFamilyResult.id === candidate
+        && segmentFamilyResult.confidence >= SUPPORTED_MIN_CONFIDENCE
+        && segmentFamilyResult.margin >= SUPPORTED_MIN_MARGIN
+        && agreementRatio(this.familyWinnerHistory, candidate, 5) >= 0.8;
       const strong = stableThree
-        && trackResult.confidence >= 0.45
-        && trackResult.margin >= 0.1;
+        && trackFamilyResult.confidence >= STRONG_MIN_CONFIDENCE
+        && trackFamilyResult.margin >= STRONG_MIN_MARGIN;
       const supportedByRecent = stableThree
         && recentAgreement
-        && trackResult.confidence >= 0.35
-        && trackResult.margin >= 0.06;
+        && trackFamilyResult.confidence >= SUPPORTED_MIN_CONFIDENCE
+        && trackFamilyResult.margin >= SUPPORTED_MIN_MARGIN;
       const supportedByPrior = stableThree
         && priorAgreement
-        && trackResult.confidence >= 0.35
-        && trackResult.margin >= 0.06;
+        && trackFamilyResult.confidence >= SUPPORTED_MIN_CONFIDENCE
+        && trackFamilyResult.margin >= SUPPORTED_MIN_MARGIN;
       const medium = this.acceptedWindows >= this.options.mediumWindows
-        && trackResult.confidence >= 0.28
-        && trackResult.margin >= 0.05
-        && agreementRatio(this.trackWinnerHistory, candidate, this.options.mediumWindows) >= 4 / 6;
-      const relativeDominant = this.acceptedWindows >= this.options.relativeLeadWindows
-        && hasStrongRelativeLead(trackResult)
+        && trackFamilyResult.confidence >= STABLE_MIN_CONFIDENCE
+        && trackFamilyResult.margin >= STABLE_MIN_MARGIN
+        && agreementRatio(this.trackFamilyWinnerHistory, candidate, this.options.mediumWindows) >= 5 / 6;
+      const persistentLowScore = this.acceptedWindows >= this.options.firstPersistentWindows
+        && hasPersistentLowScoreLead(trackFamilyResult)
         && agreementRatio(
-          this.trackWinnerHistory,
+          this.trackFamilyWinnerHistory,
           candidate,
-          this.options.relativeLeadWindows
-        ) >= 0.8;
+          this.options.firstPersistentWindows
+        ) >= 0.9;
       const firstResultReady = strong
         || supportedByRecent
         || supportedByPrior
         || medium
-        || relativeDominant;
+        || persistentLowScore;
+      const ambientIntroGuardReady = candidate !== 'ambient'
+        || priorAgreement
+        || (this.acceptedWindows >= AMBIENT_FIRST_MIN_WINDOWS
+          && segmentFamilyResult.id === 'ambient'
+          && agreementRatio(
+            this.familyWinnerHistory,
+            'ambient',
+            AMBIENT_FIRST_RECENT_WINDOWS
+          ) >= AMBIENT_FIRST_RECENT_AGREEMENT);
       const authorPriorGate = authorPriorEvidenceGate({
         candidate,
-        result: trackResult,
-        history: this.trackWinnerHistory,
+        result: trackFamilyResult,
+        history: this.trackFamilyWinnerHistory,
         acceptedWindows: this.acceptedWindows,
         guardGenreIds: this.context.guardGenreIds
       });
-      const recentConflictCandidate = segmentResult.id;
-      const standardRecentConflict = segmentResult.confidence >= 0.35
-        && segmentResult.margin >= 0.08;
-      const relativeRecentConflict = hasStrongRelativeLead(segmentResult)
-        && agreementRatio(this.winnerHistory, recentConflictCandidate, 8) >= 0.75;
+      const recentConflictCandidate = segmentFamilyResult.id;
+      const standardRecentConflict = segmentFamilyResult.confidence >= SUPPORTED_MIN_CONFIDENCE
+        && segmentFamilyResult.margin >= SUPPORTED_MIN_MARGIN;
+      const persistentRecentConflict = hasPersistentLowScoreLead(segmentFamilyResult)
+        && agreementRatio(this.familyWinnerHistory, recentConflictCandidate, 8) >= 0.75;
       const strongRecentConflict = this.acceptedWindows > this.options.recentWindowSize
         && !isBroadAudioGenre(candidate)
         && !isBroadAudioGenre(recentConflictCandidate)
         && recentConflictCandidate !== candidate
-        && (standardRecentConflict || relativeRecentConflict)
-        && agreementRatio(this.winnerHistory, recentConflictCandidate, 5) >= 0.8;
+        && (standardRecentConflict || persistentRecentConflict)
+        && agreementRatio(this.familyWinnerHistory, recentConflictCandidate, 5) >= 0.8;
       if (isBroadAudioGenre(candidate)
         && this.acceptedWindows >= this.options.mediumWindows) {
         this.broadBaselineId = candidate;
       }
       if (firstResultReady
+        && firstWarmupReady
+        && ambientIntroGuardReady
         && authorPriorGate.ready
         && !isBroadAudioGenre(candidate)
         && !strongRecentConflict) {
-        return this.accept('first', trackResult, {
+        return this.accept('first', trackFamilyResult, {
           supportedByRecent,
           authorPriorDistance: authorPriorGate.distance,
-          supportedByRelativeLead: relativeDominant
+          supportedByRelativeLead: persistentLowScore
             && !strong
             && !supportedByRecent
             && !supportedByPrior
@@ -886,164 +1203,266 @@ class GenreDecisionTracker {
 
       // Recent evidence never selects the first track-level result. It can only
       // refine a broad cumulative baseline after that baseline has had time to form.
-      const refinementCandidate = shortResult.id;
-      const standardRefinementEvidence = shortResult.confidence >= 0.28
-        && shortResult.margin >= 0.015
-        && agreementRatio(this.winnerHistory, refinementCandidate, 5) >= 0.8;
-      const relativeRefinementEvidence = this.acceptedWindows >= this.options.relativeLeadWindows
-        && hasStrongRelativeLead(shortResult)
-        && agreementRatio(this.winnerHistory, refinementCandidate, 8) >= 0.75;
+      const refinementCandidate = shortFamilyResult.id;
+      const standardRefinementEvidence = shortFamilyResult.confidence >= STABLE_MIN_CONFIDENCE
+        && shortFamilyResult.margin >= STABLE_MIN_MARGIN
+        && agreementRatio(this.familyWinnerHistory, refinementCandidate, 5) >= 0.8;
+      const persistentRefinementEvidence = this.acceptedWindows >= this.options.relativeLeadWindows
+        && hasPersistentLowScoreLead(shortFamilyResult)
+        && agreementRatio(this.familyWinnerHistory, refinementCandidate, 8) >= 0.75;
+      const refinementWarmupReady = [...this.context.priorGenreIds]
+        .some((id) => normalizeAudioGenreTreeId(id) === refinementCandidate)
+        || this.acceptedWindows >= this.options.independentFirstWindows;
       const broadRefinementReady = isBroadAudioGenre(this.broadBaselineId)
         && this.broadBaselineId
         && !isBroadAudioGenre(refinementCandidate)
-        && (standardRefinementEvidence || relativeRefinementEvidence);
+        && refinementWarmupReady
+        && (standardRefinementEvidence || persistentRefinementEvidence);
       const refinementAuthorPriorGate = authorPriorEvidenceGate({
         candidate: refinementCandidate,
-        result: shortResult,
-        history: this.winnerHistory,
+        result: shortFamilyResult,
+        history: this.familyWinnerHistory,
         acceptedWindows: this.acceptedWindows,
         guardGenreIds: this.context.guardGenreIds
       });
       if (broadRefinementReady && refinementAuthorPriorGate.ready) {
-        return this.accept('refinement', shortResult, {
+        return this.accept('refinement', shortFamilyResult, {
           authorPriorDistance: refinementAuthorPriorGate.distance,
-          supportedByRelativeLead: relativeRefinementEvidence && !standardRefinementEvidence
+          supportedByRelativeLead: persistentRefinementEvidence && !standardRefinementEvidence
         });
       }
       if (firstResultReady && isBroadAudioGenre(candidate)) {
         this.broadBaselineId = candidate;
         return candidate === 'electronic'
-          ? this.event('provisional', trackResult, { priorAgreement })
-          : this.event('waiting', trackResult, { priorAgreement });
+          ? this.event('provisional', trackFamilyResult, { priorAgreement })
+          : this.event('waiting', trackFamilyResult, { priorAgreement });
       }
-      return this.event('waiting', trackResult, {
+      return this.event('waiting', trackFamilyResult, {
         authorPriorDistance: authorPriorGate.distance,
         priorAgreement,
         recentConflictGenreId: strongRecentConflict ? recentConflictCandidate : ''
       });
     }
 
-    const correctionCandidate = segmentResult.id;
-    if (correctionCandidate !== this.currentId
-      && !isBroadAudioGenre(segmentResult.id)
-      && !this.externalBaseline
-      && this.correctionCount < 1
-      && this.dynamicSwitchCount < 1
-      && this.acceptedWindows <= this.analysisWindowLimit) {
-      const currentScore = segmentResult.scores?.[this.currentId] || 0;
-      const advantage = segmentResult.confidence - currentScore;
-      const trackCandidateScore = trackResult.scores?.[correctionCandidate] || 0;
-      const trackCurrentScore = trackResult.scores?.[this.currentId] || 0;
-      const cumulativeDelta = trackCandidateScore - trackCurrentScore;
-      let cumulativeSignal = 'neutral';
-      if (!isBroadAudioGenre(trackResult.id)) {
-        if (trackResult.id === correctionCandidate || cumulativeDelta >= 0.04) {
-          cumulativeSignal = 'support';
-        } else if (trackResult.id === this.currentId && cumulativeDelta <= -0.1) {
-          cumulativeSignal = 'opposition';
-        }
-      }
-
-      const supportedThreshold = cumulativeSignal === 'support';
-      const standardQualified = segmentResult.confidence >= (supportedThreshold ? 0.33 : 0.35)
-        && segmentResult.margin >= (supportedThreshold ? 0.065 : 0.08)
-        && advantage >= (supportedThreshold ? 0.07 : 0.08);
-      const relativeQualified = hasStrongRelativeLead(segmentResult)
-        && advantage >= 0.09;
-      const useRelativeLead = relativeQualified && !standardQualified;
-      const qualified = standardQualified || relativeQualified;
-      if (qualified) {
-        if (this.correctionCandidateId === correctionCandidate) {
-          this.correctionEvidenceStreak += 1;
-        } else {
-          this.correctionCandidateId = correctionCandidate;
-          this.correctionEvidenceStreak = 1;
-        }
-      } else {
-        this.correctionCandidateId = '';
-        this.correctionEvidenceStreak = 0;
-      }
-
-      const recentAgreement = cumulativeSignal === 'support'
-        ? agreementRatio(this.winnerHistory, correctionCandidate, 4) >= 0.75
-        : cumulativeSignal === 'opposition'
-          ? agreementRatio(this.winnerHistory, correctionCandidate, 6) >= 5 / 6
-          : agreementRatio(this.winnerHistory, correctionCandidate, 5) >= 0.8;
-      const overwhelmingRecentEvidence = segmentResult.confidence >= 0.42
-        && segmentResult.margin >= 0.16
-        && advantage >= 0.18
-        && agreementRatio(this.winnerHistory, correctionCandidate, 5) >= 0.8;
-      const relativeEvidencePersistent = this.correctionEvidenceStreak >= 3
-        && agreementRatio(this.winnerHistory, correctionCandidate, 8) >= 0.75;
-      const cumulativeGateOpen = cumulativeSignal !== 'opposition'
-        || (useRelativeLead
-          ? this.correctionEvidenceStreak >= 4 && relativeEvidencePersistent
-          : this.correctionEvidenceStreak >= 2 && recentAgreement)
-        || overwhelmingRecentEvidence;
-      const persistenceGateOpen = useRelativeLead
-        ? relativeEvidencePersistent
-        : recentAgreement || (cumulativeSignal === 'opposition' && overwhelmingRecentEvidence);
-      if (this.acceptedWindows >= 8
-        && qualified
-        && persistenceGateOpen
-        && cumulativeGateOpen) {
-        return this.accept('correction', segmentResult, {
-          cumulativeSignal,
-          cumulativeDelta,
-          correctionEvidenceStreak: this.correctionEvidenceStreak,
-          supportedByRelativeLead: useRelativeLead
-        });
-      }
-    } else {
-      this.correctionCandidateId = '';
-      this.correctionEvidenceStreak = 0;
+    const currentFamilyId = normalizeAudioGenreTreeId(this.currentId);
+    const trackCurrentFamilyResult = audioGenreResultForFamily(trackResult, currentFamilyId);
+    const segmentCurrentFamilyResult = audioGenreResultForFamily(segmentResult, currentFamilyId);
+    const hierarchicalResult = this.context.dynamicEnabled
+      ? segmentCurrentFamilyResult
+      : trackCurrentFamilyResult;
+    const hierarchicalHistory = this.context.dynamicEnabled
+      ? this.winnerHistory
+      : this.trackWinnerHistory;
+    const hierarchicalCandidate = hierarchicalResult.id;
+    const hierarchicalCandidateFamily = normalizeAudioGenreTreeId(hierarchicalCandidate);
+    const hierarchicalWindow = 8;
+    const hierarchicalPersistent = agreementRatio(
+      hierarchicalHistory,
+      hierarchicalCandidate,
+      hierarchicalWindow
+    ) >= 7 / 8;
+    const hierarchicalCooldownComplete = !this.context.dynamicEnabled
+      || this.acceptedWindows - this.lastSwitchWindow >= DYNAMIC_HIERARCHICAL_COOLDOWN_WINDOWS;
+    const canRefineCurrentFamily = this.currentId === currentFamilyId
+      && hierarchicalCandidate !== this.currentId
+      && hierarchicalCandidateFamily === currentFamilyId
+      && !isBroadAudioGenre(hierarchicalCandidate)
+      && this.acceptedWindows >= hierarchicalWindow
+      && hierarchicalResult.confidence >= HIERARCHICAL_MIN_CONFIDENCE
+      && audioGenreSiblingMargin(hierarchicalResult, hierarchicalCandidate)
+        >= HIERARCHICAL_MIN_MARGIN
+      && hierarchicalPersistent
+      && hierarchicalCooldownComplete
+      && (this.context.dynamicEnabled || !this.memoryBaseline)
+      && (this.context.dynamicEnabled
+        || this.context.fullTrackLearning
+        || this.acceptedWindows <= this.analysisWindowLimit);
+    if (canRefineCurrentFamily) {
+      return this.accept(this.context.dynamicEnabled ? 'dynamic' : 'refinement', hierarchicalResult, {
+        hierarchicalRefinement: true,
+        parentGenreId: currentFamilyId,
+        siblingMargin: audioGenreSiblingMargin(hierarchicalResult, hierarchicalCandidate)
+      });
     }
 
-    const dynamicCandidate = segmentResult.id;
-    const currentSegmentScore = segmentResult.scores?.[this.currentId] || 0;
-    const dynamicAdvantage = segmentResult.confidence - currentSegmentScore;
+    const cumulativeCrossesFamily = trackFamilyResult.id !== currentFamilyId;
+    const cumulativeCorrectionResult = cumulativeCrossesFamily
+      ? trackFamilyResult
+      : trackCurrentFamilyResult;
+    const cumulativeCorrectionHistory = cumulativeCrossesFamily
+      ? this.trackFamilyWinnerHistory
+      : this.trackWinnerHistory;
+    const cumulativeCorrectionCandidate = cumulativeCorrectionResult.id;
+    const cumulativeCorrectionMatchesPrior = [...this.context.priorGenreIds].some((id) => (
+      cumulativeCrossesFamily
+        ? normalizeAudioGenreTreeId(id) === cumulativeCorrectionCandidate
+        : id === cumulativeCorrectionCandidate
+    ));
+    const fullTrackLearning = !this.context.dynamicEnabled && this.context.fullTrackLearning;
+    const finalCumulativeCorrection = !fullTrackLearning
+      && this.correctionCount === 1
+      && this.finalCorrectionCount < 1;
+    const cumulativeCorrectionWindow = fullTrackLearning || finalCumulativeCorrection
+      ? STATIC_FINAL_CORRECTION_WINDOW
+      : STATIC_CORRECTION_WINDOW;
+    const cumulativeCorrectionPersistent = agreementRatio(
+      cumulativeCorrectionHistory,
+      cumulativeCorrectionCandidate,
+      cumulativeCorrectionWindow
+    ) >= (fullTrackLearning || finalCumulativeCorrection
+      ? STATIC_FINAL_CORRECTION_AGREEMENT
+      : STATIC_CORRECTION_AGREEMENT);
+    // A cumulative winner already outranks the adopted genre in the same score
+    // distribution. Require persistence plus a small noise floor instead of a
+    // second, large lead threshold that blocks corrections between close styles.
+    const cumulativeCorrectionQualified = cumulativeCorrectionResult.confidence
+        >= STATIC_CORRECTION_MIN_CONFIDENCE
+      && cumulativeCorrectionResult.margin >= STATIC_CORRECTION_MIN_MARGIN;
+    const cumulativeCurrentScore = audioGenreSupportScore(
+      cumulativeCorrectionResult,
+      cumulativeCrossesFamily ? currentFamilyId : this.currentId
+    );
+    const cumulativeAdvantage = cumulativeCorrectionResult.confidence - cumulativeCurrentScore;
+    const correctingCompatibilityBaseline = this.externalBaseline
+      && hasAudioGenreCompatibilityProfile(this.currentId);
+    const compatibilityBaselineCorrectionReady = !correctingCompatibilityBaseline
+      || (this.acceptedWindows >= 12
+        && agreementRatio(cumulativeCorrectionHistory, cumulativeCorrectionCandidate, 12) >= 11 / 12
+        && cumulativeCorrectionResult.confidence >= COMPATIBILITY_CORRECTION_MIN_CONFIDENCE
+        && cumulativeCorrectionResult.margin >= COMPATIBILITY_CORRECTION_MIN_MARGIN
+        && cumulativeAdvantage >= COMPATIBILITY_CORRECTION_MIN_ADVANTAGE);
+    const waitingForHierarchicalRefinement = this.currentId === currentFamilyId
+      && !cumulativeCrossesFamily
+      && cumulativeCorrectionCandidate !== this.currentId;
+    // Static detection assigns one genre to the track, so only cumulative
+    // evidence may revise it. Dynamic detection handles section changes below.
+    if (!this.context.dynamicEnabled
+      && !this.memoryBaseline
+      && cumulativeCorrectionCandidate !== this.currentId
+      && !isBroadAudioGenre(cumulativeCorrectionCandidate)
+      && !waitingForHierarchicalRefinement
+      && (!this.externalBaseline || correctingCompatibilityBaseline)
+      && (fullTrackLearning || this.correctionCount < 1 || finalCumulativeCorrection)
+      && this.dynamicSwitchCount < 1
+      && (fullTrackLearning || this.acceptedWindows <= this.analysisWindowLimit)
+      && this.acceptedWindows >= Math.max(finalCumulativeCorrection ? 18 : 8, cumulativeCorrectionWindow)
+      && (!fullTrackLearning || this.acceptedWindows - this.lastSwitchWindow >= STATIC_FINAL_CORRECTION_WINDOW)
+      && (!finalCumulativeCorrection || this.acceptedWindows - this.lastSwitchWindow >= 6)
+      && cumulativeCorrectionPersistent
+      && compatibilityBaselineCorrectionReady
+      && cumulativeCorrectionQualified) {
+      return this.accept('correction', cumulativeCorrectionResult, {
+        correctionEvidence: fullTrackLearning
+          ? 'cumulative-full-track'
+          : finalCumulativeCorrection ? 'cumulative-final' : 'cumulative',
+        supportedByPrior: cumulativeCorrectionMatchesPrior,
+        familyLevelDecision: cumulativeCrossesFamily
+      });
+    }
+
+    const dynamicCrossesFamily = segmentFamilyResult.id !== currentFamilyId;
+    const dynamicResult = dynamicCrossesFamily
+      ? segmentFamilyResult
+      : segmentCurrentFamilyResult;
+    const dynamicHistory = dynamicCrossesFamily ? this.familyWinnerHistory : this.winnerHistory;
+    const dynamicCandidate = dynamicResult.id;
+    const currentSegmentScore = audioGenreSupportScore(
+      dynamicResult,
+      dynamicCrossesFamily ? currentFamilyId : this.currentId
+    );
+    const dynamicAdvantage = dynamicResult.confidence - currentSegmentScore;
     const dynamicPersistent = agreementRatio(
-      this.winnerHistory,
+      dynamicHistory,
       dynamicCandidate,
       this.options.dynamicWindowSize
     ) >= 0.75;
     const relativeDynamicPersistent = this.acceptedWindows >= this.options.relativeLeadWindows
-      && agreementRatio(this.winnerHistory, dynamicCandidate, 8) >= 0.75;
+      && agreementRatio(dynamicHistory, dynamicCandidate, this.options.relativeLeadWindows) >= 0.8;
     const cooldownComplete = this.acceptedWindows - this.lastSwitchWindow
       >= this.options.dynamicCooldownWindows;
-    const standardDynamicQualified = segmentResult.confidence >= 0.32
-      && segmentResult.margin >= 0.07
-      && dynamicAdvantage >= 0.07
+    const compatibilityBaselineRestored = this.context.dynamicEnabled
+      && compatibilityBaselineId
+      && this.currentId !== compatibilityBaselineId
+      && cooldownComplete
+      && agreementRatio(
+        this.baselineSupportHistory,
+        compatibilityBaselineId,
+        this.options.dynamicWindowSize
+      ) >= 0.75;
+    if (compatibilityBaselineRestored) {
+      return this.accept('dynamic', resultForGenreSupport(
+        segmentResult,
+        compatibilityBaselineId,
+        baselineSupportScore,
+        baselineSupportAdvantage
+      ), {
+        restoredBaseline: true,
+        inferredFromCompatibility: true
+      });
+    }
+    const standardDynamicQualified = dynamicResult.confidence
+        >= (dynamicCrossesFamily
+          ? DYNAMIC_FAMILY_MIN_CONFIDENCE
+          : DYNAMIC_LEAF_MIN_CONFIDENCE)
+      && dynamicResult.margin >= (dynamicCrossesFamily
+        ? DYNAMIC_FAMILY_MIN_MARGIN
+        : DYNAMIC_LEAF_MIN_MARGIN)
+      && dynamicAdvantage >= (dynamicCrossesFamily
+        ? DYNAMIC_FAMILY_MIN_ADVANTAGE
+        : DYNAMIC_LEAF_MIN_ADVANTAGE)
       && dynamicPersistent;
-    const relativeDynamicQualified = hasStrongRelativeLead(segmentResult)
-      && dynamicAdvantage >= 0.09
+    const persistentLowScoreQualified = hasPersistentLowScoreLead(dynamicResult)
+      && dynamicAdvantage >= DYNAMIC_PERSISTENT_MIN_ADVANTAGE
       && relativeDynamicPersistent;
+    const waitingForDynamicHierarchicalRefinement = this.currentId === currentFamilyId
+      && !dynamicCrossesFamily
+      && dynamicCandidate !== this.currentId;
+    const ambientMemoryChallengeReady = dynamicCandidate !== 'ambient'
+      || !this.memoryBaseline
+      || (this.acceptedWindows >= AMBIENT_FIRST_MIN_WINDOWS
+        && segmentFamilyResult.id === 'ambient'
+        && agreementRatio(
+          this.familyWinnerHistory,
+          'ambient',
+          AMBIENT_FIRST_RECENT_WINDOWS
+        ) >= AMBIENT_FIRST_RECENT_AGREEMENT);
     if (this.context.dynamicEnabled
-      && this.dynamicSwitchCount < 3
       && !isBroadAudioGenre(dynamicCandidate)
       && dynamicCandidate !== this.currentId
+      && !waitingForDynamicHierarchicalRefinement
       && this.acceptedWindows >= this.options.dynamicWindowSize
-      && (standardDynamicQualified || relativeDynamicQualified)
+      && (standardDynamicQualified || persistentLowScoreQualified)
+      && ambientMemoryChallengeReady
       && cooldownComplete) {
-      return this.accept('dynamic', segmentResult, {
-        supportedByRelativeLead: relativeDynamicQualified && !standardDynamicQualified
+      return this.accept('dynamic', dynamicResult, {
+        familyLevelDecision: dynamicCrossesFamily,
+        supportedByPersistentLowScore: persistentLowScoreQualified && !standardDynamicQualified,
+        supportedByRelativeLead: persistentLowScoreQualified && !standardDynamicQualified
       });
     }
 
-    if (trackResult.id === this.currentId) {
+    const steadyResult = this.currentId === currentFamilyId
+      ? trackFamilyResult
+      : trackCurrentFamilyResult;
+    const steadyHistory = this.currentId === currentFamilyId
+      ? this.familyWinnerHistory
+      : this.winnerHistory;
+    if (steadyResult.id === this.currentId) {
       if (!this.confirmed
         && this.acceptedWindows >= this.options.confirmationWindows
-        && trackResult.margin >= 0.04
-        && agreementRatio(this.winnerHistory, this.currentId, this.options.confirmationWindows) >= 0.75) {
+        && steadyResult.margin >= CONFIRMATION_MIN_MARGIN
+        && agreementRatio(steadyHistory, this.currentId, this.options.confirmationWindows) >= 0.75) {
         this.confirmed = true;
-        return this.event('confirmed', trackResult);
+        return this.event('confirmed', steadyResult);
       }
-      return this.event('steady', trackResult);
+      return this.event('steady', steadyResult);
     }
 
-    return this.event('challenger', trackResult, {
-      challengerGenreId: trackResult.id,
-      segmentGenreId: segmentResult.id
+    return this.event('challenger', cumulativeCorrectionResult, {
+      challengerGenreId: cumulativeCorrectionCandidate,
+      challengerLeafGenreId: trackResult.id,
+      segmentGenreId: segmentResult.id,
+      segmentFamilyGenreId: segmentFamilyResult.id
     });
   }
 }
@@ -1052,8 +1471,8 @@ class GenreScoreSmoother {
   constructor(options = {}) {
     this.windowSize = options.windowSize || 3;
     this.holdCount = options.holdCount || 3;
-    this.minimumConfidence = options.minimumConfidence ?? 0.1;
-    this.minimumMargin = options.minimumMargin ?? 0.015;
+    this.minimumConfidence = options.minimumConfidence ?? LOW_SCORE_MIN_CONFIDENCE;
+    this.minimumMargin = options.minimumMargin ?? LOW_SCORE_MIN_MARGIN;
     this.history = [];
     this.lastId = '';
     this.streak = 0;
@@ -1084,7 +1503,8 @@ function fuseGenreEvidence({ metadata, audio }) {
   if (!audio?.stable) return { ...metadataResult, chosenBy: 'metadata' };
   const fallbackSources = new Set(['unknown', 'default', 'title', 'artist-map', 'artist-fallback']);
   const broadMetadata = ['unknown', 'electronic'].includes(metadataResult.id);
-  const audioIsUsable = audio.confidence >= 0.1 && audio.margin >= 0.015;
+  const audioIsUsable = audio.confidence >= LOW_SCORE_MIN_CONFIDENCE
+    && audio.margin >= LOW_SCORE_MIN_MARGIN;
   if ((broadMetadata || fallbackSources.has(metadataResult.source)) && audioIsUsable) {
     return { ...audio, source: 'audio-model', chosenBy: 'audio' };
   }
@@ -1104,13 +1524,23 @@ module.exports = {
   GenreScoreSmoother,
   GenreDecisionTracker,
   HOP_SIZE,
+  MEMORY_PRIOR_EQUIVALENT_WINDOWS,
+  MEMORY_PRIOR_HORIZON_WINDOWS,
   MEL_BANDS,
   MusiCnnMelExtractor,
   PATCH_FRAMES,
   PATCH_HOP,
   SAMPLE_RATE,
   STATIC_ANALYSIS_WINDOW_LIMIT,
+  audioGenreCompatibilityScores,
+  audioGenreFamilyResult,
+  audioGenreFamilyScores,
+  audioGenreModelOutputIds,
+  audioGenreResultForFamily,
+  audioGenreSiblingMargin,
+  audioGenreSupportScore,
   aggregateGenreScores,
+  applyAudioGenreMemoryPrior,
   allPatchStarts,
   audioGenreTreeDistance,
   buildMusiCnnMelFilterbank,
@@ -1119,6 +1549,7 @@ module.exports = {
   discogsClassToMajor,
   fuseGenreEvidence,
   hasSignificantPlaybackSeek,
+  hasAudioGenreCompatibilityProfile,
   isBroadAudioGenre,
   meanActivationRows,
   medianActivationRows,

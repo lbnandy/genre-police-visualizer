@@ -1,7 +1,6 @@
 'use strict';
 
 const fs = require('node:fs');
-const ort = require('onnxruntime-node');
 const {
   GenreDecisionTracker,
   HOP_SIZE,
@@ -14,12 +13,12 @@ const {
   meanActivationRows,
   medianActivationRows
 } = require('./audio-genre-model');
+const { loadOnnxRuntime } = require('./onnx-runtime-loader');
 
 const PATCH_SAMPLE_COUNT = PATCH_FRAMES * HOP_SIZE;
 const PATCH_HOP_SAMPLES = PATCH_HOP * HOP_SIZE;
 const RECENT_PATCH_COUNT = 6;
 const SILENCE_RMS = 0.0015;
-
 function patchRms(samples) {
   let energy = 0;
   for (let index = 0; index < samples.length; index += 1) energy += samples[index] * samples[index];
@@ -32,6 +31,7 @@ function compactResult(result) {
     confidence: result.confidence,
     margin: result.margin,
     scores: result.scores,
+    compatibilityScores: result.compatibilityScores,
     ranked: result.ranked.slice(0, 5),
     topLabels: result.topLabels?.slice(0, 5) || []
   };
@@ -42,6 +42,7 @@ class LocalAudioGenreModel {
     this.modelPath = modelPath;
     this.metadataPath = metadataPath;
     this.onEvent = onEvent;
+    this.ort = null;
     this.session = null;
     this.classes = [];
     this.extractor = new MusiCnnMelExtractor();
@@ -55,12 +56,13 @@ class LocalAudioGenreModel {
 
   async initialize() {
     if (this.session || this.closed) return;
+    this.ort = loadOnnxRuntime();
     const metadata = JSON.parse(await fs.promises.readFile(this.metadataPath, 'utf8'));
     if (!Array.isArray(metadata.classes) || metadata.classes.length !== 400) {
       throw new Error('Discogs-EffNet metadata must contain 400 classes');
     }
     this.classes = metadata.classes;
-    const session = await ort.InferenceSession.create(this.modelPath, {
+    const session = await this.ort.InferenceSession.create(this.modelPath, {
       executionProviders: ['cpu'],
       intraOpNumThreads: 1,
       interOpNumThreads: 1,
@@ -150,7 +152,7 @@ class LocalAudioGenreModel {
     const inputName = this.session.inputNames[0];
     const startedAt = performance.now();
     const outputs = await this.session.run({
-      [inputName]: new ort.Tensor('float32', tensor, [1, PATCH_FRAMES, MEL_BANDS])
+      [inputName]: new this.ort.Tensor('float32', tensor, [1, PATCH_FRAMES, MEL_BANDS])
     });
     if (serial !== this.serial || this.closed) return;
     const activationName = this.session.outputNames.find((name) => /activation/i.test(name))

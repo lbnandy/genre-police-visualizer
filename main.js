@@ -35,14 +35,20 @@ const { pointInWindowSurface } = require('./src/window-hit-region');
 const { UI_SCALES, normalizeUiScale, uiScaleLabel } = require('./src/ui-scale');
 const { HOP_SIZE, LocalRhythmModel } = require('./src/rhythm-model-runtime');
 const { LocalAudioGenreModel } = require('./src/audio-genre-runtime');
+const { ONNX_RUNTIME_LOAD_FAILURE_CODES } = require('./src/onnx-runtime-loader');
 const {
   createAudioGenreMemories,
   createAudioGenreMemoryCandidate,
   getAudioGenreMemory,
+  hasFullTrackAnalysisCoverage,
+  isNearTrackBeginning,
+  isNearTrackEnd,
+  shouldCollectAudioGenreMemory,
   setAudioGenreMemory
 } = require('./src/audio-genre-memory');
 const {
   hasSignificantPlaybackSeek,
+  hasAudioGenreCompatibilityProfile,
   isBroadAudioGenre,
   shouldAnalyzeAudioGenre,
   shouldKeepGenreIdentifying,
@@ -87,6 +93,7 @@ let rhythmModelState = { type: 'unavailable', reason: 'not started' };
 let audioGenreModel = null;
 let audioGenreModelStartTask = null;
 let audioGenreModelState = { type: 'unavailable', reason: 'not started' };
+const VC_RUNTIME_DOWNLOAD_URL = 'https://aka.ms/vc14/vc_redist.x64.exe';
 let clickThrough = false;
 let mainSettingsOpen = false;
 let pointerHitTestTimer = null;
@@ -113,7 +120,9 @@ let config = {};
 let genreCorrections = createGenreCorrections();
 let audioGenreMemories = createAudioGenreMemories();
 let currentAudioGenreMemory = null;
+let currentAudioGenreMemoryCollectionRequired = false;
 let currentAudioGenreSnapshot = null;
+let currentAudioGenreStartedNearBeginning = false;
 let audioGenreMemoryVerificationLimit = 0;
 let lastPersistedAudioGenreWindows = 0;
 let backdropTimer = null;
@@ -535,6 +544,22 @@ function loadAudioGenreMemories() {
   }
 }
 
+function clearAudioGenreMemories() {
+  const previous = audioGenreMemories;
+  const cleared = Object.keys(previous.entries || {}).length;
+  audioGenreMemories = createAudioGenreMemories();
+  try {
+    saveAudioGenreMemories();
+  } catch (error) {
+    audioGenreMemories = previous;
+    console.warn('Could not clear local AI genre memory:', error.message);
+    return { ok: false, cleared: 0 };
+  }
+  resetAudioGenreForCurrentTrack();
+  publishCurrentGenre({ force: true });
+  return { ok: true, cleared };
+}
+
 function loadConfig() {
   try {
     config = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
@@ -579,6 +604,7 @@ function loadConfig() {
   config.showFps = config.showFps === true;
   config.rhythmModelEnabled = config.rhythmModelEnabled !== false;
   config.localGenreModelEnabled = config.localGenreModelEnabled !== false;
+  config.audioGenreMemoryEnabled = config.audioGenreMemoryEnabled !== false;
   config.dynamicGenreDetectionEnabled = config.localGenreModelEnabled
     && config.dynamicGenreDetectionEnabled === true;
   config.recordingQuickButtonVisible = config.recordingQuickButtonVisible !== false;
@@ -767,9 +793,27 @@ function audioGenreModelPaths() {
   };
 }
 
-function localGenreModelAvailable() {
+function localGenreModelFilesAvailable() {
   const paths = audioGenreModelPaths();
   return fs.existsSync(paths.modelPath) && fs.existsSync(paths.metadataPath);
+}
+
+function localGenreModelAvailable() {
+  return localGenreModelFilesAvailable()
+    && !ONNX_RUNTIME_LOAD_FAILURE_CODES.includes(audioGenreModelState?.code);
+}
+
+function audioGenreModelStatus() {
+  return {
+    enabled: config.localGenreModelEnabled !== false,
+    available: localGenreModelAvailable(),
+    state: audioGenreModelState
+  };
+}
+
+function publishAudioGenreModelStatus() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('local-genre-model-status', audioGenreModelStatus());
 }
 
 function audioFamilyForGenreId(value) {
@@ -797,7 +841,7 @@ function metadataGenreKind(metadata) {
 }
 
 function rememberedAudioGenreDecision(memory = currentAudioGenreMemory) {
-  if (!memory?.genreId || !THEMES[memory.genreId]) return null;
+  if (memory?.fullPlaybackEvidence !== true || !memory?.genreId || !THEMES[memory.genreId]) return null;
   return {
     stage: 'memory',
     genreId: memory.genreId,
@@ -809,21 +853,30 @@ function rememberedAudioGenreDecision(memory = currentAudioGenreMemory) {
 }
 
 function loadCurrentAudioGenreMemory(metadata = lastRawMetadata) {
-  if (config.localGenreModelEnabled === false || !metadata?.title) return null;
+  if (config.localGenreModelEnabled === false
+    || config.audioGenreMemoryEnabled === false
+    || !metadata?.title) return null;
   const memory = getAudioGenreMemory(audioGenreMemories, metadata);
   return memory?.genreId && THEMES[memory.genreId] ? memory : null;
 }
 
 function resetCurrentAudioGenreEvidence({ reloadMemory = true } = {}) {
   currentAudioGenreSnapshot = null;
+  currentAudioGenreStartedNearBeginning = Boolean(
+    lastRawMetadata?.title && isNearTrackBeginning(lastRawMetadata)
+  );
   audioGenreMemoryVerificationLimit = 0;
   lastPersistedAudioGenreWindows = 0;
   currentAudioGenreMemory = reloadMemory ? loadCurrentAudioGenreMemory() : null;
+  const hasFullPlaybackMemory = currentAudioGenreMemory?.fullPlaybackEvidence === true;
+  currentAudioGenreMemoryCollectionRequired = config.audioGenreMemoryEnabled !== false
+    && (!hasFullPlaybackMemory || currentAudioGenreStartedNearBeginning);
   currentAudioGenreDecision = rememberedAudioGenreDecision();
 }
 
 function persistCurrentAudioGenreMemory({ force = false } = {}) {
   if (config.localGenreModelEnabled === false
+    || config.audioGenreMemoryEnabled === false
     || !lastRawMetadata?.title
     || !currentAudioGenreSnapshot?.track
     || currentAudioGenreSnapshot.trackKey !== lastTrackKey) return false;
@@ -836,8 +889,14 @@ function persistCurrentAudioGenreMemory({ force = false } = {}) {
     metadata: lastRawMetadata,
     metadataKind: metadataGenreKind(lastBaseResolvedMetadata),
     trackResult: currentAudioGenreSnapshot.track,
+    startedNearBeginning: currentAudioGenreStartedNearBeginning,
     acceptedWindows,
     winnerHistory: currentAudioGenreSnapshot.winnerHistory,
+    nearComplete: isNearTrackEnd(lastRawMetadata) || hasFullTrackAnalysisCoverage({
+      acceptedWindows,
+      durationMs: lastRawMetadata.durationMs,
+      startedNearBeginning: currentAudioGenreStartedNearBeginning
+    }),
     validGenreIds: new Set(Object.keys(THEMES))
   });
   if (!candidate) return false;
@@ -866,31 +925,68 @@ function audioGenreContext(metadata = lastBaseResolvedMetadata) {
     priorGenreIds.push(artistGenreId);
     guardGenreIds.push(artistGenreId);
   }
-  if (currentAudioGenreMemory?.genreId) priorGenreIds.push(currentAudioGenreMemory.genreId);
-  const metadataBaseline = dynamicEnabled && kind === 'specific'
-    ? audioFamilyForGenreId(metadata?.genre?.id)
+  const memoryPrior = currentAudioGenreMemory?.fullPlaybackEvidence === true
+    ? {
+        genreId: currentAudioGenreMemory.genreId,
+        confidence: currentAudioGenreMemory.confidence,
+        margin: currentAudioGenreMemory.margin,
+        scores: currentAudioGenreMemory.scores,
+        coverageRatio: currentAudioGenreMemory.coverageRatio,
+        fullPlaybackEvidence: true
+      }
+    : null;
+  if (memoryPrior?.genreId) priorGenreIds.push(memoryPrior.genreId);
+  const metadataAudioFamily = audioFamilyForGenreId(metadata?.genre?.id);
+  const metadataBaseline = (dynamicEnabled && kind === 'specific')
+    || (kind === 'artist' && hasAudioGenreCompatibilityProfile(metadataAudioFamily))
+    ? metadataAudioFamily
     : '';
   return {
     dynamicEnabled,
+    fullTrackLearning: isCurrentAudioGenreFullTrackLearning(),
     priorGenreIds: [...new Set(priorGenreIds.filter(Boolean))],
     guardGenreIds: [...new Set(guardGenreIds.filter(Boolean))],
+    memoryPrior,
     baselineGenreId: metadataBaseline
-      || (dynamicEnabled ? currentAudioGenreMemory?.genreId || '' : '')
   };
 }
 
 function shouldAnalyzeCurrentGenreAudio() {
+  const staticMemoryWithoutFullReplay = config.dynamicGenreDetectionEnabled !== true
+    && currentAudioGenreDecision?.stage === 'memory'
+    && !isCurrentAudioGenreFullTrackLearning();
+  if (staticMemoryWithoutFullReplay) return false;
   return shouldAnalyzeAudioGenre({
     enabled: config.localGenreModelEnabled !== false,
     playing: Boolean(lastRawMetadata?.playing),
     hasTrack: Boolean(lastRawMetadata?.title),
     dynamicEnabled: config.dynamicGenreDetectionEnabled === true,
+    fullTrackLearning: isCurrentAudioGenreFullTrackLearning(),
     metadataKind: metadataGenreKind(lastBaseResolvedMetadata),
-    decisionGenreId: currentAudioGenreDecision?.genreId,
+    decisionGenreId: currentAudioGenreDecision?.genreId || audioGenreModelState?.currentGenreId,
     acceptedWindows: audioGenreModelState?.acceptedWindows,
+    correctionCount: audioGenreModelState?.correctionCount,
+    finalCorrectionCount: audioGenreModelState?.finalCorrectionCount,
     settleWindowLimit: audioGenreMemoryVerificationLimit
       || audioGenreModelState?.analysisWindowLimit
   });
+}
+
+function shouldCollectCurrentAudioGenreMemory() {
+  return shouldCollectAudioGenreMemory({
+    enabled: config.localGenreModelEnabled !== false
+      && config.audioGenreMemoryEnabled !== false,
+    playing: Boolean(lastRawMetadata?.playing),
+    hasTrack: Boolean(lastRawMetadata?.title),
+    metadataKind: metadataGenreKind(lastBaseResolvedMetadata),
+    startedNearBeginning: currentAudioGenreStartedNearBeginning,
+    memorySatisfied: !currentAudioGenreMemoryCollectionRequired
+  });
+}
+
+function isCurrentAudioGenreFullTrackLearning() {
+  return currentAudioGenreMemoryCollectionRequired
+    && currentAudioGenreStartedNearBeginning;
 }
 
 function fuseAudioGenreDecision(baseMetadata, decision) {
@@ -912,6 +1008,7 @@ function fuseAudioGenreDecision(baseMetadata, decision) {
     type: rememberedResult ? 'audio-memory' : 'audio-model',
     stage: decision.stage,
     genreId: decision.genreId,
+    currentGenreId: decision.currentGenreId,
     confidence: decision.confidence,
     margin: decision.margin,
     acceptedWindows: decision.acceptedWindows,
@@ -957,6 +1054,11 @@ function publishCurrentGenre({ force = false } = {}) {
   let next = currentAudioGenreDecision
     ? fuseAudioGenreDecision(base, currentAudioGenreDecision)
     : base;
+  const staticMemoryRecheck = config.dynamicGenreDetectionEnabled !== true
+    && currentAudioGenreDecision?.stage === 'memory';
+  let genreAnalysisPending = localGenreModelAvailable()
+    && shouldAnalyzeCurrentGenreAudio()
+    && !staticMemoryRecheck;
   if (shouldKeepGenreIdentifying({
     enabled: config.localGenreModelEnabled !== false,
     available: localGenreModelAvailable(),
@@ -969,6 +1071,7 @@ function publishCurrentGenre({ force = false } = {}) {
     next = { ...next, resolving: true };
   }
   if (temporaryGenreOverride?.trackKey === lastTrackKey) {
+    genreAnalysisPending = false;
     next = {
       ...next,
       resolving: false,
@@ -985,9 +1088,11 @@ function publishCurrentGenre({ force = false } = {}) {
       }
     };
   }
+  next = { ...next, genreAnalysisPending };
   next = withGenreReliability(next);
   const previousGenreId = lastResolvedMetadata?.genre?.id;
   const previousGenreUncertain = Boolean(lastResolvedMetadata?.genreUncertain);
+  const previousGenreAnalysisPending = Boolean(lastResolvedMetadata?.genreAnalysisPending);
   lastResolvedMetadata = next;
   if (process.env.GP_DEBUG_AUDIO_GENRE && currentAudioGenreDecision) {
     console.info('Local audio genre publish:', {
@@ -1001,12 +1106,14 @@ function publishCurrentGenre({ force = false } = {}) {
       genreUncertainReason: next.genreUncertainReason,
       sent: Boolean(force
         || previousGenreId !== next.genre?.id
-        || previousGenreUncertain !== next.genreUncertain)
+        || previousGenreUncertain !== next.genreUncertain
+        || previousGenreAnalysisPending !== next.genreAnalysisPending)
     });
   }
   if (force
     || previousGenreId !== next.genre?.id
-    || previousGenreUncertain !== next.genreUncertain) {
+    || previousGenreUncertain !== next.genreUncertain
+    || previousGenreAnalysisPending !== next.genreAnalysisPending) {
     mainWindow.webContents.send('now-playing', {
       ...next,
       displayArtist: displayArtistName(next.artist || next.albumArtist || lastRawMetadata.artist || lastRawMetadata.albumArtist),
@@ -1019,9 +1126,11 @@ function publishCurrentGenre({ force = false } = {}) {
 function handleAudioGenreModelEvent(payload) {
   if (payload?.type !== 'prediction') {
     audioGenreModelState = payload || audioGenreModelState;
+    publishAudioGenreModelStatus();
     if (process.env.GP_DEBUG_AUDIO_GENRE && payload?.type !== 'reset') {
       console.info('Local audio genre model:', payload);
     }
+    publishCurrentGenre();
     return;
   }
   if (payload.trackKey !== lastTrackKey) return;
@@ -1056,17 +1165,24 @@ function handleAudioGenreModelEvent(payload) {
   audioGenreModelState = {
     type: 'prediction',
     genreId: decision.genreId,
+    currentGenreId: decision.currentGenreId,
     stage: decision.stage,
     confidence: decision.confidence,
     margin: decision.margin,
     acceptedWindows: decision.acceptedWindows,
     analysisWindowLimit: decision.analysisWindowLimit,
+    correctionCount: decision.correctionCount,
+    finalCorrectionCount: decision.finalCorrectionCount,
+    memoryPriorGenreId: decision.memoryPriorGenreId,
+    memoryPriorWeight: decision.memoryPriorWeight,
     inferenceMs: payload.inferenceMs
   };
   const rememberedGenreId = currentAudioGenreMemory?.genreId;
   if (rememberedGenreId && decision.genreId && decision.genreId !== rememberedGenreId
     && ['first', 'refinement', 'correction', 'dynamic'].includes(decision.stage)) {
+    currentAudioGenreMemoryCollectionRequired = true;
     audioGenreMemoryVerificationLimit = 0;
+    audioGenreModel?.setContext(audioGenreContext());
   } else if (rememberedGenreId
     && decision.genreId === rememberedGenreId
     && decision.stage === 'confirmed'
@@ -1076,36 +1192,52 @@ function handleAudioGenreModelEvent(payload) {
       Number(decision.acceptedWindows || 0) + 6
     );
   }
-  if (['provisional', 'first', 'refinement', 'correction', 'dynamic'].includes(decision.stage)) {
+  const keepStaticMemoryDecision = config.dynamicGenreDetectionEnabled !== true
+    && currentAudioGenreDecision?.stage === 'memory';
+  if (!keepStaticMemoryDecision
+    && ['provisional', 'first', 'refinement', 'correction', 'dynamic'].includes(decision.stage)) {
     currentAudioGenreDecision = { ...decision };
-    publishCurrentGenre();
   } else if (decision.stage === 'confirmed' && currentAudioGenreDecision?.genreId === decision.genreId) {
     currentAudioGenreDecision = { ...currentAudioGenreDecision, ...decision };
-    publishCurrentGenre();
   }
   persistCurrentAudioGenreMemory();
+  publishCurrentGenre();
 }
 
 function startAudioGenreModel() {
   if (config.localGenreModelEnabled === false) {
     audioGenreModelState = { type: 'disabled', reason: 'disabled in settings' };
+    publishAudioGenreModelStatus();
     return null;
   }
   if (audioGenreModel || audioGenreModelStartTask || app.isQuitting) return audioGenreModelStartTask;
   const paths = audioGenreModelPaths();
-  if (!localGenreModelAvailable()) {
-    audioGenreModelState = { type: 'unavailable', reason: 'bundled Discogs-EffNet model is missing' };
+  if (!localGenreModelFilesAvailable()) {
+    audioGenreModelState = {
+      type: 'unavailable',
+      code: 'MODEL_FILES_MISSING',
+      reason: 'bundled Discogs-EffNet model is missing'
+    };
+    publishAudioGenreModelStatus();
     return null;
   }
   const model = new LocalAudioGenreModel({ ...paths, onEvent: handleAudioGenreModelEvent });
   audioGenreModel = model;
   if (lastTrackKey) model.reset(lastTrackKey, audioGenreContext());
   audioGenreModelState = { type: 'starting' };
+  publishAudioGenreModelStatus();
   audioGenreModelStartTask = model.initialize()
     .catch(async (error) => {
       if (audioGenreModel === model) audioGenreModel = null;
-      audioGenreModelState = { type: 'unavailable', reason: error.message };
+      audioGenreModelState = {
+        type: 'unavailable',
+        code: error?.code || 'MODEL_INITIALIZATION_FAILED',
+        category: error?.category || 'model-initialization',
+        causeCode: error?.causeCode || error?.cause?.code || '',
+        reason: error?.message || String(error)
+      };
       await model.close();
+      publishAudioGenreModelStatus();
       publishCurrentGenre({ force: true });
     })
     .finally(() => {
@@ -1127,6 +1259,7 @@ async function setAudioGenreModelEnabled(enabled) {
   resetCurrentAudioGenreEvidence({ reloadMemory: false });
   if (model) await model.close();
   audioGenreModelState = { type: 'disabled', reason: 'disabled in settings' };
+  publishAudioGenreModelStatus();
   publishCurrentGenre({ force: true });
 }
 
@@ -1138,7 +1271,6 @@ function resetAudioGenreForCurrentTrack() {
 function restartAllAudioCapture() {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('restart-audio');
   restartRhythmModelForOutputDevice();
-  resetAudioGenreForCurrentTrack();
 }
 
 function clearIdleHideTimer() {
@@ -1853,6 +1985,7 @@ function createWindow() {
     mainWindow.webContents.send('layout-mode', { mode: normalizeLayoutMode(config.layoutMode) });
     mainWindow.webContents.send('stage-output-state', stageOutputState());
     mainWindow.webContents.send('rhythm-model', rhythmModelState);
+    mainWindow.webContents.send('local-genre-model-status', audioGenreModelStatus());
     syncMainWindowBackgroundActivity();
     scheduleAutomaticUpdateCheck();
     if (process.env.GP_DEMO_THEME) {
@@ -2074,9 +2207,9 @@ function createWindow() {
       setTimeout(() => {
         mainWindow?.webContents.send('update-status', {
           ...updateStatus('available'),
-          latestVersion: 'v0.3.0',
-          releaseName: 'v0.3.0',
-          releaseUrl: `${UPDATE_RELEASES_URL}/tag/v0.3.0`
+          latestVersion: 'v0.3.1',
+          releaseName: 'v0.3.1',
+          releaseUrl: `${UPDATE_RELEASES_URL}/tag/v0.3.1`
         });
       }, 820);
     }
@@ -2479,7 +2612,12 @@ async function handleMetadata(raw) {
     previousRawMetadata?.title
     && (!raw.title || rawKey !== previousKey)
   );
-  if (leavingPreviousTrack) persistCurrentAudioGenreMemory({ force: true });
+  // A looping player keeps the same track key and reports the position jumping
+  // from the end back to zero. Preserve the completed pass before resetting its
+  // cumulative evidence for the next play.
+  if (leavingPreviousTrack || seekedWithinTrack) {
+    persistCurrentAudioGenreMemory({ force: true });
+  }
   lastRawMetadata = raw;
   if (changedTrack) {
     temporaryGenreOverride = null;
@@ -2588,6 +2726,7 @@ function diagnosticSnapshot(rendererState = {}) {
     system: {
       platform: process.platform,
       release: os.release(),
+      version: os.version(),
       arch: process.arch
     },
     settings: {
@@ -2601,6 +2740,7 @@ function diagnosticSnapshot(rendererState = {}) {
       showFps: config.showFps === true,
       rhythmModelEnabled: config.rhythmModelEnabled !== false,
       localGenreModelEnabled: config.localGenreModelEnabled !== false,
+      audioGenreMemoryEnabled: config.audioGenreMemoryEnabled !== false,
       dynamicGenreDetectionEnabled: config.dynamicGenreDetectionEnabled === true,
       preferredMediaSource: normalizeMediaSource(config.preferredMediaSource),
       ignoredMediaSourceCount: normalizeIgnoredMediaSources(config.ignoredMediaSources).length,
@@ -2624,19 +2764,31 @@ function diagnosticSnapshot(rendererState = {}) {
       hasCurrentTrack: Boolean(lastRawMetadata?.title),
       rhythmModel: {
         type: diagnosticText(rhythmModelState?.type),
+        code: diagnosticText(rhythmModelState?.code),
+        category: diagnosticText(rhythmModelState?.category),
+        causeCode: diagnosticText(rhythmModelState?.causeCode),
         model: diagnosticText(rhythmModelState?.model),
         reason: diagnosticText(rhythmModelState?.reason)
       },
       audioGenreModel: {
         type: diagnosticText(audioGenreModelState?.type),
+        code: diagnosticText(audioGenreModelState?.code),
+        category: diagnosticText(audioGenreModelState?.category),
+        causeCode: diagnosticText(audioGenreModelState?.causeCode),
         genreId: diagnosticText(audioGenreModelState?.genreId),
+        currentGenreId: diagnosticText(audioGenreModelState?.currentGenreId),
         stage: diagnosticText(audioGenreModelState?.stage),
         confidence: diagnosticText(audioGenreModelState?.confidence),
         margin: diagnosticText(audioGenreModelState?.margin),
         acceptedWindows: diagnosticText(audioGenreModelState?.acceptedWindows),
         analysisWindowLimit: diagnosticText(audioGenreModelState?.analysisWindowLimit),
+        correctionCount: diagnosticText(audioGenreModelState?.correctionCount),
+        finalCorrectionCount: diagnosticText(audioGenreModelState?.finalCorrectionCount),
+        memoryPriorGenreId: diagnosticText(audioGenreModelState?.memoryPriorGenreId),
+        memoryPriorWeight: diagnosticText(audioGenreModelState?.memoryPriorWeight),
         inferenceMs: diagnosticText(audioGenreModelState?.inferenceMs),
         analyzing: shouldAnalyzeCurrentGenreAudio(),
+        collectingMemory: shouldCollectCurrentAudioGenreMemory(),
         metadataKind: metadataGenreKind(lastBaseResolvedMetadata),
         reason: diagnosticText(audioGenreModelState?.reason)
       },
@@ -2905,6 +3057,13 @@ ipcMain.handle('update:open-release', (event, url) => {
   }
   return openUpdatePage(url);
 });
+ipcMain.handle('support:open-vc-runtime', async (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return { ok: false };
+  }
+  await shell.openExternal(VC_RUNTIME_DOWNLOAD_URL);
+  return { ok: true };
+});
 ipcMain.handle('artwork:face-palette', async (_event, payload) => {
   try {
     const sample = await sampleArtwork(payload?.url);
@@ -2940,6 +3099,8 @@ ipcMain.handle('config:get', () => ({
   showFps: config.showFps === true,
   rhythmModelEnabled: config.rhythmModelEnabled !== false,
   localGenreModelEnabled: config.localGenreModelEnabled !== false,
+  audioGenreMemoryEnabled: config.audioGenreMemoryEnabled !== false,
+  audioGenreMemoryCount: Object.keys(audioGenreMemories.entries || {}).length,
   dynamicGenreDetectionEnabled: config.dynamicGenreDetectionEnabled === true,
   localGenreModelAvailable: localGenreModelAvailable(),
   recordingQuickButtonVisible: config.recordingQuickButtonVisible === true,
@@ -3010,6 +3171,9 @@ ipcMain.handle('config:set', async (_event, patch) => {
   if (typeof patch?.showFps === 'boolean') safe.showFps = patch.showFps;
   if (typeof patch?.rhythmModelEnabled === 'boolean') safe.rhythmModelEnabled = patch.rhythmModelEnabled;
   if (typeof patch?.localGenreModelEnabled === 'boolean') safe.localGenreModelEnabled = patch.localGenreModelEnabled;
+  if (typeof patch?.audioGenreMemoryEnabled === 'boolean') {
+    safe.audioGenreMemoryEnabled = patch.audioGenreMemoryEnabled;
+  }
   if (typeof patch?.dynamicGenreDetectionEnabled === 'boolean') {
     safe.dynamicGenreDetectionEnabled = patch.dynamicGenreDetectionEnabled;
   }
@@ -3055,6 +3219,8 @@ ipcMain.handle('config:set', async (_event, patch) => {
     || Object.hasOwn(safe, 'ignoredMediaSources');
   const dynamicGenreSettingChanged = Object.hasOwn(safe, 'dynamicGenreDetectionEnabled')
     && safe.dynamicGenreDetectionEnabled !== (config.dynamicGenreDetectionEnabled === true);
+  const audioGenreMemorySettingChanged = Object.hasOwn(safe, 'audioGenreMemoryEnabled')
+    && safe.audioGenreMemoryEnabled !== (config.audioGenreMemoryEnabled !== false);
   saveConfig(safe);
   if (Object.hasOwn(safe, 'desktopLayer')) await setDesktopLayer(safe.desktopLayer, { persist: false });
   if (Object.hasOwn(safe, 'alwaysOnTop')) await setAlwaysOnTop(safe.alwaysOnTop, { persist: false });
@@ -3065,6 +3231,10 @@ ipcMain.handle('config:set', async (_event, patch) => {
   if (Object.hasOwn(safe, 'rhythmModelEnabled')) await setRhythmModelEnabled(safe.rhythmModelEnabled);
   if (Object.hasOwn(safe, 'localGenreModelEnabled')) {
     await setAudioGenreModelEnabled(safe.localGenreModelEnabled);
+  }
+  if (audioGenreMemorySettingChanged) {
+    resetAudioGenreForCurrentTrack();
+    publishCurrentGenre({ force: true });
   }
   if (dynamicGenreSettingChanged && audioGenreModel) {
     audioGenreModel.setContext(audioGenreContext());
@@ -3123,9 +3293,12 @@ ipcMain.handle('config:set', async (_event, patch) => {
     clickThrough,
     rhythmModelEnabled: config.rhythmModelEnabled !== false,
     localGenreModelEnabled: config.localGenreModelEnabled !== false,
+    audioGenreMemoryEnabled: config.audioGenreMemoryEnabled !== false,
+    audioGenreMemoryCount: Object.keys(audioGenreMemories.entries || {}).length,
     dynamicGenreDetectionEnabled: config.dynamicGenreDetectionEnabled === true,
     artistGenreReferenceEnabled: config.artistGenreReferenceEnabled !== false,
     localGenreModelAvailable: localGenreModelAvailable(),
+    audioGenreModelState,
     recordingQuickButtonVisible: config.recordingQuickButtonVisible === true,
     snapshotQuickButtonVisible: config.snapshotQuickButtonVisible === true,
     stageOutputTextVisible: config.stageOutputTextVisible !== false,
@@ -3136,13 +3309,13 @@ ipcMain.handle('config:set', async (_event, patch) => {
 });
 ipcMain.handle('genre-correction:set', (_event, genreId) => rememberCurrentGenre(genreId));
 ipcMain.handle('genre-correction:clear', () => forgetCurrentGenre());
+ipcMain.handle('audio-genre-memory:clear', () => clearAudioGenreMemories());
 ipcMain.handle('genre-candidates:get', () => currentGenreCandidates());
 ipcMain.handle('genre-temporary:set', (_event, genreId) => setTemporaryGenre(genreId));
 ipcMain.handle('genre-temporary:clear', () => clearTemporaryGenre());
 ipcMain.handle('demo:set', (_event, id) => setDemoTheme(id));
 ipcMain.on('audio:output-device-changed', () => {
   restartRhythmModelForOutputDevice();
-  resetAudioGenreForCurrentTrack();
 });
 ipcMain.on('rhythm-model:audio', (event, payload) => {
   if (!mainWindow || event.sender !== mainWindow.webContents || !rhythmModel) return;
@@ -3157,7 +3330,7 @@ ipcMain.on('audio-genre-model:audio', (event, payload) => {
   if (!mainWindow
     || event.sender !== mainWindow.webContents
     || !audioGenreModel
-    || !shouldAnalyzeCurrentGenreAudio()) return;
+    || (!shouldAnalyzeCurrentGenreAudio() && !shouldCollectCurrentAudioGenreMemory())) return;
   const samples = payload instanceof Float32Array
     ? payload
     : ArrayBuffer.isView(payload)

@@ -4,6 +4,18 @@ All notable changes to Genre Police Visualizer are documented here.
 
 ## Unreleased
 
+## 0.3.1 - 2026-09-04
+
+- Added a default-on setting that stores stable full-play local-AI results for immediate reuse on later plays of the same track, plus an action to clear only AI recognition history.
+- Added recoverable Local AI failure guidance for unavailable Visual C++ runtimes, missing components, blocked files, and damaged or incompatible binaries while keeping the rest of the app usable.
+- Made initial recognition wait through more of the intro, with an additional sustained-evidence guard for Ambient and a retained fast path for trusted artist evidence.
+- Split fixed-track and dynamic strategies: fixed-track mode uses cumulative evidence and keeps a saved full-play result active until another complete play updates it, while partial playback cannot replace it.
+- Made dynamic detection map related child styles to a major family without granting wider families a branch-count score bonus before refinement, added cooldown and a short parent-to-child hold, and removed the fixed limit on changes within one track.
+- Retuned confidence, score-gap, and persistence gates so stable low-score or closely related results do not require an arbitrary large ratio, while still rejecting short-lived challengers.
+- Distinguished adopted, challenger, and still-analyzing local-AI states in the HUD and diagnostics, and preserved accumulated genre evidence across system audio-output changes.
+- Corrected Future Bounce placement and expanded reviewed mappings for Experimental Hip-Hop, Disco, broad-family refinement, and multi-artist credits.
+- Preserved settings, corrections, supplemental artists, custom genres, import/export data, and compatible existing local-AI records from 0.3.0.
+
 ## 0.3.0 - 2026-09-02
 
 - Added a fullscreen mode with stacked and side-by-side compositions, layout-aware entry from capsule or poster mode, in-place settings, text controls, transport controls, snapshots, recording, and exit controls.

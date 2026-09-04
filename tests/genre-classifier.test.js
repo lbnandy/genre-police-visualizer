@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyGenre, canonicalArtist, displayArtistName, ARTIST_HINTS, RULES } = require('../src/genre-classifier');
+const { classifyGenre, canonicalArtist, displayArtistName, ARTIST_HINTS, ARTIST_ALIASES, RULES } = require('../src/genre-classifier');
 const { themeFor, themeWithId } = require('../src/themes');
 const { GROUPS, hasJapaneseScript } = require('../src/genre-localization');
 const {
@@ -73,6 +73,16 @@ test('specific Dubstep artist mappings refine only broad branch tags', () => {
   assert.equal(classifyGenre({ artist: 'Subtronics', tags: ['Deathstep'] }).id, 'deathstep');
 });
 
+test('specific Bass Music artist mappings refine only reviewed parent tags', () => {
+  assert.equal(classifyGenre({ artist: 'REZZ', tags: ['Bass Music'] }).id, 'midtempo-bass');
+  assert.equal(classifyGenre({ artist: 'RL Grime', tags: ['Bass Music'] }).id, 'trap-edm');
+  assert.equal(classifyGenre({ artist: 'KOAN Sound', tags: ['Bass Music'] }).id, 'glitch-hop');
+  assert.equal(classifyGenre({ artist: "Snail's House", tags: ['Future Bass'] }).id, 'kawaii-bass');
+  assert.equal(classifyGenre({ artist: 'Juelz', tags: ['EDM Trap'] }).id, 'hybrid-trap');
+  assert.equal(classifyGenre({ artist: 'Alvin Risk', tags: ['Moombahton'] }).id, 'moombahcore');
+  assert.equal(classifyGenre({ artist: 'REZZ', tags: ['Dubstep'] }).id, 'dubstep');
+});
+
 test('specific House artist mappings refine only the broad House tag', () => {
   assert.equal(classifyGenre({ artist: 'Daft Punk', tags: ['House'] }).id, 'french-house');
   assert.equal(classifyGenre({ artist: 'Black Coffee', tags: ['House'] }).id, 'afro-house');
@@ -103,6 +113,22 @@ test('specific Techno and Trance artist mappings refine only their broad family 
   assert.equal(classifyGenre({ artist: 'Bryan Kearney', tags: ['Trance'] }).id, 'tech-trance');
   assert.equal(classifyGenre({ artist: 'Scot Project', tags: ['Trance'] }).id, 'hard-trance');
   assert.equal(classifyGenre({ artist: 'Astrix', tags: ['Hard Trance'] }).id, 'hard-trance');
+});
+
+test('specific Metal artist mappings refine only the broad Metal tag', () => {
+  assert.equal(classifyGenre({ artist: 'Spiritbox', tags: ['Metal'] }).id, 'metalcore');
+  assert.equal(classifyGenre({ artist: 'Lorna Shore', tags: ['Metal'] }).id, 'deathcore');
+  assert.equal(classifyGenre({ artist: 'Nine Inch Nails', tags: ['Metal'] }).id, 'industrial-metal');
+  assert.equal(classifyGenre({ artist: 'Polyphia', tags: ['Metal'] }).id, 'progressive-metal');
+  assert.equal(classifyGenre({ artist: 'Slipknot', tags: ['Metal'] }).id, 'nu-metal');
+  assert.equal(classifyGenre({ artist: 'Linkin Park', tags: ['Metal'] }).id, 'metal');
+  assert.equal(classifyGenre({ artist: 'Spiritbox', tags: ['Death Metal'] }).id, 'death-metal');
+});
+
+test('keeps Future Bounce distinct from Melbourne Bounce when choosing its nearest visual branch', () => {
+  assert.equal(classifyGenre({ tags: ['Future Bounce'] }).id, 'future-house');
+  assert.equal(classifyGenre({ tags: ['フューチャーバウンス'] }).id, 'future-house');
+  assert.equal(classifyGenre({ tags: ['Melbourne Bounce'] }).id, 'melbourne-bounce');
 });
 
 test('Jazz and Classical metadata resolves to the reviewed concrete branches', () => {
@@ -188,6 +214,34 @@ test('R&B artist hints refine only a broad R&B tag', () => {
   }
   assert.equal(classifyGenre({ artist: 'Frank Ocean', tags: ['Neo Soul'] }).id, 'neo-soul');
   assert.equal(classifyGenre({ artist: 'Parliament', tags: ['Disco'] }).id, 'disco-funk');
+  assert.equal(classifyGenre({ artist: 'Donna Summer', tags: ['R&B'] }).id, 'disco-funk');
+});
+
+test('maps reviewed experimental Hip-Hop and Disco artists', () => {
+  for (const artist of ['Death Grips', 'JPEGMAFIA', 'clipping.']) {
+    assert.equal(classifyGenre({ artist, tags: ['Electronic'] }).id, 'experimental-hip-hop', artist);
+  }
+  for (const artist of ['Donna Summer', 'Gloria Gaynor', 'Sister Sledge', 'KC and the Sunshine Band']) {
+    assert.equal(classifyGenre({ artist, tags: ['Electronic'] }).id, 'disco-funk', artist);
+  }
+});
+
+test('does not borrow a mapped one-word artist from an unrelated longer name', () => {
+  assert.equal(classifyGenre({ artist: 'Death From Above 1979', tags: ['Electronic'] }).id, 'electronic');
+  assert.equal(classifyGenre({ artist: 'Queen Latifah', tags: ['Electronic'] }).id, 'hip-hop');
+});
+
+test('recognizes mapped artists in collaboration credits without splitting legal artist names', () => {
+  assert.equal(classifyGenre({ artist: 'Nujabes、Shing02', tags: ['Electronic'] }).id, 'instrumental-hip-hop');
+  assert.equal(classifyGenre({ artist: 'AC/DC & Slash', tags: ['Electronic'] }).id, 'rock');
+  assert.equal(classifyGenre({ artist: 'Tyler, the Creator & Kali Uchis', tags: ['Electronic'] }).id, 'hip-hop');
+});
+
+test('every localized artist alias points to an active artist mapping', () => {
+  for (const [alias, artist] of ARTIST_ALIASES) {
+    assert.equal(ARTIST_HINTS.has(artist), true, `${alias} -> ${artist}`);
+  }
+  assert.equal(classifyGenre({ artist: 'ウィリアム・オービット', tags: ['Electronic'] }).id, 'house');
 });
 
 test('rejects unrelated Deezer album genres when a curated artist family is known', () => {

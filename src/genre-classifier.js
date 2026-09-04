@@ -49,7 +49,7 @@ const RULES = [
   ['big-room-house', /\b(big room(?: house)?|festival house|festival progressive house)\b/i],
   ['dutch-house', /\b(dutch house|dirty dutch)\b/i],
   ['fidget-house', /\b(fidget house)\b/i],
-  ['melbourne-bounce', /\b(melbourne bounce|future bounce)\b/i],
+  ['melbourne-bounce', /\b(melbourne bounce)\b/i],
   ['electro-house', /\b(electro house)\b/i],
   ['acid-house', /\b(acid house)\b/i],
   ['tropical-house', /\b(tropical house|trop house)\b/i],
@@ -57,7 +57,7 @@ const RULES = [
   ['disco-house', /\b(disco house|funky house)\b/i],
   ['hard-house', /\b(?:uk )?hard house\b/i],
   ['bass-house', /\b(bass house|g house)\b/i],
-  ['future-house', /\b(future house|slap house)\b/i],
+  ['future-house', /\b(future house|future bounce|slap house)\b/i],
   ['tech-house', /\b(tech house|minimal deep tech)\b/i],
   ['deep-house', /\b(deep house|lo[\s-]?fi house)\b/i],
   ['progressive-house', /\b(progressive house|mainstage progressive)\b/i],
@@ -307,14 +307,14 @@ const ARTIST_HINTS = new Map(Object.entries({
   'kanine': 'jump-up-dnb', 'mozey': 'jump-up-dnb',
   'sub focus': 'dancefloor-dnb', 'dimension': 'dancefloor-dnb', 'culture shock': 'dancefloor-dnb',
   'camo & krooked': 'drum-bass', 'metrik': 'dancefloor-dnb',
-  'wilkinson': 'dancefloor-dnb', 'shy fx': 'drum-bass', 'congo natty': 'jungle', 'nia archives': 'jungle',
+  'wilkinson': 'dancefloor-dnb', 'congo natty': 'jungle', 'nia archives': 'jungle',
   'fox stevenson': 'drum-bass',
   'charlotte de witte': 'techno', 'amelie lens': 'techno', 'i hate models': 'techno', 'umek': 'techno',
   'adam beyer': 'techno', 'carl cox': 'techno', 'nina kraviz': 'techno',
   'jeff mills': 'techno', 'derrick may': 'techno', 'kevin saunderson': 'techno',
   'ben klock': 'techno', 'dax j': 'techno', 'enrico sangiuliano': 'techno',
   'boris brejcha': 'minimal-techno',
-  'sara landry': 'hard-techno', 'nico moreno': 'hard-techno', '999999999': 'hard-techno',
+  'sara landry': 'hard-techno', 'nico moreno': 'hard-techno',
   'klangkuenstler': 'hard-techno', 'regal': 'techno',
   'tale of us': 'melodic-techno', 'anyma': 'melodic-techno', 'artbat': 'melodic-techno',
   'paula temple': 'industrial-techno', 'perc': 'industrial-techno',
@@ -328,7 +328,6 @@ const ARTIST_HINTS = new Map(Object.entries({
   'paul oakenfold': 'trance', 'factor b': 'uplifting-trance', 'will atkinson': 'trance',
   'infected mushroom': 'psytrance', 'astrix': 'psytrance',
   'aly & fila': 'uplifting-trance', 'giuseppe ottaviani': 'uplifting-trance',
-  'bryan kearney': 'trance', 'john ocallaghan': 'trance',
   'gabriel & dresden': 'progressive-trance', 'markus schulz': 'progressive-trance',
   'andrew bayer': 'progressive-trance', 'grum': 'progressive-trance',
   'scot project': 'hard-trance', 'yoji biomehanika': 'hard-trance',
@@ -377,7 +376,8 @@ const ARTIST_HINTS = new Map(Object.entries({
   'the smashing pumpkins': 'alternative',
   'kendrick lamar': 'hip-hop', 'travis scott': 'hip-hop', 'tyler, the creator': 'hip-hop', 'cupcakke': 'hip-hop',
   'eminem': 'hip-hop', 'drake': 'hip-hop', 'kanye west': 'hip-hop', 'j. cole': 'hip-hop',
-  'nas': 'hip-hop', 'jay-z': 'hip-hop',
+  'nas': 'hip-hop', 'jay-z': 'hip-hop', 'queen latifah': 'hip-hop',
+  'death grips': 'experimental-hip-hop', 'jpegmafia': 'experimental-hip-hop', 'clipping.': 'experimental-hip-hop',
   'mc赵小六': 'experimental-hip-hop', 'mc 赵小六': 'experimental-hip-hop',
   'spaceghostpurrp': 'phonk', 'dj smokey': 'phonk', 'soudiere': 'phonk', 'freddie dredd': 'phonk',
   'kordhell': 'drift-phonk', 'dvrst': 'drift-phonk', 'interworld': 'drift-phonk',
@@ -413,7 +413,7 @@ const ARTIST_HINTS = new Map(Object.entries({
   'nct 127': 'k-pop', 'nct dream': 'k-pop', 'enhypen': 'k-pop', '엔하이픈': 'k-pop',
   'tomorrow x together': 'k-pop', '투모로우바이투게더': 'k-pop', 'shinee': 'k-pop', '샤이니': 'k-pop',
   'babymetal': 'metal', 'x japan': 'metal', 'creepy nuts': 'hip-hop', 'chanmina': 'hip-hop',
-  'nujabes': 'hip-hop', 'mariya takeuchi': 'city-pop', '竹内まりや': 'city-pop',
+  'mariya takeuchi': 'city-pop', '竹内まりや': 'city-pop',
   'tatsuro yamashita': 'city-pop', '山下達郎': 'city-pop',
   'hatsune miku': 'vocaloid', '初音ミク': 'vocaloid', 'deco*27': 'vocaloid',
   'pinocchiop': 'vocaloid', 'ピノキオピー': 'vocaloid', 'wowaka': 'vocaloid', 'neru': 'vocaloid',
@@ -495,7 +495,10 @@ const ARTIST_HINTS = new Map(Object.entries({
   'toots and the maytals': 'reggae', 'gregory isaacs': 'reggae',
   'neophyte': 'gabber', 'rotterdam terror corps': 'gabber', 'the stunned guys': 'gabber',
 
-  'chic': 'disco-funk',
+  'chic': 'disco-funk', 'donna summer': 'disco-funk', 'gloria gaynor': 'disco-funk',
+  'sister sledge': 'disco-funk', 'kc and the sunshine band': 'disco-funk',
+  'kc & the sunshine band': 'disco-funk', 'k.c. & the sunshine band': 'disco-funk',
+  'william orbit': 'house',
   'earth, wind & fire': 'funk', 'kool & the gang': 'funk', 'parliament': 'funk',
   'james brown': 'funk', 'george clinton': 'funk', 'jamiroquai': 'funk',
   'erykah badu': 'neo-soul', "d'angelo": 'neo-soul', 'jill scott': 'neo-soul', 'maxwell': 'neo-soul',
@@ -783,16 +786,14 @@ function displayArtistName(value) {
 function artistHint(cleanArtist) {
   const canonical = canonicalArtist(cleanArtist);
   if (ARTIST_HINTS.has(canonical)) return { key: canonical, id: ARTIST_HINTS.get(canonical) };
-  const parts = cleanArtist.split(/\s+(?:feat\.?|ft\.?|vs\.?)\s+|\s*[,&/]\s+|\s+x\s+/i)
+  const parts = cleanArtist.split(/\s+(?:feat\.?|ft\.?|vs\.?)\s+|\s+&\s+|\s*、\s*|\s+\/\s+|\s+[x×]\s+/i)
     .map(canonicalArtist)
     .filter(Boolean);
   for (const part of parts) {
     if (ARTIST_HINTS.has(part)) return { key: part, id: ARTIST_HINTS.get(part) };
   }
-  for (const [key, id] of ARTIST_HINTS) {
-    if (key.length >= 5 && new RegExp(`(?:^|[^a-z0-9])${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^a-z0-9])`, 'i').test(canonical)) {
-      return { key, id };
-    }
+  for (const part of parts.flatMap(value => value.split(/\s*,\s*/)).map(canonicalArtist).filter(Boolean)) {
+    if (ARTIST_HINTS.has(part)) return { key: part, id: ARTIST_HINTS.get(part) };
   }
   return null;
 }
@@ -877,10 +878,34 @@ function classifyGenre({ tags = [], artist = '', title = '', useArtistMapping = 
     && tagResult
     && hintMatch.id !== tagResult.id
     && (
-      (tagResult.id === 'bass-music' && hintTheme.mode === 'dubstep' && hintMatch.id !== 'bass-music')
-      || (tagResult.id === 'dubstep' && hintTheme.family === 'dubstep' && hintMatch.id !== 'dubstep')
+      (tagResult.id === 'dubstep' && hintTheme.family === 'dubstep' && hintMatch.id !== 'dubstep')
       || (tagResult.id === 'riddim' && hintMatch.id === 'future-riddim')
     )
+  );
+  const artistRefinesBroadBassMusic = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'bass-music'
+    && hintMatch.id !== 'bass-music'
+    && (hintTheme.parent === 'BASS MUSIC' || hintTheme.mode === 'dubstep')
+  );
+  const artistRefinesBroadFutureBass = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'future-bass'
+    && hintMatch.id === 'kawaii-bass'
+  );
+  const artistRefinesBroadTrap = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'trap-edm'
+    && hintTheme.parent === 'EDM TRAP'
+  );
+  const artistRefinesBroadMoombahton = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'moombahton'
+    && hintMatch.id === 'moombahcore'
   );
   const artistRefinesBroadHouse = Boolean(
     hintMatch
@@ -944,8 +969,15 @@ function classifyGenre({ tags = [], artist = '', title = '', useArtistMapping = 
     && tagResult.id === 'rnb'
     && [
       'contemporary-rnb', 'alternative-rnb', 'neo-soul', 'new-jack-swing',
-      'soul', 'gospel', 'funk'
+      'soul', 'gospel', 'funk', 'disco-funk'
     ].includes(hintMatch.id)
+  );
+  const artistRefinesBroadMetal = Boolean(
+    hintMatch
+    && tagResult
+    && tagResult.id === 'metal'
+    && hintTheme.family === 'metal'
+    && hintMatch.id !== 'metal'
   );
 
   // A concrete queried/embedded tag wins. Artist mappings only refine empty
@@ -958,6 +990,10 @@ function classifyGenre({ tags = [], artist = '', title = '', useArtistMapping = 
     && !artistRefinesBroadPhonk
     && !artistRefinesBroadHipHop
     && !artistRefinesBroadDubstep
+    && !artistRefinesBroadBassMusic
+    && !artistRefinesBroadFutureBass
+    && !artistRefinesBroadTrap
+    && !artistRefinesBroadMoombahton
     && !artistRefinesBroadHouse
     && !artistRefinesBroadDnb
     && !artistRefinesBroadGarage
@@ -966,7 +1002,8 @@ function classifyGenre({ tags = [], artist = '', title = '', useArtistMapping = 
     && !artistRefinesBroadJpop
     && !artistRefinesBroadJazz
     && !artistRefinesBroadClassical
-    && !artistRefinesBroadRnb) {
+    && !artistRefinesBroadRnb
+    && !artistRefinesBroadMetal) {
     selected = tagResult;
     confidence = 0.9;
   } else if (hintMatch && titleResult && titleResult.id !== hintMatch.id) {

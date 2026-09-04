@@ -8,7 +8,7 @@
 
 Genre Police Visualizer reads the current Windows media session and analyzes system playback audio. It then attempts to identify the genre and adapts the visualization structure, background, typography, and motion. The goal is not simply to recolor one visualizer, but to give different kinds of music their own visual language.
 
-The current release is the `0.3.0` beta, with 140 selectable genre visuals across more than 20 major genre families. Electronic music remains the main design focus, while the Pop, Rock, Hip-Hop, R&B, Jazz, and Classical branches continue to expand and receive more detailed tuning.
+The current release is the `0.3.1` beta, with 140 selectable genre visuals across more than 20 major genre families. Electronic music remains the main design focus, while the Pop, Rock, Hip-Hop, R&B, Jazz, and Classical branches continue to expand and receive more detailed tuning.
 
 **Demo videos:** [YouTube](https://www.youtube.com/watch?v=sDvQqHSm7dU) · [Bilibili](https://www.bilibili.com/video/BV1bi426EEAg)
 
@@ -19,11 +19,11 @@ The current release is the `0.3.0` beta, with 140 selectable genre visuals acros
 **[Open Releases to download the Windows portable build](../../releases)**
 
 - Requires 64-bit Windows 10 or Windows 11 (x64).
-- Download and run `Genre-Police-Visualizer-0.3.0-portable.exe`; no installation is required.
+- Download and run `Genre-Police-Visualizer-0.3.1-portable.exe`; no installation is required.
 - Node.js, Python, PyTorch, and a separate AI runtime are not required.
 - Download `SHA256SUMS.txt` as well if you want to verify the executable.
 
-Version `0.3.0` is not Authenticode-signed. Windows SmartScreen may therefore show an “Unknown publisher” warning. Only download the executable from this project's GitHub Releases page.
+Version `0.3.1` is not Authenticode-signed. Windows SmartScreen may therefore show an “Unknown publisher” warning. Only download the executable from this project's GitHub Releases page.
 
 ## Preview
 
@@ -54,7 +54,7 @@ Version `0.3.0` is not Authenticode-signed. Windows SmartScreen may therefore sh
 ## Features
 
 - **Genre-aware visuals:** changes the visualization structure, background, type, particles, and motion instead of applying color swaps alone.
-- **Local AI genre assistance:** the bundled Discogs-EffNet model can refine unknown, overly broad, or artist-only results. An optional mode detects clear, sustained genre changes during playback. Artist genre references can be disabled independently, and audio is never uploaded.
+- **Local AI genre assistance:** the bundled Discogs-EffNet model can refine unknown, overly broad, or artist-only results. Stable full-play results can guide later recognition of the same track and can be disabled or cleared in settings. An optional mode detects clear, sustained genre changes during playback. Artist genre references can be disabled independently, and audio is never uploaded.
 - **Three presentation modes:** capsule, poster, and fullscreen modes are available. Fullscreen can switch between stacked and side-by-side structures and keeps text, playback, snapshot, recording, and settings controls close at hand.
 - **Live audio response:** spectrum, rhythm, BPM, energy, and impact feedback are driven by system playback audio, with a bundled local BeatNet ONNX model assisting beat analysis.
 - **Video recording:** saves the current visualization and system playback audio as an MP4 in real time, with an automatic WebM fallback when MP4 encoding is unavailable.

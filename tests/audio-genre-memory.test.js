@@ -5,11 +5,15 @@ const assert = require('node:assert/strict');
 const {
   AUDIO_GENRE_MODEL_REVISION,
   audioGenreMemoryKey,
+  audioGenreMemoryStorageKey,
   createAudioGenreMemories,
   createAudioGenreMemoryCandidate,
   durationsCompatible,
   getAudioGenreMemory,
+  hasFullTrackAnalysisCoverage,
+  isNearTrackBeginning,
   isNearTrackEnd,
+  shouldCollectAudioGenreMemory,
   setAudioGenreMemory
 } = require('../src/audio-genre-memory');
 
@@ -25,6 +29,7 @@ function strongCandidate(overrides = {}) {
   return createAudioGenreMemoryCandidate({
     metadata,
     metadataKind: 'broad',
+    startedNearBeginning: true,
     acceptedWindows: 75,
     winnerHistory: Array(12).fill('hardcore'),
     trackResult: {
@@ -61,7 +66,66 @@ test('near-completion requires a real duration and late playback position', () =
   assert.equal(isNearTrackEnd({ ...metadata, durationMs: 600000, positionMs: 582000 }), true);
 });
 
-test('only stable, concrete, high-confidence cumulative results can be remembered', () => {
+test('analysis coverage can confirm a full play when the final SMTC position update is missed', () => {
+  assert.equal(hasFullTrackAnalysisCoverage({
+    acceptedWindows: 350,
+    durationMs: 370000,
+    startedNearBeginning: true
+  }), true);
+  assert.equal(hasFullTrackAnalysisCoverage({
+    acceptedWindows: 300,
+    durationMs: 370000,
+    startedNearBeginning: true
+  }), false);
+  assert.equal(hasFullTrackAnalysisCoverage({
+    acceptedWindows: 350,
+    durationMs: 370000,
+    startedNearBeginning: false
+  }), false);
+});
+
+test('full-play memory distinguishes a start near the beginning from a mid-track start', () => {
+  assert.equal(isNearTrackBeginning({ ...metadata, positionMs: 8000 }), true);
+  assert.equal(isNearTrackBeginning({ ...metadata, positionMs: 20000 }), false);
+  assert.equal(strongCandidate()?.fullPlaybackEvidence, true);
+  assert.equal(strongCandidate({ startedNearBeginning: false })?.fullPlaybackEvidence, false);
+});
+
+test('memory collection continues through a first full play and stops for a satisfied memory', () => {
+  assert.equal(shouldCollectAudioGenreMemory({
+    metadataKind: 'broad',
+    startedNearBeginning: true,
+    acceptedWindows: 59
+  }), true);
+  assert.equal(shouldCollectAudioGenreMemory({
+    metadataKind: 'broad',
+    startedNearBeginning: true,
+    acceptedWindows: 600
+  }), true);
+  assert.equal(shouldCollectAudioGenreMemory({
+    metadataKind: 'broad',
+    startedNearBeginning: false,
+    acceptedWindows: 20
+  }), false);
+  assert.equal(shouldCollectAudioGenreMemory({
+    playing: false,
+    metadataKind: 'broad',
+    startedNearBeginning: true
+  }), false);
+  assert.equal(shouldCollectAudioGenreMemory({
+    metadataKind: 'broad',
+    startedNearBeginning: true,
+    memorySatisfied: true,
+    acceptedWindows: 20
+  }), false);
+  assert.equal(shouldCollectAudioGenreMemory({
+    metadataKind: 'specific',
+    startedNearBeginning: true,
+    acceptedWindows: 20
+  }), false);
+});
+
+test('stable concrete cumulative results are remembered independently of the earlier UI choice', () => {
   assert.equal(strongCandidate()?.genreId, 'hardcore');
   assert.equal(strongCandidate({ acceptedWindows: 59 }), null);
   assert.equal(strongCandidate({ metadata: { ...metadata, positionMs: 10000 } }), null);
@@ -81,10 +145,41 @@ test('only stable, concrete, high-confidence cumulative results can be remembere
       margin: 0.07,
       scores: { hardcore: 0.22, hardstyle: 0.15 }
     }
+  })?.genreId, 'hardcore');
+  assert.equal(strongCandidate({
+    trackResult: {
+      id: 'hardcore',
+      confidence: 0.17,
+      margin: 0.02,
+      scores: { hardcore: 0.17, hardstyle: 0.15 }
+    }
+  })?.genreId, 'hardcore');
+  assert.equal(strongCandidate({
+    trackResult: {
+      id: 'hardcore',
+      confidence: 0.14,
+      margin: 0.01,
+      scores: { hardcore: 0.14, hardstyle: 0.13 }
+    }
   }), null);
   assert.equal(strongCandidate({
     winnerHistory: [...Array(9).fill('hardcore'), ...Array(3).fill('trance')]
+  }), null);
+  assert.equal(strongCandidate({
+    winnerHistory: [...Array(10).fill('hardcore'), ...Array(2).fill('trance')]
   })?.genreId, 'hardcore');
+  const ambiguousTrance = strongCandidate({
+    trackResult: {
+      id: 'psytrance',
+      confidence: 0.350824,
+      margin: 0.000878,
+      scores: { psytrance: 0.350824, 'progressive-trance': 0.349946 }
+    },
+    winnerHistory: Array(12).fill('psytrance')
+  });
+  assert.equal(ambiguousTrance?.genreId, 'trance');
+  assert.ok(ambiguousTrance?.scores.psytrance > 0);
+  assert.ok(ambiguousTrance?.scores['progressive-trance'] > 0);
   assert.equal(strongCandidate({
     winnerHistory: [...Array(8).fill('hardcore'), ...Array(4).fill('trance')],
     trackResult: {
@@ -114,6 +209,61 @@ test('saved results are restored only for compatible duration and model revision
   assert.equal(getAudioGenreMemory(stored.state, { ...metadata, durationMs: 220000 }), null);
   assert.equal(getAudioGenreMemory(stored.state, metadata, { modelRevision: 'next-model' }), null);
   assert.equal(stored.state.entries[stored.memory.key].scores.folk, undefined);
+});
+
+test('v3 keeps compatible v2 memories available after the mapping revision', () => {
+  const candidate = strongCandidate({
+    modelRevision: 'discogs-effnet-bsdynamic-1-major-map-v2'
+  });
+  const identityHash = audioGenreMemoryKey(metadata);
+  const storageKey = audioGenreMemoryStorageKey(identityHash, metadata.durationMs);
+  const restored = createAudioGenreMemories({
+    version: 1,
+    modelRevision: 'discogs-effnet-bsdynamic-1-major-map-v2',
+    entries: {
+      [storageKey]: { ...candidate, identityHash }
+    }
+  });
+
+  const memory = getAudioGenreMemory(restored, metadata);
+  assert.equal(memory?.genreId, 'hardcore');
+  assert.equal(memory?.fullPlaybackEvidence, true);
+  assert.equal(memory?.modelRevision, 'discogs-effnet-bsdynamic-1-major-map-v2');
+});
+
+test('a later full playback upgrades an otherwise stronger partial-play memory', () => {
+  const partial = strongCandidate({
+    startedNearBeginning: false,
+    acceptedWindows: 90,
+    trackResult: {
+      id: 'hardcore',
+      confidence: 0.5,
+      margin: 0.16,
+      scores: { hardcore: 0.5, hardstyle: 0.34 }
+    }
+  });
+  const full = strongCandidate({ acceptedWindows: 75 });
+  const first = setAudioGenreMemory(createAudioGenreMemories(), metadata, partial);
+  const upgraded = setAudioGenreMemory(first.state, metadata, full);
+  assert.equal(first.memory.fullPlaybackEvidence, false);
+  assert.equal(upgraded.changed, true);
+  assert.equal(upgraded.memory.fullPlaybackEvidence, true);
+
+  const laterPartial = strongCandidate({
+    startedNearBeginning: false,
+    acceptedWindows: 95,
+    winnerHistory: Array(12).fill('hardstyle'),
+    trackResult: {
+      id: 'hardstyle',
+      confidence: 0.55,
+      margin: 0.2,
+      scores: { hardstyle: 0.55, hardcore: 0.35 }
+    }
+  });
+  const preserved = setAudioGenreMemory(upgraded.state, metadata, laterPartial);
+  assert.equal(preserved.changed, false);
+  assert.equal(preserved.memory.genreId, 'hardcore');
+  assert.equal(preserved.memory.fullPlaybackEvidence, true);
 });
 
 test('different-duration versions of the same title can keep separate memories', () => {

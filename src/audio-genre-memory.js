@@ -2,18 +2,21 @@
 
 const { createHash } = require('node:crypto');
 const { correctionKey } = require('./genre-corrections');
-const { isBroadAudioGenre } = require('./audio-genre-model');
+const { audioGenreFamilyScores, isBroadAudioGenre } = require('./audio-genre-model');
+const { THEMES } = require('./themes');
 
 const AUDIO_GENRE_MEMORY_VERSION = 1;
-const AUDIO_GENRE_MODEL_REVISION = 'discogs-effnet-bsdynamic-1-major-map-v2';
+const AUDIO_GENRE_MODEL_REVISION = 'discogs-effnet-bsdynamic-1-major-map-v3';
+const COMPATIBLE_AUDIO_GENRE_MODEL_REVISIONS = new Set([
+  AUDIO_GENRE_MODEL_REVISION,
+  'discogs-effnet-bsdynamic-1-major-map-v2'
+]);
 const MAX_AUDIO_GENRE_MEMORIES = 500;
 const MIN_PERSISTED_WINDOWS = 60;
-const MIN_PERSISTED_CONFIDENCE = 0.2;
-const MIN_PERSISTED_MARGIN = 0.06;
-const NORMAL_PERSISTED_CONFIDENCE = 0.28;
-const STRONG_PERSISTED_MARGIN = 0.09;
+const MIN_PERSISTED_CONFIDENCE = 0.15;
+const AMBIGUOUS_SIBLING_MARGIN = 0.015;
 const WINNER_HISTORY_SIZE = 12;
-const MIN_WINNER_AGREEMENT = 0.75;
+const MIN_WINNER_AGREEMENT = 10 / 12;
 const PATCH_INTERVAL_SECONDS = 0.992;
 
 function finiteNumber(value, fallback = 0) {
@@ -38,6 +41,9 @@ function audioGenreMemoryStorageKey(identityHash, durationMs) {
 function createAudioGenreMemories(value, { modelRevision = AUDIO_GENRE_MODEL_REVISION } = {}) {
   const source = value && typeof value === 'object' ? value : {};
   const supportedVersion = !source.version || source.version === AUDIO_GENRE_MEMORY_VERSION;
+  const compatibleRevisions = modelRevision === AUDIO_GENRE_MODEL_REVISION
+    ? COMPATIBLE_AUDIO_GENRE_MODEL_REVISIONS
+    : new Set([modelRevision]);
   const entries = {};
   const candidates = Object.entries(
     supportedVersion && source.entries && typeof source.entries === 'object' ? source.entries : {}
@@ -45,7 +51,7 @@ function createAudioGenreMemories(value, { modelRevision = AUDIO_GENRE_MODEL_REV
   for (const [key, entry] of candidates) {
     if (!/^[a-f\d]{64}$/i.test(key) || !entry || typeof entry !== 'object') continue;
     const genreId = String(entry.genreId || '').trim();
-    if (!genreId || isBroadAudioGenre(genreId) || entry.modelRevision !== modelRevision) continue;
+    if (!genreId || isBroadAudioGenre(genreId) || !compatibleRevisions.has(entry.modelRevision)) continue;
     const identityHash = /^[a-f\d]{64}$/i.test(entry.identityHash) ? entry.identityHash.toLowerCase() : key.toLowerCase();
     entries[key.toLowerCase()] = {
       identityHash,
@@ -56,8 +62,9 @@ function createAudioGenreMemories(value, { modelRevision = AUDIO_GENRE_MODEL_REV
       analyzedSeconds: Math.max(0, finiteNumber(entry.analyzedSeconds)),
       durationMs: Math.max(0, finiteNumber(entry.durationMs)),
       coverageRatio: Math.max(0, Math.min(1, finiteNumber(entry.coverageRatio))),
+      fullPlaybackEvidence: entry.fullPlaybackEvidence === true,
       scores: sanitizeScores(entry.scores),
-      modelRevision,
+      modelRevision: entry.modelRevision,
       updatedAt: String(entry.updatedAt || '')
     };
   }
@@ -123,6 +130,37 @@ function isNearTrackEnd(metadata = {}) {
   return positionMs / durationMs >= 0.9 || remainingMs <= 20000;
 }
 
+function isNearTrackBeginning(metadata = {}) {
+  const durationMs = Math.max(0, finiteNumber(metadata.durationMs));
+  const positionMs = Math.max(0, finiteNumber(metadata.positionMs));
+  const toleranceMs = durationMs ? Math.max(15000, durationMs * 0.05) : 15000;
+  return positionMs <= toleranceMs;
+}
+
+function hasFullTrackAnalysisCoverage({
+  acceptedWindows = 0,
+  durationMs = 0,
+  startedNearBeginning = false
+} = {}) {
+  const durationSeconds = Math.max(0, finiteNumber(durationMs)) / 1000;
+  if (!startedNearBeginning || durationSeconds < 30) return false;
+  const analyzedSeconds = Math.max(0, finiteNumber(acceptedWindows)) * PATCH_INTERVAL_SECONDS;
+  const remainingSeconds = Math.max(0, durationSeconds - analyzedSeconds);
+  return analyzedSeconds / durationSeconds >= 0.9 || remainingSeconds <= 20;
+}
+
+function shouldCollectAudioGenreMemory({
+  enabled = true,
+  playing = true,
+  hasTrack = true,
+  metadataKind = 'broad',
+  startedNearBeginning = false,
+  memorySatisfied = false
+} = {}) {
+  if (!enabled || !playing || !hasTrack || !startedNearBeginning || memorySatisfied) return false;
+  return ['broad', 'artist'].includes(metadataKind);
+}
+
 function recentWinnerAgreement(winnerHistory, genreId) {
   const recent = Array.isArray(winnerHistory)
     ? winnerHistory.slice(-WINNER_HISTORY_SIZE).map((value) => String(value || ''))
@@ -131,10 +169,53 @@ function recentWinnerAgreement(winnerHistory, genreId) {
   return recent.filter((value) => value === genreId).length / recent.length;
 }
 
+function resolvePersistedAudioGenre(trackResult = {}, validGenreIds) {
+  const originalGenreId = String(trackResult.id || '').trim();
+  const originalConfidence = finiteNumber(trackResult.confidence);
+  const originalMargin = finiteNumber(trackResult.margin);
+  const scores = trackResult.scores && typeof trackResult.scores === 'object'
+    ? trackResult.scores
+    : {};
+  const ranked = Object.entries(scores)
+    .map(([id, score]) => ({ id, score: finiteNumber(score) }))
+    .sort((left, right) => right.score - left.score);
+  const first = ranked.find((entry) => entry.id === originalGenreId) || ranked[0];
+  const second = ranked.find((entry) => entry.id !== first?.id);
+  const familyId = String(THEMES[first?.id]?.family || '');
+  const siblingFamilyId = String(THEMES[second?.id]?.family || '');
+  const mayUseFamily = originalMargin < AMBIGUOUS_SIBLING_MARGIN
+    && familyId
+    && familyId !== originalGenreId
+    && familyId === siblingFamilyId
+    && !isBroadAudioGenre(familyId)
+    && (!validGenreIds || validGenreIds.has(familyId));
+  if (!mayUseFamily) {
+    return {
+      genreId: originalGenreId,
+      confidence: originalConfidence,
+      margin: originalMargin,
+      scores
+    };
+  }
+
+  const familyScores = audioGenreFamilyScores(scores);
+  const familyConfidence = finiteNumber(familyScores[familyId], originalConfidence);
+  const runnerUp = Object.entries(familyScores)
+    .filter(([id]) => id !== familyId)
+    .reduce((maximum, [, score]) => Math.max(maximum, finiteNumber(score)), 0);
+  return {
+    genreId: familyId,
+    confidence: familyConfidence,
+    margin: familyConfidence - runnerUp,
+    scores: { ...scores, [familyId]: familyConfidence }
+  };
+}
+
 function createAudioGenreMemoryCandidate({
   metadata = {},
   metadataKind = 'broad',
   trackResult = {},
+  startedNearBeginning = false,
   acceptedWindows = 0,
   winnerHistory = [],
   nearComplete = isNearTrackEnd(metadata),
@@ -142,18 +223,19 @@ function createAudioGenreMemoryCandidate({
   modelRevision = AUDIO_GENRE_MODEL_REVISION,
   now = new Date().toISOString()
 } = {}) {
-  const genreId = String(trackResult.id || '').trim();
+  const originalGenreId = String(trackResult.id || '').trim();
   const windows = Math.max(0, Math.round(finiteNumber(acceptedWindows)));
-  const confidence = finiteNumber(trackResult.confidence);
-  const margin = finiteNumber(trackResult.margin);
+  const resolvedGenre = resolvePersistedAudioGenre(trackResult, validGenreIds);
+  const { genreId, confidence, margin, scores } = resolvedGenre;
   const allowedMetadata = ['broad', 'artist'].includes(metadataKind);
-  const allowedGenre = genreId
-    && !isBroadAudioGenre(genreId)
-    && (!validGenreIds || validGenreIds.has(genreId));
-  const agreement = recentWinnerAgreement(winnerHistory, genreId);
-  const scoreQualified = confidence >= NORMAL_PERSISTED_CONFIDENCE
-    ? margin >= MIN_PERSISTED_MARGIN
-    : confidence >= MIN_PERSISTED_CONFIDENCE && margin >= STRONG_PERSISTED_MARGIN;
+  const allowedGenre = originalGenreId
+    && !isBroadAudioGenre(originalGenreId)
+    && (!validGenreIds || validGenreIds.has(originalGenreId));
+  const agreement = recentWinnerAgreement(winnerHistory, originalGenreId);
+  // A full-play winner can remain narrowly separated from a sibling style even
+  // after hundreds of windows. Persistence is the reliability signal here;
+  // requiring an additional fixed margin would discard the completed analysis.
+  const scoreQualified = confidence >= MIN_PERSISTED_CONFIDENCE;
   if (!nearComplete
     || !allowedMetadata
     || !allowedGenre
@@ -171,7 +253,8 @@ function createAudioGenreMemoryCandidate({
     analyzedSeconds,
     durationMs,
     coverageRatio: durationMs ? Math.min(1, analyzedSeconds / (durationMs / 1000)) : 0,
-    scores: sanitizeScores(trackResult.scores),
+    fullPlaybackEvidence: startedNearBeginning === true && nearComplete,
+    scores: sanitizeScores(scores),
     modelRevision,
     updatedAt: now
   };
@@ -190,8 +273,13 @@ function setAudioGenreMemory(existing, metadata = {}, candidate, options = {}) {
   const previous = state.entries[key];
   const comparablePrevious = previous && durationsCompatible(previous.durationMs, next.durationMs);
 
+  if (comparablePrevious && previous.fullPlaybackEvidence && !next.fullPlaybackEvidence) {
+    return { state, changed: false, memory: { ...previous, key } };
+  }
+
   if (comparablePrevious
     && previous.genreId === next.genreId
+    && (!next.fullPlaybackEvidence || previous.fullPlaybackEvidence)
     && previous.acceptedWindows >= next.acceptedWindows
     && previous.confidence >= next.confidence
     && previous.margin >= next.margin) {
@@ -211,21 +299,23 @@ module.exports = {
   AUDIO_GENRE_MODEL_REVISION,
   MAX_AUDIO_GENRE_MEMORIES,
   MIN_PERSISTED_CONFIDENCE,
-  MIN_PERSISTED_MARGIN,
   MIN_PERSISTED_WINDOWS,
   MIN_WINNER_AGREEMENT,
-  NORMAL_PERSISTED_CONFIDENCE,
   PATCH_INTERVAL_SECONDS,
-  STRONG_PERSISTED_MARGIN,
   WINNER_HISTORY_SIZE,
+  AMBIGUOUS_SIBLING_MARGIN,
   audioGenreMemoryKey,
   audioGenreMemoryStorageKey,
   createAudioGenreMemories,
   createAudioGenreMemoryCandidate,
   durationsCompatible,
   getAudioGenreMemory,
+  hasFullTrackAnalysisCoverage,
+  isNearTrackBeginning,
   isNearTrackEnd,
   recentWinnerAgreement,
+  resolvePersistedAudioGenre,
   sanitizeScores,
+  shouldCollectAudioGenreMemory,
   setAudioGenreMemory
 };

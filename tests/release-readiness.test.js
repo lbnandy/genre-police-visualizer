@@ -24,6 +24,43 @@ test('App settings display the current package version', () => {
   assert.match(read('main.js'), /appVersion: app\.getVersion\(\)/);
 });
 
+test('the HUD distinguishes an active AI analysis from a settled genre', () => {
+  const main = read('main.js');
+  const renderer = read('renderer/app.js');
+  const styles = read('renderer/styles.css');
+
+  assert.match(main, /genreAnalysisPending = localGenreModelAvailable\(\)[\s\S]*shouldAnalyzeCurrentGenreAudio\(\)/);
+  assert.match(main, /previousGenreAnalysisPending !== next\.genreAnalysisPending/);
+  assert.match(renderer, /genreAnalysisPending[\s\S]*trMain\('hud\.aiAnalyzing'\)/);
+  assert.match(styles, /#case-id\[data-state="analyzing"\][\s\S]*case-analysis-pulse/);
+});
+
+test('quick controls keep capture, view, settings, and exit actions grouped', () => {
+  const html = read('renderer/index.html');
+  const assertOrder = (ids) => {
+    const positions = ids.map((id) => html.indexOf(`id="${id}"`));
+    assert.ok(positions.every((position) => position >= 0));
+    assert.deepEqual([...positions].sort((left, right) => left - right), positions);
+  };
+
+  assertOrder([
+    'snapshot-quick-button',
+    'recording-quick-button',
+    'layout-toggle-button',
+    'fullscreen-quick-button',
+    'settings-button',
+    'close-button'
+  ]);
+  assertOrder([
+    'fullscreen-snapshot-button',
+    'fullscreen-recording-button',
+    'fullscreen-layout-button',
+    'fullscreen-text-button',
+    'fullscreen-settings-button',
+    'fullscreen-exit-button'
+  ]);
+});
+
 test('custom genre visuals use the app-drawn listbox', () => {
   const html = read('renderer/index.html');
   assert.match(html, /id="custom-genre-visual"[^>]+aria-haspopup="listbox"/);
@@ -98,6 +135,47 @@ test('diagnostics expose live local genre model state and result reliability', (
   assert.match(renderer, /GENRE_UNCERTAINTY_LABELS/);
 });
 
+test('a missing Visual C++ runtime cannot abort app startup', () => {
+  const runtime = read('src/audio-genre-runtime.js');
+  const loader = read('src/onnx-runtime-loader.js');
+  const main = read('main.js');
+  const preload = read('preload.js');
+  const html = read('renderer/index.html');
+  const renderer = read('renderer/app.js');
+
+  assert.doesNotMatch(runtime, /^const ort = require\('onnxruntime-node'\);/m);
+  assert.match(runtime, /loadOnnxRuntime/);
+  assert.match(loader, /function classifyOnnxRuntimeLoadFailure/);
+  assert.match(loader, /function missingOnnxRuntimeComponents/);
+  assert.match(loader, /'ONNX_VC_RUNTIME_UNAVAILABLE'/);
+  assert.match(loader, /'ONNX_COMPONENT_MISSING'/);
+  assert.match(loader, /'ONNX_COMPONENT_BLOCKED'/);
+  assert.match(loader, /'ONNX_COMPONENT_INVALID'/);
+  assert.match(main, /audioGenreModelState = \{[\s\S]*?code: error\?\.code \|\| 'MODEL_INITIALIZATION_FAILED'/);
+  assert.match(main, /category: error\?\.category \|\| 'model-initialization'/);
+  assert.match(main, /causeCode: error\?\.causeCode \|\| error\?\.cause\?\.code \|\| ''/);
+  assert.match(main, /https:\/\/aka\.ms\/vc14\/vc_redist\.x64\.exe/);
+  assert.match(main, /ipcMain\.handle\('support:open-vc-runtime'/);
+  assert.match(preload, /openVcRuntimeDownload: \(\) => ipcRenderer\.invoke\('support:open-vc-runtime'\)/);
+  assert.match(preload, /openAppDownloadPage: \(\) => ipcRenderer\.invoke\('update:open-release', ''\)/);
+  assert.match(preload, /onLocalGenreModelStatus:/);
+  assert.match(html, /id="local-ai-runtime-toast" role="status" aria-live="polite" hidden/);
+  assert.match(html, /id="local-genre-runtime-hint"[^>]+role="status" hidden/);
+  assert.match(renderer, /const LOCAL_AI_LOAD_FAILURE_CODES = new Set/);
+  assert.match(renderer, /function localAiFailurePresentation/);
+  assert.match(renderer, /actions\.downloadAgain/);
+});
+
+test('diagnostics retain Local AI failure details and Windows system context', () => {
+  const main = read('main.js');
+
+  assert.match(main, /version: os\.version\(\)/);
+  assert.match(main, /arch: process\.arch/);
+  assert.match(main, /audioGenreModel:[\s\S]*?code: diagnosticText\(audioGenreModelState\?\.code\)/);
+  assert.match(main, /audioGenreModel:[\s\S]*?category: diagnosticText\(audioGenreModelState\?\.category\)/);
+  assert.match(main, /audioGenreModel:[\s\S]*?causeCode: diagnosticText\(audioGenreModelState\?\.causeCode\)/);
+});
+
 test('settings keeps one stable panel title while tabs label their own content', () => {
   const html = read('renderer/index.html');
   const renderer = read('renderer/app.js');
@@ -151,9 +229,14 @@ test('capsule floating notices share the visible surface center and inset', () =
   const html = read('renderer/index.html');
   const styles = read('renderer/styles.css');
   const floatingToasts = [...html.matchAll(/id="([^"]+-toast)" role="status"/g)].map((match) => match[1]);
-  const sideRule = styles.match(/body\[data-layout="side"\] :is\(#netease-smtc-toast, #recording-toast, #update-toast\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  const sideRule = styles.match(/body\[data-layout="side"\] :is\(#netease-smtc-toast, #recording-toast, #local-ai-runtime-toast, #update-toast\) \{([\s\S]*?)\n\}/)?.[1] || '';
 
-  assert.deepEqual(floatingToasts, ['netease-smtc-toast', 'recording-toast', 'update-toast']);
+  assert.deepEqual(floatingToasts, [
+    'netease-smtc-toast',
+    'recording-toast',
+    'local-ai-runtime-toast',
+    'update-toast'
+  ]);
   assert.match(sideRule, /left: calc\(50% - 27px\);/);
   assert.match(sideRule, /right: auto;/);
   assert.match(sideRule, /bottom: 64px;/);
@@ -324,7 +407,7 @@ test('video recording captures the app frame with loopback audio and streams chu
   assert.match(appPane, /id="always-on-top-toggle"[\s\S]*id="snapshot-save-button"[\s\S]*id="recording-start-stop"/);
   assert.doesNotMatch(appPane, /id="(?:recording|snapshot)-quick-button-toggle"/);
   assert.match(appearancePane, /id="snapshot-quick-button-setting"[\s\S]*id="snapshot-quick-button-toggle"[\s\S]*id="recording-quick-button-setting"[\s\S]*id="recording-quick-button-toggle"/);
-  assert.match(html, /id="recording-quick-button"[^>]+hidden[\s\S]*id="settings-button"[\s\S]*id="layout-toggle-button"[\s\S]*id="close-button"/);
+  assert.match(html, /id="recording-quick-button"[^>]+hidden[\s\S]*id="layout-toggle-button"[\s\S]*id="fullscreen-quick-button"[\s\S]*id="settings-button"[\s\S]*id="close-button"/);
   assert.match(appSource, /recordingQuickButton\.addEventListener\('click', toggleRecording\)/);
   assert.match(appSource, /recordingQuickButton\.hidden = !recordingQuickButtonVisible/);
   assert.match(appSource, /iconSize: Number\.parseFloat\(iconStyle\?\.width\) \|\| 16/);
@@ -392,7 +475,7 @@ test('stage output fills the current display and restores the desktop window', (
   assert.match(appearancePane, /id="stage-output-text-setting"[\s\S]*id="fullscreen-english-font-setting"[\s\S]*id="stage-output-entry-setting"/);
   assert.doesNotMatch(appPane, /id="stage-output-(?:text-setting|entry-setting|start-stop)"/);
   assert.match(html, /id="fullscreen-quick-button"[\s\S]*id="settings-button"/);
-  assert.match(html, /id="fullscreen-controls"[\s\S]*id="fullscreen-snapshot-button"[\s\S]*id="fullscreen-recording-button"[\s\S]*id="fullscreen-settings-button"[\s\S]*id="fullscreen-layout-button"[\s\S]*id="fullscreen-text-button"[\s\S]*id="fullscreen-exit-button"/);
+  assert.match(html, /id="fullscreen-controls"[\s\S]*id="fullscreen-snapshot-button"[\s\S]*id="fullscreen-recording-button"[\s\S]*id="fullscreen-layout-button"[\s\S]*id="fullscreen-text-button"[\s\S]*id="fullscreen-settings-button"[\s\S]*id="fullscreen-exit-button"/);
   assert.match(html, /id="snapshot-quick-button"[\s\S]{0,400}viewBox="0 -960 960 960"[\s\S]{0,200}d="M600-320h160/);
   assert.match(html, /id="fullscreen-snapshot-button"[\s\S]{0,400}viewBox="0 -960 960 960"[\s\S]{0,200}d="M600-320h160/);
   assert.match(html, /id="recording-quick-button"[\s\S]{0,400}viewBox="0 -960 960 960"[\s\S]{0,200}d="M158-242/);
@@ -525,7 +608,7 @@ test('supplemental artists are a secondary Genre setting before custom genres', 
   assert.match(renderer, /diagnostics\.genreUserArtist/);
 });
 
-test('local AI genre recognition is a Genre setting with an opt-in dependent change detector', () => {
+test('local AI genre recognition groups its memory and change-detection controls in Genre settings', () => {
   const html = read('renderer/index.html');
   const renderer = read('renderer/app.js');
   const main = read('main.js');
@@ -537,16 +620,31 @@ test('local AI genre recognition is a Genre setting with an opt-in dependent cha
   const onlineIndex = genrePane.indexOf('id="online-lookup-toggle"');
   const artistReferenceIndex = genrePane.indexOf('id="artist-genre-reference-toggle"');
   const localModelIndex = genrePane.indexOf('id="local-genre-model-toggle"');
+  const memoryIndex = genrePane.indexOf('id="audio-genre-memory-setting"');
+  const memoryClearIndex = genrePane.indexOf('id="audio-genre-memory-clear"');
   const dynamicIndex = genrePane.indexOf('id="dynamic-genre-detection-setting"');
   const correctionIndex = genrePane.indexOf('class="genre-correction-settings"');
   assert.ok(onlineIndex >= 0 && localModelIndex > onlineIndex);
-  assert.ok(artistReferenceIndex > localModelIndex);
+  assert.ok(memoryIndex > localModelIndex && memoryClearIndex > memoryIndex);
+  assert.ok(artistReferenceIndex > memoryClearIndex);
   assert.ok(dynamicIndex > artistReferenceIndex && correctionIndex > dynamicIndex);
+  assert.match(genrePane, /id="audio-genre-memory-setting"[^>]+settings-dependent-row[^>]+hidden/);
+  assert.match(genrePane, /id="audio-genre-memory-toggle"[^>]+aria-checked="true"/);
   assert.match(genrePane, /id="dynamic-genre-detection-setting"[^>]+settings-dependent-row[^>]+hidden/);
   assert.match(genrePane, /id="dynamic-genre-detection-toggle"[^>]+aria-checked="false"/);
   assert.match(genrePane, /id="artist-genre-reference-toggle"[^>]+aria-checked="true"/);
   assert.match(renderer, /setArtistGenreReferenceEnabled\(config\.artistGenreReferenceEnabled !== false\)/);
+  assert.match(renderer, /setAudioGenreMemoryEnabled\(config\.audioGenreMemoryEnabled !== false\)/);
   assert.match(main, /config\.artistGenreReferenceEnabled = config\.artistGenreReferenceEnabled !== false/);
+  assert.match(main, /config\.audioGenreMemoryEnabled = config\.audioGenreMemoryEnabled !== false/);
+  assert.match(main, /config\.audioGenreMemoryEnabled === false[\s\S]*return null/);
+  assert.match(main, /hasFullPlaybackMemory[\s\S]*currentAudioGenreStartedNearBeginning/);
+  assert.match(main, /staticMemoryWithoutFullReplay[\s\S]*return false/);
+  assert.match(main, /staticMemoryRecheck[\s\S]*!staticMemoryRecheck/);
+  assert.match(main, /keepStaticMemoryDecision[\s\S]*!keepStaticMemoryDecision/);
+  assert.doesNotMatch(main, /ipcMain\.on\('audio:output-device-changed',[\s\S]{0,160}resetAudioGenreForCurrentTrack/);
+  assert.match(main, /ipcMain\.handle\('audio-genre-memory:clear'/);
+  assert.match(preload, /clearAudioGenreMemory:[^\n]+audio-genre-memory:clear/);
   assert.match(renderer, /if \(!localGenreModelEnabled \|\| !localGenreModelAvailable\) dynamicGenreDetectionEnabled = false/);
   assert.match(main, /if \(!nextLocalGenreModelEnabled\) safe\.dynamicGenreDetectionEnabled = false/);
   assert.match(main, /baseGenreKind === 'specific' && Boolean\(currentAudioGenreDecision\?\.genreId\)/);
@@ -590,6 +688,20 @@ test('Windows x64 package excludes foreign ONNX Runtime binaries', () => {
     'the Windows x64 runtime must be re-included after the broad exclusion'
   );
   assert.ok(!pkg.build.files.includes('docs/**/*'), 'repository documentation must not inflate the executable');
+  for (const excludedDevelopmentFile of [
+    '!node_modules/onnxruntime-node/dist/**/*.map',
+    '!node_modules/onnxruntime-node/dist/**/*.d.ts',
+    '!node_modules/onnxruntime-node/lib/**/*',
+    '!node_modules/onnxruntime-node/script/**/*',
+    '!node_modules/onnxruntime-common/dist/esm/**/*',
+    '!node_modules/onnxruntime-common/dist/**/*.map',
+    '!node_modules/onnxruntime-common/dist/**/*.d.ts'
+  ]) {
+    assert.ok(
+      pkg.build.files.includes(excludedDevelopmentFile),
+      `${excludedDevelopmentFile} must stay out of the release package`
+    );
+  }
   assert.ok(pkg.build.files.includes('recording-controls-preload.js'), 'recording overlays need their preload bridge');
   assert.ok(pkg.build.files.includes('!assets/icon.svg'));
   assert.ok(pkg.build.files.includes('!assets/tray-icon.svg'));

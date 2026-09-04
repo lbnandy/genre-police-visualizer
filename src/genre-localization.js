@@ -59,7 +59,7 @@ const GROUPS = [
   ['Dutch House', 'dutch-house', ['ダッチハウス', 'ダーティ・ダッチ']],
   ['Fidget House', 'fidget-house', ['フィジェットハウス']],
   ['Melbourne Bounce', 'melbourne-bounce', ['メルボルンバウンス', 'メルボルン・バウンス']],
-  ['Future Bounce', 'melbourne-bounce', ['フューチャーバウンス', 'フューチャー・バウンス']],
+  ['Future Bounce', 'future-house', ['フューチャーバウンス', 'フューチャー・バウンス']],
   ['Electro House', 'electro-house', ['エレクトロハウス', 'エレクトロ・ハウス']],
   ['Acid House', 'acid-house', ['アシッドハウス', 'アシッド・ハウス']],
   ['Tropical House', 'tropical-house', ['トロピカルハウス', 'トロピカル・ハウス']],
