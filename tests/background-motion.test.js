@@ -69,7 +69,8 @@ test('J-Pop subgenres keep distinct background and spectrum-attached visual lang
   const cityPop = ruleContaining('[data-mode="j-pop"][data-genre="city-pop"]');
   const anime = ruleContaining('[data-mode="j-pop"][data-genre="anime"]');
   const vocaloid = ruleContaining('[data-mode="j-pop"][data-genre="vocaloid"]');
-  assert.match(cityPop, /repeating-linear-gradient\(0deg/);
+  assert.match(cityPop, /linear-gradient\(174deg/);
+  assert.doesNotMatch(cityPop, /repeating-linear-gradient/, 'City Pop uses separated sunset bands, not scanlines');
   assert.match(anime, /repeating-conic-gradient/);
   assert.doesNotMatch(anime, /linear-gradient\(154deg/, 'Anime should not cross its radial launch lines with diagonal bars');
   assert.match(vocaloid, /repeating-linear-gradient\(90deg/);
@@ -85,7 +86,7 @@ test('J-Pop subgenres keep distinct background and spectrum-attached visual lang
 
 test('radial backdrop languages do not stack unrelated crossing line systems', () => {
   const glitch = ruleContaining('[data-genre="glitch"]');
-  assert.match(glitch, /repeating-conic-gradient/);
+  assert.doesNotMatch(glitch, /conic-gradient/, 'Local packet shifts should not compete with full-frame rays');
   assert.match(glitch, /repeating-linear-gradient\(0deg/);
   assert.doesNotMatch(glitch, /repeating-linear-gradient\(93deg/, 'Glitch should not add vertical bars over its rays');
 
@@ -101,6 +102,13 @@ test('radial backdrop languages do not stack unrelated crossing line systems', (
   const house = ruleContaining('[data-mode="house"]');
   assert.match(house, /repeating-conic-gradient/);
   assert.doesNotMatch(house, /linear-gradient\([^)]*1px/, 'House should not overlay a grid on its radial pulse');
+});
+
+test('Anime uses one uninterrupted flat backdrop across all layouts', () => {
+  assert.match(css, /body\[data-background-style="themed"\] \.themed-backdrop\[data-genre="anime"\]\s*\{\s*background:\s*#1c3443;\s*\}/);
+  assert.doesNotMatch(css, /#142d3a 0 63%, #302c40 63%/);
+  const anime = ruleContaining('[data-mode="j-pop"][data-genre="anime"]');
+  assert.doesNotMatch(anime, /linear-gradient\(/, 'Only the sparse radial accents remain');
 });
 
 test('Jazz and Classical subgenres keep distinct reviewed visual languages', () => {
@@ -126,13 +134,12 @@ test('Jazz and Classical subgenres keep distinct reviewed visual languages', () 
   const classicalStart = visualSource.indexOf('} else if (classicalFamily)', visualSource.indexOf('drawGenreSignature'));
   const classicalEnd = visualSource.indexOf('} else if (orchestral)', classicalStart);
   const classicalSignature = visualSource.slice(classicalStart, classicalEnd);
-  assert.match(classicalSignature, /one ensemble, but independently phrased/);
+  assert.match(classicalSignature, /scoreVoiceCount\(theme.id\)/);
   assert.match(visualSource, /echoes: classicalFamily \? 0/);
   assert.match(visualSource, /ridgeDepths: classicalFamily \? \[0\.5\]/);
-  assert.match(classicalSignature, /const voiceCount = baroque \? 3 : modern \? 3 : romantic \? 2 : opera \? 3 : 2/);
-  assert.match(classicalSignature, /Counterpoint enters in paired, interlocking figures/);
-  assert.match(classicalSignature, /Broad crescendos lean beyond the ensemble/);
-  assert.match(classicalSignature, /Mirrored vocal fans open from a common stage/);
+  assert.match(classicalSignature, /scoreVoicePoint\(theme.id, voice/);
+  assert.match(classicalSignature, /point.width/);
+  assert.match(classicalSignature, /point.alpha/);
 });
 
 test('UK Garage subgenres keep distinct rhythmic backgrounds and spectrum structures', () => {
@@ -346,7 +353,7 @@ test('Bilibili capsule keeps a hard light stock and speech-safe one-way motion',
   assert.doesNotMatch(atmosphere, /const alpha\s*=|item\.alpha\s*\+/);
   assert.match(visualSource, /!integratedTranceFx && !synthwaveMode && !bilibiliMode && motionElapsed/);
   assert.match(visualSource, /if \(!synthwaveMode && !bilibiliMode\) this\.updateParticles/);
-  assert.match(visualSource, /if \(!integratedTranceFx && !synthwaveMode && !bilibiliMode\) \{/);
+  assert.match(visualSource, /if \(!integratedTranceFx && !synthwaveMode && !bilibiliMode && visualFinish\(renderTheme\).impact\) \{/);
   assert.match(appSource, /if \(tranceMode \|\| synthwaveMode \|\| bilibiliMode\) \{[\s\S]*?coreScale = 1;/);
   assert.match(appSource, /else if \(bilibiliMode\) \{\s*coreArt\.style\.transform = `scale\(\$\{visual\.bilibiliTvScaleX/);
   assert.match(appSource, /const bilibiliGenreTarget = playbackActive[\s\S]*?bilibiliSectionDrive \* 0\.028[\s\S]*?bilibiliTransientDrive \* 0\.05/);
@@ -490,8 +497,10 @@ test('bright and organic genres use tailored full-card backdrop stock', () => {
   );
   assert.match(
     css,
-    /\.themed-backdrop:is\([\s\S]*?\[data-genre="tropical-house"\][\s\S]*?\[data-genre="city-pop"\][\s\S]*?\[data-genre="folk"\][\s\S]*?\[data-genre="country"\][\s\S]*?\[data-genre="reggae"\][\s\S]*?\[data-genre="electro-swing"\][\s\S]*?\[data-mode="latin"\][\s\S]*?#170e0f/
+    /\.themed-backdrop:is\([\s\S]*?\[data-genre="tropical-house"\][\s\S]*?\[data-genre="reggae"\][\s\S]*?\[data-mode="latin"\][\s\S]*?#170e0f/
   );
+  assert.match(css, /\.themed-backdrop\[data-genre="city-pop"\]\s*\{\s*background: linear-gradient\(174deg, #152e49/);
+  assert.match(css, /\.themed-backdrop:is\(\[data-family="classical"\], \[data-genre="folk"\][^}]+#141919/);
   assert.match(
     css,
     /\.themed-backdrop:is\([\s\S]*?\[data-genre="rnb"\][\s\S]*?\[data-genre="jazz"\][\s\S]*?#140b15/
@@ -648,7 +657,25 @@ test('Dubstep subgenres keep distinct construction languages', () => {
   assert.match(visualSource, /fracture: deathstep \? 8\.8 : brostep \? 3\.8 : 0/);
   assert.match(visualSource, /lobes: colourBass \? 9 : melodicDubstep \? 5 : futureRiddim \? 4 : moombahcore \? 3 : 0/);
   assert.match(visualSource, /material: umbrellaBass \? 'bass'[\s\S]*deathstep \? 'razor'[\s\S]*brostep \? 'glitch'/);
-  assert.match(visualSource, /const railOptions = riddim[\s\S]*futureRiddim[\s\S]*colourBass[\s\S]*melodicDubstep[\s\S]*deathstep[\s\S]*brostep[\s\S]*moombahcore/);
+  assert.match(visualSource, /const railOptions = riddim[\s\S]*melodicDubstep[\s\S]*deathstep[\s\S]*brostep[\s\S]*moombahcore/);
+  const prismStart = visualSource.indexOf('} else if (colourBass || futureRiddim) {');
+  const prismEnd = visualSource.indexOf('const accentPhase', prismStart);
+  assert.ok(prismStart > 0 && prismEnd > prismStart);
+  const prism = visualSource.slice(prismStart, prismEnd);
+  assert.match(prism, /const facets = colourBass \? 7 : 8/);
+  assert.match(prism, /const flow = colourBass \? time \* 0\.000025 : 0/);
+  assert.match(prism, /this\.tracePoints\(\[\.\.\.edge, \.\.\.inside\.reverse\(\)\]/);
+  assert.doesNotMatch(prism, /drawBasslineRail|jawOffsets/);
+});
+
+test('Midtempo has a time-based release and Moombahton trades syncopated contour accents', () => {
+  assert.match(visualSource, /this\.midtempoPressure = 0/);
+  assert.match(visualSource, /const responseMs = target > this\.midtempoPressure \? 85 : 580/);
+  assert.match(visualSource, /Math\.exp\(-deltaMs \/ responseMs\)/);
+  assert.match(visualSource, /const offbeat = \(phrase \+ \(side \? 0\.75 : 0\)\) % 2/);
+  assert.match(visualSource, /else if \(integratedEdmTrapFx\)/);
+  assert.match(css, /data-genre="midtempo-bass"[^\n]*data-genre="moombahton"[^\n]*::before\s*\{\s*content: none;/);
+  assert.match(visualSource, /pulseRadius: 3 \+ this\.midtempoPressure \* 5, material: 'bass'/);
 });
 
 test('reviewed House branches preserve existing specialists and add missing identities', () => {
@@ -694,7 +721,7 @@ test('reviewed Techno and Trance branches keep distinct construction languages',
   }
 
   assert.match(visualSource, /const armCount = psychedelic \? 12 : uplifting \? 6 : techTrance \? 10 : 8/);
-  assert.match(visualSource, /const armCurl = uplifting \? 3\.36 : progressive \? 3\.25 : techTrance \? 3\.88 : hardTrance \? 3\.5 : 3\.65/);
+  assert.match(visualSource, /const armCurl = uplifting \? 2\.85 : progressive \? 4\.05 : techTrance \? 3\.88 : hardTrance \? 3\.5 : 3\.65/);
   assert.match(visualSource, /Subgenre accents grow from the live spiral field/);
   for (const genre of ['uplifting-trance', 'progressive-trance', 'tech-trance', 'hard-trance']) {
     assert.match(css, new RegExp(`data-genre="${genre}"`));
@@ -897,10 +924,10 @@ test('Synthwave uses one audio-reactive sunset plane without a foreground visual
   assert.match(visualSource, /if \(mode === 'asmr' \|\| theme\.id === 'synthwave'\) return;/);
   assert.match(visualSource, /if \(!synthwaveMode\) this\.drawAtmosphere/);
   assert.match(visualSource, /if \(!synthwaveMode && !bilibiliMode\) this\.updateParticles/);
-  assert.match(visualSource, /if \(!integratedTranceFx && !synthwaveMode && !bilibiliMode\) \{/);
+  assert.match(visualSource, /if \(!integratedTranceFx && !synthwaveMode && !bilibiliMode && visualFinish\(renderTheme\).impact\) \{/);
   assert.match(css, /data-background-style="themed"[^\n]+data-genre="synthwave"[^\n]+#core-art[\s\S]*opacity:\s*0;[\s\S]*visibility:\s*hidden/);
   assert.match(appSource, /else if \(synthwaveMode\) \{\s*coreArt\.style\.transform = 'scale\(1\)'/);
-  assert.match(appSource, /artwork: theme\.captureArtwork \|\| currentMetadata\?\.artwork \|\| ''/);
+  assert.match(appSource, /artwork: currentMetadata\?\.artwork \|\| ''/);
   const applyLayoutStart = appSource.indexOf('function applyLayoutMode(value)');
   const layoutFrameStart = appSource.indexOf('requestAnimationFrame(() => {', applyLayoutStart);
   const synchronousResize = appSource.indexOf('visual.resize();', applyLayoutStart);

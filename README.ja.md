@@ -8,7 +8,7 @@
 
 Genre Police Visualizer は、Windows の再生中メディア情報とシステム再生音声を読み取り、音楽ジャンルを推定します。その結果に応じて、ビジュアライザーの構造、背景、文字、動き方を切り替えます。単にジャンルごとに色を変えるのではなく、それぞれの音楽に合った視覚表現を目指しています。
 
-現在のリリースは `0.3.1` ベータ版です。選択可能な 140 種類のジャンルビジュアルで、20 以上の主要なジャンル系統をカバーしています。電子音楽を主なデザイン対象としながら、Pop、Rock、Hip-Hop、R&B、Jazz、Classical の各系統も追加・調整しています。
+現在のリリースは `0.3.2` ベータ版です。選択可能な 140 種類のジャンルビジュアルで、20 以上の主要なジャンル系統をカバーしています。電子音楽を主なデザイン対象としながら、Pop、Rock、Hip-Hop、R&B、Jazz、Classical の各系統も追加・調整しています。
 
 **デモ動画：** [YouTube](https://www.youtube.com/watch?v=sDvQqHSm7dU) · [Bilibili](https://www.bilibili.com/video/BV1bi426EEAg)
 
@@ -19,11 +19,11 @@ Genre Police Visualizer は、Windows の再生中メディア情報とシステ
 **[Releases から Windows ポータブル版をダウンロード](../../releases)**
 
 - 対応環境：Windows 10 または Windows 11、64 ビット（x64）。
-- `Genre-Police-Visualizer-0.3.1-portable.exe` をダウンロードして、そのまま実行できます。インストールは不要です。
+- `Genre-Police-Visualizer-0.3.2-portable.exe` をダウンロードして、そのまま実行できます。インストールは不要です。
 - Node.js、Python、PyTorch、追加の AI 実行環境は必要ありません。
 - 必要に応じて `SHA256SUMS.txt` もダウンロードし、実行ファイルを検証してください。
 
-`0.3.1` は Authenticode によるコード署名を行っていません。そのため Windows SmartScreen に「不明な発行元」と表示される場合があります。実行ファイルは、このプロジェクトの GitHub Releases からのみダウンロードしてください。
+`0.3.2` は Authenticode によるコード署名を行っていません。そのため Windows SmartScreen に「不明な発行元」と表示される場合があります。実行ファイルは、このプロジェクトの GitHub Releases からのみダウンロードしてください。
 
 ## 画面プレビュー
 

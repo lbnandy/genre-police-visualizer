@@ -4,6 +4,7 @@ import { VisualizationRecorder } from './recording-controller.mjs';
 import { fallbackTheme, demoTracks } from './themes.js';
 import { buildLyricSweepTimeline, buildLyricUnitTimeline, lyricLineInkWidth, lyricUnitMotion } from './lyric-motion.mjs';
 import { resolveImpactFx } from './impact-fx.mjs';
+import { visualFinish } from './visual-finish.mjs';
 import { isGenrePoliceTrack } from './easter-eggs.mjs';
 import { KawaiiExpressionTracker } from './kawaii-expression.mjs';
 import { smoothMotionEnvelope } from './motion-envelope.mjs';
@@ -421,8 +422,6 @@ let currentDisplayContent = null;
 let currentTheme = { ...fallbackTheme };
 let artworkPaletteSerial = 0;
 let demoTheme = null;
-const demoFrequency = new Uint8Array(1024);
-const demoWaveform = new Uint8Array(2048);
 let transitionToken = 0;
 let backdropCrossfadeSerial = 0;
 let backdropCrossfadeAnimations = [];
@@ -539,7 +538,7 @@ function drawForegroundRiffStrings(metrics, time) {
   // This canvas only exists for the guitar-family string layer. Returning
   // before resize/clear avoids repainting a hidden 920×400 surface for every
   // Trance frame.
-  if (!metal && currentTheme.mode !== 'rock') {
+  if (currentTheme.id === 'country' || (!metal && currentTheme.mode !== 'rock')) {
     if (riffStringsActive && riffStrings.width && riffStrings.height) {
       riffStringsContext.clearRect(0, 0, riffStrings.width, riffStrings.height);
     }
@@ -2639,10 +2638,11 @@ function applyTheme(theme) {
   root.style.setProperty('--genre-font', currentTheme.font);
   root.style.setProperty('--genre-weight', String(currentTheme.fontWeight || 700));
   root.style.setProperty('--genre-letter-spacing', currentTheme.letterSpacing || '-0.5px');
-  const textFx = clamp(currentTheme.textFx ?? 1, 0.45, 1.15);
+  const finish = visualFinish(currentTheme);
+  const textFx = clamp(currentTheme.textFx ?? 1, 0, 1.15);
   root.style.setProperty('--genre-ink-alpha', `${Math.min(100, 70 + textFx * 30).toFixed(1)}%`);
-  root.style.setProperty('--genre-hot-alpha', `${Math.min(68, textFx * 55).toFixed(1)}%`);
-  root.style.setProperty('--genre-accent-alpha', `${Math.min(86, textFx * 74).toFixed(1)}%`);
+  root.style.setProperty('--genre-hot-alpha', `${(Math.min(68, textFx * 55) * finish.textGlow).toFixed(1)}%`);
+  root.style.setProperty('--genre-accent-alpha', `${(Math.min(86, textFx * 74) * Math.sqrt(finish.textGlow)).toFixed(1)}%`);
   document.body.dataset.family = currentTheme.family;
   document.body.dataset.mode = currentTheme.mode || 'electronic';
   document.body.dataset.genre = currentTheme.id;
@@ -4167,7 +4167,7 @@ function updatePlayback(payload) {
 }
 
 function syntheticDemoMetrics(metrics, time) {
-  if (!demoTheme || (metrics.volume > 0.09 && !demoTheme.synthetic)) return metrics;
+  if (!demoTheme || metrics.volume > 0.09) return metrics;
   const asmrDemo = demoTheme.mode === 'asmr';
   const interval = ['hardcore', 'hardstyle'].includes(demoTheme.mode) ? 340 : demoTheme.mode === 'drum-bass' ? 350 : 500;
   const beatIndex = Math.floor(time / interval);
@@ -4175,35 +4175,14 @@ function syntheticDemoMetrics(metrics, time) {
   const beatNow = beatIndex !== lastDemoBeat;
   if (beatNow) lastDemoBeat = beatIndex;
   const pulse = Math.exp(-phase * 8);
-  let frequency = metrics.frequency;
-  let waveform = metrics.waveform;
-  if (demoTheme.synthetic) {
-    frequency = demoFrequency;
-    for (let index = 0; index < 470; index += 1) {
-      const ratio = index / 469;
-      const lowBody = Math.exp(-Math.pow((ratio - 0.12) / 0.13, 2)) * (0.48 + pulse * 0.35);
-      const presencePeak = Math.exp(-Math.pow((ratio - 0.58) / 0.075, 2)) * (0.54 + Math.sin(time * 0.003) * 0.12);
-      const upperPeak = Math.exp(-Math.pow((ratio - 0.76) / 0.052, 2)) * (0.42 + Math.sin(time * 0.0042 + 1) * 0.1);
-      const texture = 0.1 + Math.sin(index * 0.19 + time * 0.004) * 0.055;
-      frequency[index] = Math.round(clamp((lowBody + presencePeak + upperPeak + texture) * (asmrDemo ? 24 : 210), 0, 255));
-    }
-    waveform = demoWaveform;
-    for (let index = 0; index < waveform.length; index += 1) {
-      const ratio = index / waveform.length;
-      const sample = Math.sin(ratio * Math.PI * 18 + time * 0.004) * 0.52
-        + Math.sin(ratio * Math.PI * 43 - time * 0.002) * 0.24;
-      waveform[index] = Math.round(128 + sample * (asmrDemo ? 3.2 + pulse * 1.1 : 18 + pulse * 14));
-    }
-  }
-  const forceKawaiiExcited = demoTheme.id === 'kawaii-bass' && demoTheme.captureKawaiiExcited;
   return {
     ...metrics,
-    bass: asmrDemo ? 0.022 + pulse * 0.006 : forceKawaiiExcited ? 0.86 : 0.18 + pulse * 0.7,
-    lowMid: asmrDemo ? 0.025 + Math.sin(time * .0011) * .006 : forceKawaiiExcited ? 0.62 : 0.15 + Math.sin(time * .004) * .08 + pulse * .25,
-    mid: asmrDemo ? 0.019 + Math.sin(time * .0015 + 1) * .005 : forceKawaiiExcited ? 0.56 : 0.2 + Math.sin(time * .0021 + 1) * .09,
-    high: asmrDemo ? 0.013 + Math.sin(time * .002) * .004 : forceKawaiiExcited ? 0.42 : 0.16 + Math.sin(time * .006) * .08,
-    volume: asmrDemo ? 0.026 + pulse * 0.004 : forceKawaiiExcited ? 0.31 : 0.24 + pulse * .25,
-    flux: asmrDemo ? 0.012 + pulse * 0.01 : forceKawaiiExcited ? 0.48 : pulse * .55,
+    bass: asmrDemo ? 0.022 + pulse * 0.006 : 0.18 + pulse * 0.7,
+    lowMid: asmrDemo ? 0.025 + Math.sin(time * .0011) * .006 : 0.15 + Math.sin(time * .004) * .08 + pulse * .25,
+    mid: asmrDemo ? 0.019 + Math.sin(time * .0015 + 1) * .005 : 0.2 + Math.sin(time * .0021 + 1) * .09,
+    high: asmrDemo ? 0.013 + Math.sin(time * .002) * .004 : 0.16 + Math.sin(time * .006) * .08,
+    volume: asmrDemo ? 0.026 + pulse * 0.004 : 0.24 + pulse * .25,
+    flux: asmrDemo ? 0.012 + pulse * 0.01 : pulse * .55,
     beat: Math.max(metrics.beat || 0, pulse),
     beatNow: asmrDemo ? false : beatNow,
     rhythmNow: asmrDemo ? false : beatNow,
@@ -4213,15 +4192,15 @@ function syntheticDemoMetrics(metrics, time) {
     accent: Math.max(metrics.accent || 0, pulse * .42),
     rhythmStrength: asmrDemo ? 0 : beatNow ? .72 : 0,
     rhythmPulse: asmrDemo ? 0 : Math.max(metrics.rhythmPulse || 0, pulse * .72),
-    frequency,
-    waveform,
+    frequency: metrics.frequency,
+    waveform: metrics.waveform,
     kickPulse: asmrDemo ? 0 : Math.max(metrics.kickPulse || 0, pulse * .72),
     bpm: Math.round(60000 / interval),
     regularity: .92,
     kickDensity: 1000 / interval,
-    brightness: forceKawaiiExcited ? 0.36 : .24,
-    relativeEnergy: forceKawaiiExcited ? 1.62 : metrics.relativeEnergy,
-    drive: forceKawaiiExcited ? 0.92 : metrics.drive,
+    brightness: .24,
+    relativeEnergy: metrics.relativeEnergy,
+    drive: metrics.drive,
     profileConfidence: .95
   };
 }
@@ -4475,7 +4454,8 @@ function animate(time) {
   const impactFx = playbackActive
     ? resolveImpactFx(currentTheme, tranceMode ? { ...metrics, rhythmPulse: textPulse } : metrics)
     : { amount: 0, bloom: 0, blur: 0, echo: 0, chroma: 0, slice: 0, exposure: 1, saturation: 1 };
-  const textFx = clamp(currentTheme.textFx ?? 1, 0.45, 1.15);
+  const finish = visualFinish(currentTheme);
+  const textFx = clamp(currentTheme.textFx ?? 1, 0, 1.15);
   const lineHot = clamp(impactFx.amount * .42 + genreFlare * .08);
   const kawaiiActive = currentTheme.id === 'kawaii-bass';
   const kawaiiState = kawaiiActive
@@ -4554,14 +4534,14 @@ function animate(time) {
     genreScale = Math.max(0.982, Math.min(1.078, genreScale));
   } else {
     if (playbackActive && metrics.rhythmNow && !asmrMode) {
-      genreVelocity -= tranceMode
+      genreVelocity -= (tranceMode
         ? .003 + metrics.rhythmPulse * .009
-        : .006 + metrics.rhythmPulse * .018;
+        : .006 + metrics.rhythmPulse * .018) * finish.textMotion;
     }
     const genreTarget = playbackActive
       ? asmrMode
         ? 0.998 + asmrBreath * 0.01
-        : 1 + textPulse * (tranceMode ? .052 : .048)
+        : 1 + textPulse * (tranceMode ? .052 : .048) * finish.textMotion
       : 1;
     genreVelocity += (genreTarget - genreScale) * 0.22 * frameScale;
     genreVelocity *= 0.69 ** frameScale;
@@ -4574,7 +4554,7 @@ function animate(time) {
       ? 0
       : asmrMode
       ? -0.35 - asmrBreath * 0.55
-      : -textPulse * (tranceMode ? 4.4 : 4.2)
+      : -textPulse * (tranceMode ? 4.4 : 4.2) * finish.textMotion
     : 0;
   if (lockStackedGenreCenter) {
     genreLiftValue = 0;
@@ -4594,19 +4574,19 @@ function animate(time) {
       : '';
   const nextGenreTransform = `${genreSkew}translateY(${genreTranslateY}) scale(${genreScale.toFixed(4)})`;
   if (genreLabel.style.transform !== nextGenreTransform) genreLabel.style.transform = nextGenreTransform;
-  const textBaseGlow = bilibiliMode ? 0 : Number(currentTheme.textBaseGlow) || 18;
-  const textSliceFx = clamp(currentTheme.textSliceFx ?? textFx, 0.05, 1.15);
-  const textEchoFx = clamp(currentTheme.textEchoFx ?? textFx, 0.05, 1.15);
+  const textBaseGlow = bilibiliMode ? 0 : Number(currentTheme.textBaseGlow ?? 18);
+  const textSliceFx = clamp(currentTheme.textSliceFx ?? textFx, 0.05, 1.15) * finish.textGlow;
+  const textEchoFx = clamp(currentTheme.textEchoFx ?? textFx, 0.05, 1.15) * finish.textGlow;
   const textMotionGate = playbackActive && !bilibiliMode ? 1 : 0;
   const gentleHardcore = currentTheme.mode === 'hardcore'
     && ['happy-hardcore', 'uk-hardcore'].includes(currentTheme.id);
   const distortedGenre = (['hardcore', 'hardstyle'].includes(currentTheme.mode) && !gentleHardcore)
     || currentTheme.mode === 'phonk'
     || currentTheme.id === 'industrial-metal';
-  const genreGlow = textBaseGlow + (genreFlare * 11 + impactFx.bloom * 18) * textFx;
-  const genreBrightness = 1 + (genreFlare * .2 + impactFx.exposure - 1) * textFx;
+  const genreGlow = (textBaseGlow + (genreFlare * 11 + impactFx.bloom * 18) * textFx) * finish.textGlow;
+  const genreBrightness = Math.min(finish.maxBrightness, 1 + (genreFlare * .2 + impactFx.exposure - 1) * textFx);
   const genreSaturation = 1 + (genreFlare * .12 + impactFx.saturation - 1) * textFx;
-  const genreBlur = impactFx.blur * .72 * textFx;
+  const genreBlur = impactFx.blur * .72 * textFx * finish.textGlow;
   const genreDistortion = playbackActive && distortedGenre ? metrics.rhythmPulse : 0;
   const genreEchoLeft = -impactFx.echo * 8 * textEchoFx * textMotionGate;
   const genreEchoRight = impactFx.echo * 8 * textEchoFx * textMotionGate;
@@ -4802,30 +4782,20 @@ window.genrePolice.onDemoTheme((theme) => {
     if (currentMetadata) transitionTo(currentMetadata);
     return;
   }
-  const [genre, demoTitle, demoArtist] = demoTracks[theme.id] || [theme.label, 'Visual Evidence', 'Genre Police Unit'];
-  const title = theme.easterEgg ? 'Genre Police (feat. D-NiAL)' : demoTitle;
-  const artist = theme.easterEgg ? 'S3RL' : demoArtist;
+  const [genre, title, artist] = demoTracks[theme.id] || [theme.label, 'Visual Evidence', 'Genre Police Unit'];
   const demoMetadata = {
     playing: true,
     title,
     artist,
-    hardcoreTanoc: Boolean(theme.captureTanoc),
     genre: {
       ...theme,
       label: genre
     },
     genreSource: 'VISUAL DEMO',
-    artwork: theme.captureArtwork || currentMetadata?.artwork || '',
+    artwork: currentMetadata?.artwork || '',
     positionMs: 8200,
     durationMs: 24000,
-    lyrics: theme.captureLyrics ? {
-      synced: true,
-      lines: [
-        { atMs: 1000, text: 'Signal found in the rhythm', translation: '在节奏中发现信号' },
-        { atMs: 7000, text: 'Every color moves with sound', translation: '每种色彩都随声音流动' },
-        { atMs: 13000, text: 'Genre police on the frequency', translation: '曲风警察已锁定频率' }
-      ]
-    } : null
+    lyrics: null
   };
   syncPlaybackClock(demoMetadata, performance.now(), { force: true });
   transitionTo(demoMetadata);
@@ -5824,7 +5794,7 @@ window.genrePolice.getConfig().then((config) => {
   latestAudioGenreModelState = config.audioGenreModelState || latestAudioGenreModelState;
   lastFmInput.value = config.lastFmApiKey || '';
   discogsTokenInput.value = config.discogsToken || '';
-  appVersionLabel.textContent = config.appVersion || '0.3.1';
+  appVersionLabel.textContent = config.appVersion || '0.3.2';
   genreOptions = Array.isArray(config.genreOptions) ? config.genreOptions : [];
   applyLanguage(config.language);
   setLyricsEnabled(config.lyricsEnabled !== false);

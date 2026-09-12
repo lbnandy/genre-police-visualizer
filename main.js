@@ -47,6 +47,7 @@ const {
   setAudioGenreMemory
 } = require('./src/audio-genre-memory');
 const {
+  audioGenreCompatibilityId,
   hasSignificantPlaybackSeek,
   hasAudioGenreCompatibilityProfile,
   isBroadAudioGenre,
@@ -579,11 +580,9 @@ function loadConfig() {
   if (desktopLayerEnabled) alwaysOnTop = false;
   config.alwaysOnTop = alwaysOnTop;
   config.desktopLayer = desktopLayerEnabled;
-  config.uiScale = normalizeUiScale(process.env.GP_UI_SCALE || config.uiScale);
-  config.layoutMode = normalizeLayoutMode(process.env.GP_LAYOUT_MODE || config.layoutMode);
-  config.language = process.env.GP_CAPTURE_LANGUAGE
-    ? normalizeLocale(process.env.GP_CAPTURE_LANGUAGE, 'en')
-    : resolveInitialLocale(storedLanguage, app.getLocale());
+  config.uiScale = normalizeUiScale(config.uiScale);
+  config.layoutMode = normalizeLayoutMode(config.layoutMode);
+  config.language = resolveInitialLocale(storedLanguage, app.getLocale());
   config.lyricDelayMs = normalizeLyricDelayMs(config.lyricDelayMs);
   config.lyricsEnabled = config.lyricsEnabled !== false;
   config.lyricTranslationEnabled = config.lyricTranslationEnabled !== false;
@@ -610,7 +609,7 @@ function loadConfig() {
   config.recordingQuickButtonVisible = config.recordingQuickButtonVisible !== false;
   config.snapshotQuickButtonVisible = config.snapshotQuickButtonVisible !== false;
   config.stageOutputTextVisible = config.stageOutputTextVisible !== false;
-  config.fullscreenLayoutMode = (process.env.GP_CAPTURE_FULLSCREEN_LAYOUT || config.fullscreenLayoutMode) === 'stacked'
+  config.fullscreenLayoutMode = config.fullscreenLayoutMode === 'stacked'
     ? 'stacked'
     : 'split';
   config.preferredMediaSource = normalizeMediaSource(config.preferredMediaSource);
@@ -621,11 +620,9 @@ function loadConfig() {
   const storedGenreArtistRules = JSON.stringify(config.genreArtistRules || []);
   config.genreArtistRules = normalizeGenreArtistRules(config.genreArtistRules, Object.keys(THEMES));
   const genreArtistRulesSanitized = storedGenreArtistRules !== JSON.stringify(config.genreArtistRules);
-  const uiScaleMigrated = process.env.GP_UI_SCALE === undefined
-    && Number.isFinite(Number(storedUiScale))
+  const uiScaleMigrated = Number.isFinite(Number(storedUiScale))
     && Math.abs(Number(storedUiScale) - config.uiScale) > 0.000001;
-  const languageInitialized = process.env.GP_CAPTURE_LANGUAGE === undefined
-    && String(storedLanguage || '').trim() !== config.language;
+  const languageInitialized = String(storedLanguage || '').trim() !== config.language;
   const dependentGenreSettingSanitized = storedLocalGenreModelEnabled === false
     && storedDynamicGenreDetectionEnabled === true;
   if (sanitized.changed || customGenresSanitized || genreArtistRulesSanitized || uiScaleMigrated
@@ -697,7 +694,7 @@ async function checkForUpdates({ manual = false, notify = false } = {}) {
 }
 
 function scheduleAutomaticUpdateCheck() {
-  if (process.env.GP_CAPTURE_PATH || updateCheckTimer) return;
+  if (updateCheckTimer) return;
   updateCheckTimer = setTimeout(() => {
     updateCheckTimer = null;
     void checkForUpdates({ notify: true });
@@ -737,7 +734,7 @@ function assetPath(name) {
 
 function sendRhythmModel(payload) {
   rhythmModelState = payload;
-  if (process.env.GP_DEBUG_RHYTHM && (payload.type !== 'rhythm' || payload.peak)) {
+  if (!app.isPackaged && process.env.GP_DEBUG_RHYTHM && (payload.type !== 'rhythm' || payload.peak)) {
     console.info('Local rhythm model:', payload);
   }
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('rhythm-model', payload);
@@ -847,6 +844,7 @@ function rememberedAudioGenreDecision(memory = currentAudioGenreMemory) {
     genreId: memory.genreId,
     confidence: memory.confidence,
     margin: memory.margin,
+    compatibilityScores: memory.compatibilityScores,
     acceptedWindows: memory.acceptedWindows,
     remembered: true
   };
@@ -931,15 +929,17 @@ function audioGenreContext(metadata = lastBaseResolvedMetadata) {
         confidence: currentAudioGenreMemory.confidence,
         margin: currentAudioGenreMemory.margin,
         scores: currentAudioGenreMemory.scores,
+        compatibilityScores: currentAudioGenreMemory.compatibilityScores,
         coverageRatio: currentAudioGenreMemory.coverageRatio,
         fullPlaybackEvidence: true
       }
     : null;
   if (memoryPrior?.genreId) priorGenreIds.push(memoryPrior.genreId);
-  const metadataAudioFamily = audioFamilyForGenreId(metadata?.genre?.id);
+  const metadataAudioBaseline = audioGenreCompatibilityId(metadata?.genre?.id)
+    || audioFamilyForGenreId(metadata?.genre?.id);
   const metadataBaseline = (dynamicEnabled && kind === 'specific')
-    || (kind === 'artist' && hasAudioGenreCompatibilityProfile(metadataAudioFamily))
-    ? metadataAudioFamily
+    || (kind === 'artist' && hasAudioGenreCompatibilityProfile(metadataAudioBaseline))
+    ? metadataAudioBaseline
     : '';
   return {
     dynamicEnabled,
@@ -1001,6 +1001,8 @@ function fuseAudioGenreDecision(baseMetadata, decision) {
     baseGenreId: baseGenre.id,
     decisionGenreId: decision.genreId,
     decisionStage: decision.stage,
+    decisionConfidence: decision.confidence,
+    decisionCompatibilityScores: decision.compatibilityScores,
     dynamicEnabled: config.dynamicGenreDetectionEnabled === true
   });
   const rememberedResult = decision.stage === 'memory';
@@ -1094,7 +1096,7 @@ function publishCurrentGenre({ force = false } = {}) {
   const previousGenreUncertain = Boolean(lastResolvedMetadata?.genreUncertain);
   const previousGenreAnalysisPending = Boolean(lastResolvedMetadata?.genreAnalysisPending);
   lastResolvedMetadata = next;
-  if (process.env.GP_DEBUG_AUDIO_GENRE && currentAudioGenreDecision) {
+  if (!app.isPackaged && process.env.GP_DEBUG_AUDIO_GENRE && currentAudioGenreDecision) {
     console.info('Local audio genre publish:', {
       stage: currentAudioGenreDecision.stage,
       baseGenreId: base.genre?.id,
@@ -1127,7 +1129,7 @@ function handleAudioGenreModelEvent(payload) {
   if (payload?.type !== 'prediction') {
     audioGenreModelState = payload || audioGenreModelState;
     publishAudioGenreModelStatus();
-    if (process.env.GP_DEBUG_AUDIO_GENRE && payload?.type !== 'reset') {
+    if (!app.isPackaged && process.env.GP_DEBUG_AUDIO_GENRE && payload?.type !== 'reset') {
       console.info('Local audio genre model:', payload);
     }
     publishCurrentGenre();
@@ -1148,7 +1150,7 @@ function handleAudioGenreModelEvent(payload) {
       .filter(Boolean)
       .slice(-12)
   };
-  if (process.env.GP_DEBUG_AUDIO_GENRE) {
+  if (!app.isPackaged && process.env.GP_DEBUG_AUDIO_GENRE) {
     const summarize = (result = {}) => ({
       id: result.id,
       confidence: Number(result.confidence || 0).toFixed(3),
@@ -1773,13 +1775,7 @@ function setDemoTheme(id = '') {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('demo-theme', id ? {
     id,
-    ...themeFor(id),
-    synthetic: Boolean(process.env.GP_CAPTURE_PATH),
-    captureLyrics: Boolean(process.env.GP_CAPTURE_LYRICS),
-    captureKawaiiExcited: Boolean(process.env.GP_CAPTURE_KAWAII_EXCITED),
-    captureTanoc: Boolean(process.env.GP_CAPTURE_TANOC),
-    captureArtwork: process.env.GP_CAPTURE_ARTWORK || '',
-    easterEgg: process.env.GP_CAPTURE_EASTER_EGG === 'genre-police'
+    ...themeFor(id)
   } : null);
   rebuildTrayMenu();
 }
@@ -1905,7 +1901,7 @@ function defaultWindowPosition() {
 }
 
 function saveWindowPositionNow() {
-  if (!mainWindow || mainWindow.isDestroyed() || process.env.GP_CAPTURE_PATH || stageOutputActive) return;
+  if (!mainWindow || mainWindow.isDestroyed() || stageOutputActive) return;
   const bounds = mainWindow.getBounds();
   saveConfig({ windowPosition: { x: bounds.x, y: bounds.y } });
 }
@@ -1988,245 +1984,6 @@ function createWindow() {
     mainWindow.webContents.send('local-genre-model-status', audioGenreModelStatus());
     syncMainWindowBackgroundActivity();
     scheduleAutomaticUpdateCheck();
-    if (process.env.GP_DEMO_THEME) {
-      setDemoTheme(process.env.GP_DEMO_THEME);
-      setTimeout(() => setDemoTheme(process.env.GP_DEMO_THEME), 320);
-    }
-    if (process.env.GP_CAPTURE_SETTINGS || process.env.GP_CAPTURE_SCALE_MENU
-      || process.env.GP_CAPTURE_MEDIA_MENU || process.env.GP_CAPTURE_CUSTOM_GENRES
-      || process.env.GP_CAPTURE_GENRE_ARTISTS
-      || process.env.GP_CAPTURE_DIAGNOSTICS
-      || process.env.GP_CAPTURE_NETEASE_HINT || process.env.GP_CAPTURE_SETTINGS_PANE
-      || (process.env.GP_CAPTURE_LANGUAGE && !process.env.GP_CAPTURE_NETEASE_TOAST)
-      || process.env.GP_CAPTURE_CORRECTION_QUERY
-      || process.env.GP_CAPTURE_CUSTOM_GENRE_DELETE) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript("document.querySelector('#settings-button')?.click()").catch(() => {});
-      }, 480);
-    }
-    if (process.env.GP_CAPTURE_SETTINGS_PANE) {
-      setTimeout(() => {
-        const pane = JSON.stringify(String(process.env.GP_CAPTURE_SETTINGS_PANE));
-        mainWindow?.webContents.executeJavaScript(
-          `document.querySelector('.settings-tab[data-settings-pane=' + ${pane} + ']')?.click()`
-        ).catch(() => {});
-      }, 780);
-    }
-    if (process.env.GP_CAPTURE_CORRECTION) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript(`(() => {
-          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
-          const settings = document.querySelector('.settings-scroll');
-          const panel = document.querySelector('.genre-correction-settings');
-          if (settings && panel) settings.scrollTo({ top: Math.max(0, panel.offsetTop - 58) });
-          document.querySelector('#genre-correction-input')?.focus();
-        })()`).catch(() => {});
-      }, 850);
-    }
-    if (process.env.GP_CAPTURE_CORRECTION_QUERY) {
-      setTimeout(() => {
-        const query = JSON.stringify(String(process.env.GP_CAPTURE_CORRECTION_QUERY));
-        mainWindow?.webContents.executeJavaScript(`(() => {
-          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
-          const input = document.querySelector('#genre-correction-input');
-          const settings = document.querySelector('.settings-scroll');
-          const panel = document.querySelector('.genre-correction-settings');
-          if (!input) return;
-          input.disabled = false;
-          input.value = ${query};
-          input.dataset.genreId = '';
-          input.focus();
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          if (settings && panel) settings.scrollTo({ top: Math.max(0, panel.offsetTop - 58) });
-        })()`).catch(() => {});
-      }, 900);
-    }
-    if (process.env.GP_CAPTURE_CONTROLS) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript("document.body.classList.add('interactive', 'pointer-active')").catch(() => {});
-      }, 480);
-    }
-    if (process.env.GP_CAPTURE_STAGE_OUTPUT) {
-      setTimeout(() => setStageOutput(true), 720);
-    }
-    if (process.env.GP_CAPTURE_STAGE_SETTINGS) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript(
-          "document.querySelector('#fullscreen-settings-button')?.click()"
-        ).catch(() => {});
-      }, 980);
-    }
-    if (process.env.GP_CAPTURE_GENRE_QUICK) {
-      setTimeout(() => {
-        setDemoTheme('');
-        const raw = {
-          title: 'Midnight Circuit',
-          artist: 'Genre Police Unit',
-          album: 'Visual Evidence',
-          playing: true,
-          status: 'Playing',
-          positionMs: 8200,
-          durationMs: 240000,
-          source: 'Capture'
-        };
-        lastRawMetadata = raw;
-        lastTrackKey = 'genre police unit::midnight circuit::visual evidence';
-        lastBaseResolvedMetadata = {
-          ...raw,
-          displayArtist: raw.artist,
-          genre: themeWithId('synthwave'),
-          genreSource: 'Capture metadata',
-          genreSources: ['Capture metadata'],
-          genreEvidence: { type: 'classifier', matched: 'Synthwave' }
-        };
-        lastResolvedMetadata = withGenreReliability(lastBaseResolvedMetadata);
-        currentAudioGenreSnapshot = {
-          trackKey: lastTrackKey,
-          acceptedWindows: 12,
-          track: { ranked: [{ id: 'synthwave' }, { id: 'electro-house' }, { id: 'progressive-house' }] },
-          segment: { ranked: [{ id: 'trance' }, { id: 'electro-house' }] },
-          winnerHistory: ['synthwave']
-        };
-        mainWindow?.webContents.send('now-playing', lastResolvedMetadata);
-        setTimeout(() => {
-          mainWindow?.webContents.executeJavaScript(
-            "document.querySelector('#genre')?.click()"
-          ).catch(() => {});
-        }, 700);
-      }, 620);
-    }
-    if (process.env.GP_CAPTURE_SCALE_MENU) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript("document.querySelector('#ui-scale-button')?.click()").catch(() => {});
-      }, 760);
-    }
-    if (process.env.GP_CAPTURE_MEDIA_MENU) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript(`(() => {
-          document.querySelector('.settings-tab[data-settings-pane="playback"]')?.click();
-          const settings = document.querySelector('.settings-scroll');
-          const panel = document.querySelector('.media-source-settings');
-          if (settings && panel) settings.scrollTo({ top: Math.max(0, panel.offsetTop - 68) });
-          document.querySelector('#media-source-button')?.click();
-        })()`).catch(() => {});
-      }, 820);
-    }
-    if (process.env.GP_CAPTURE_CUSTOM_GENRES) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript(`(() => {
-          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
-          document.querySelector('#custom-genre-panel')?.setAttribute('open', '');
-          const settings = document.querySelector('.settings-scroll');
-          const panel = document.querySelector('.custom-genre-settings');
-          if (settings && panel) {
-            const top = settings.scrollTop + panel.parentElement.getBoundingClientRect().top
-              - settings.getBoundingClientRect().top - 28;
-            settings.scrollTo({ top: Math.max(0, top) });
-          }
-        })()`).catch(() => {});
-      }, 820);
-    }
-    if (process.env.GP_CAPTURE_GENRE_ARTISTS) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript(`(() => {
-          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
-          document.querySelector('#genre-artist-panel')?.setAttribute('open', '');
-          const settings = document.querySelector('.settings-scroll');
-          const panel = document.querySelector('#genre-artist-panel');
-          if (settings && panel) {
-            const top = settings.scrollTop + panel.getBoundingClientRect().top
-              - settings.getBoundingClientRect().top - 178;
-            settings.scrollTo({ top: Math.max(0, top) });
-          }
-          setTimeout(() => document.querySelector('#genre-artist-genre')?.click(), 160);
-        })()`).catch(() => {});
-      }, 820);
-    }
-    if (process.env.GP_CAPTURE_DIAGNOSTICS) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript(`(() => {
-          document.querySelector('.settings-tab[data-settings-pane="app"]')?.click();
-          const panel = document.querySelector('#diagnostics-panel');
-          const settings = document.querySelector('.settings-scroll');
-          if (!panel || !settings) return;
-          panel.open = true;
-          panel.dispatchEvent(new Event('toggle'));
-          const top = settings.scrollTop + panel.getBoundingClientRect().top
-            - settings.getBoundingClientRect().top - 150;
-          settings.scrollTo({ top: Math.max(0, top) });
-        })()`).catch(() => {});
-      }, 860);
-    }
-    if (process.env.GP_CAPTURE_CUSTOM_GENRE_DELETE) {
-      setTimeout(() => {
-        mainWindow?.webContents.executeJavaScript(`(() => {
-          document.querySelector('.settings-tab[data-settings-pane="genre"]')?.click();
-          document.querySelector('#custom-genre-panel')?.setAttribute('open', '');
-          const timer = setInterval(() => {
-            const remove = document.querySelector('.custom-genre-item [data-action="delete"]');
-            if (!remove) return;
-            clearInterval(timer);
-            remove.click();
-            setTimeout(() => {
-              document.querySelector('.custom-genre-item [data-action="confirm-delete"]')
-                ?.closest('.custom-genre-item')?.scrollIntoView({ block: 'center' });
-            }, 80);
-          }, 100);
-        })()`).catch(() => {});
-      }, 900);
-    }
-    if (process.env.GP_CAPTURE_NETEASE_HINT) {
-      setTimeout(() => {
-        mainWindow?.webContents.send('media-sources', {
-          sources: [],
-          currentSource: '',
-          preferredSource: '',
-          ignoredSources: [],
-          detectedPlayers: { neteaseRunning: true, neteaseSmtcAvailable: false }
-        });
-        mainWindow?.webContents.executeJavaScript(`(() => {
-          document.querySelector('.settings-tab[data-settings-pane="playback"]')?.click();
-          const settings = document.querySelector('.settings-scroll');
-          const panel = document.querySelector('.media-source-settings');
-          if (settings && panel) settings.scrollTo({ top: Math.max(0, panel.offsetTop - 56) });
-        })()`).catch(() => {});
-      }, 820);
-    }
-    if (process.env.GP_CAPTURE_NETEASE_TOAST) {
-      setTimeout(() => {
-        mainWindow?.webContents.send('media-sources', {
-          sources: [],
-          currentSource: '',
-          preferredSource: '',
-          ignoredSources: [],
-          detectedPlayers: { neteaseRunning: true, neteaseSmtcAvailable: false }
-        });
-      }, 820);
-    }
-    if (process.env.GP_CAPTURE_UPDATE_TOAST) {
-      setTimeout(() => {
-        mainWindow?.webContents.send('update-status', {
-          ...updateStatus('available'),
-          latestVersion: 'v0.3.1',
-          releaseName: 'v0.3.1',
-          releaseUrl: `${UPDATE_RELEASES_URL}/tag/v0.3.1`
-        });
-      }, 820);
-    }
-    if (process.env.GP_CAPTURE_PATH && process.env.GP_CAPTURE_BACKDROP === 'bright') {
-      setTimeout(() => {
-        const profile = deriveBackdropProfile({ r: 250, g: 250, b: 250, luminance: 0.98, saturation: 0 });
-        mainWindow.webContents.send('backdrop-profile', profile);
-      }, 520);
-    }
-    if (process.env.GP_CAPTURE_PATH) {
-      const captureDelay = Math.max(500, Number(process.env.GP_CAPTURE_DELAY) || 5500);
-      setTimeout(async () => {
-        const image = await mainWindow.webContents.capturePage();
-        fs.writeFileSync(process.env.GP_CAPTURE_PATH, image.toPNG());
-        app.quit();
-      }, captureDelay);
-    }
   });
   mainWindow.on('closed', () => {
     stopMainWindowPointerHitTest();
@@ -2241,7 +1998,7 @@ function createWindow() {
     mainWindow = null;
   });
 
-  if (process.argv.includes('--dev')) mainWindow.webContents.openDevTools({ mode: 'detach' });
+  if (!app.isPackaged && process.argv.includes('--dev')) mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
 function setupAudioCapture() {
@@ -2403,11 +2160,6 @@ function cancelRecording(event, payload) {
 async function sampleWindowBackdrop() {
   if (!usesAdaptiveBackdrop()) return;
   if (backdropSampling || !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible() || mainWindow.isMinimized()) return;
-  if (process.env.GP_CAPTURE_PATH && process.env.GP_CAPTURE_BACKDROP === 'bright') {
-    const profile = deriveBackdropProfile({ r: 250, g: 250, b: 250, luminance: 0.98, saturation: 0 });
-    mainWindow.webContents.send('backdrop-profile', profile);
-    return;
-  }
   backdropSampling = true;
   try {
     const windowBounds = mainWindow.getBounds();
@@ -2472,15 +2224,12 @@ function mediaPreferenceArguments(preferredSource = config.preferredMediaSource)
 
 function publishMediaSources(sources = [], currentSource = lastRawMetadata?.source || '', playerState = null) {
   const rawSources = [...new Set(sources.map(normalizeMediaSource).filter(Boolean))];
-  let nextDetectedPlayers = {
+  const nextDetectedPlayers = {
     neteaseRunning: typeof playerState?.neteaseRunning === 'boolean'
       ? playerState.neteaseRunning
       : detectedMediaPlayers.neteaseRunning,
     neteaseSmtcAvailable: rawSources.some((source) => /cloudmusic|netease/i.test(source))
   };
-  if (process.env.GP_CAPTURE_NETEASE_HINT || process.env.GP_CAPTURE_NETEASE_TOAST) {
-    nextDetectedPlayers = { neteaseRunning: true, neteaseSmtcAvailable: false };
-  }
   const normalized = [...new Set([
     ...rawSources,
     config.preferredMediaSource,
@@ -2592,7 +2341,6 @@ async function resolveLyricsFor(raw, key) {
 }
 
 async function handleMetadata(raw) {
-  if (process.env.GP_DEMO_THEME) return;
   const previousRawMetadata = lastRawMetadata;
   const rawKey = `${raw.artist || raw.albumArtist || ''}::${raw.title || ''}::${raw.album || ''}`.toLowerCase();
   const previousKey = previousRawMetadata
@@ -3019,7 +2767,7 @@ ipcMain.handle('diagnostics:status', () => ({
   audioGenreAnalyzing: shouldAnalyzeCurrentGenreAudio()
 }));
 ipcMain.on('diagnostics:render-performance', (event, payload) => {
-  if (!process.argv.includes('--dev')
+  if (app.isPackaged || !process.argv.includes('--dev')
     || !mainWindow
     || mainWindow.isDestroyed()
     || event.sender !== mainWindow.webContents) return;

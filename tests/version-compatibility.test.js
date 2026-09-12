@@ -14,8 +14,8 @@ const { sanitizeStoredConfig } = require('../src/config-sanitizer');
 const { createGenreCorrections, getGenreCorrection } = require('../src/genre-corrections');
 const { GENRE_DATA_VERSION, unpackGenreData } = require('../src/genre-data-transfer');
 
-test('0.3.1 keeps the 0.3.0 application identity and persisted data formats', () => {
-  assert.equal(pkg.version, '0.3.1');
+test('0.3.2 keeps the 0.3.x application identity and persisted data formats', () => {
+  assert.equal(pkg.version, '0.3.2');
   assert.equal(pkg.name, 'genre-police-visualizer');
   assert.equal(pkg.build.appId, 'com.genrepolice.visualizer');
   assert.equal(pkg.build.productName, 'Genre Police Visualizer');

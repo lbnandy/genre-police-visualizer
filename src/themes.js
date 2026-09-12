@@ -257,7 +257,7 @@ const THEMES = {
   },
   'midtempo-bass': {
     family: 'trap', parent: 'BASS MUSIC', label: 'MIDTEMPO BASS',
-    font: '"Oxanium"', accent: '#ff315c', accent2: '#633dff', hot: '#b8fff3',
+    font: '"Oxanium"', accent: '#ed4560', accent2: '#69aeb0', hot: '#d2fff1',
     mode: 'trap', energy: 1.12
   },
   'glitch-hop': {
@@ -267,7 +267,7 @@ const THEMES = {
   },
   moombahton: {
     family: 'trap', parent: 'EDM', label: 'MOOMBAHTON',
-    font: '"Audiowide"', accent: '#ff5b21', accent2: '#ff3fa8', hot: '#ffe45c',
+    font: '"Audiowide"', accent: '#ff7249', accent2: '#32d4b1', hot: '#ffe48b',
     mode: 'trap', energy: 1.03
   },
   neurofunk: {
@@ -413,12 +413,13 @@ const THEMES = {
   },
   'nu-disco': {
     family: 'house', parent: 'DISCO', label: 'NU-DISCO',
-    font: '"Audiowide"', accent: '#ff4fc3', accent2: '#ffb000', hot: '#75fff1',
+    font: '"Audiowide"', accent: '#f76bac', accent2: '#6edbc9', hot: '#fff4d7',
     mode: 'house', energy: 0.92
   },
   'electro-swing': {
     family: 'breakbeat', parent: 'EDM', label: 'ELECTRO SWING',
-    font: '"Space Grotesk"', accent: '#efb34d', accent2: '#ff425d', hot: '#fff5d5',
+    font: '"Righteous"', accent: '#e7bd71', accent2: '#58c6ba', hot: '#fff1d5',
+    genreInk: '#f6e1b7', genreInk2: '#f6e1b7', genreInkEdge: '#3b928c', letterSpacing: '0px',
     mode: 'breakbeat', energy: 0.98
   },
   synthwave: {
@@ -448,12 +449,14 @@ const THEMES = {
   },
   'city-pop': {
     family: 'j-pop', parent: 'J-POP', label: 'CITY POP',
-    font: '"Space Grotesk"', accent: '#ff7a59', accent2: '#39d6d0', hot: '#ffe7a8',
+    font: '"Righteous"', accent: '#ff8291', accent2: '#69cde0', hot: '#fff3e5',
+    genreInk: '#fff3e5', genreInk2: '#ffadb3', genreInkEdge: '#5686ae', letterSpacing: '0px',
     mode: 'j-pop', energy: 0.86
   },
   anime: {
     family: 'j-pop', parent: 'JAPANESE MUSIC', label: 'ANIME',
-    font: '"Audiowide"', accent: '#ff477e', accent2: '#00dcff', hot: '#fff55c',
+    font: '"Bungee"', accent: '#ff567c', accent2: '#46cbf0', hot: '#fff3b0',
+    genreInk: '#fff7eb', genreInk2: '#fff7eb', genreInkEdge: '#ed416e', letterSpacing: '0px',
     mode: 'j-pop', energy: 1.04
   },
   vocaloid: {
@@ -561,27 +564,30 @@ const THEMES = {
   },
   'disco-funk': {
     family: 'pop', parent: 'FUNK / SOUL', label: 'DISCO',
-    font: '"Audiowide"', accent: '#ff4fbd', accent2: '#ffb000', hot: '#7dfff2',
+    font: '"Righteous"', accent: '#efa55b', accent2: '#de568e', hot: '#fff0c6',
     mode: 'house', energy: 0.94
   },
   'singer-songwriter': {
     family: 'rnb', parent: 'FOLK / COUNTRY', treeParent: 'FOLK / COUNTRY', label: 'SINGER-SONGWRITER',
-    font: '"Space Grotesk"', accent: '#f1ae62', accent2: '#6faeff', hot: '#fff4df',
+    font: '"Space Grotesk"', accent: '#d5b78c', accent2: '#87aeba', hot: '#f2eee6',
+    genreInk: '#eee7da', genreInk2: '#eee7da', fontWeight: 500, letterSpacing: '0px',
     mode: 'rnb', energy: 0.72
   },
   country: {
     family: 'rock', parent: 'FOLK / COUNTRY', treeParent: 'FOLK / COUNTRY', label: 'COUNTRY',
-    font: '"Space Grotesk"', accent: '#ff9a3c', accent2: '#4fb8ff', hot: '#fff3d7',
+    font: '"Georgia"', accent: '#d9ae75', accent2: '#7caab5', hot: '#f5eee0',
+    genreInk: '#eee2cd', genreInk2: '#eee2cd', fontWeight: 700, letterSpacing: '0px',
     mode: 'rock', energy: 0.82
   },
   folk: {
     family: 'rnb', parent: 'FOLK / COUNTRY', treeParent: 'FOLK / COUNTRY', label: 'FOLK',
-    font: '"Space Grotesk"', accent: '#e6b85c', accent2: '#63c38b', hot: '#fff5dc',
+    font: '"Georgia"', accent: '#b6c8a1', accent2: '#bca98a', hot: '#f2ecde',
+    genreInk: '#e9eddb', genreInk2: '#e9eddb', fontWeight: 400, letterSpacing: '0px',
     mode: 'rnb', energy: 0.72
   },
   bebop: {
     family: 'jazz', parent: 'JAZZ', label: 'BEBOP',
-    font: '"Space Grotesk"', accent: '#ffbf4f', accent2: '#b76cff', hot: '#fff4d6',
+    font: '"Bebas Neue"', accent: '#efba62', accent2: '#dc726c', hot: '#f5edda', letterSpacing: '0px',
     mode: 'rnb', energy: 0.9
   },
   'swing-jazz': {
@@ -601,22 +607,23 @@ const THEMES = {
   },
   jazz: {
     family: 'jazz', parent: 'JAZZ / IMPROVISED', treeParent: 'JAZZ', label: 'JAZZ',
-    font: '"Space Grotesk"', accent: '#bd75ff', accent2: '#f4ba55', hot: '#fff0ce',
+    font: '"Georgia"', accent: '#e8ba6b', accent2: '#68b7b1', hot: '#f4edde', fontWeight: 700, letterSpacing: '0px',
+    genreInk: '#f4edde', genreInk2: '#e8ba6b',
     mode: 'rnb', energy: 0.76
   },
   baroque: {
     family: 'classical', parent: 'CLASSICAL', label: 'BAROQUE',
-    font: '"Space Grotesk"', accent: '#d9b45f', accent2: '#76a8dd', hot: '#fff4d8',
+    font: '"Georgia"', accent: '#d4bf8a', accent2: '#94b8bc', hot: '#f3ecdd', fontWeight: 400, letterSpacing: '0px',
     mode: 'trance', energy: 0.68
   },
   'romantic-classical': {
     family: 'classical', parent: 'CLASSICAL', label: 'ROMANTIC',
-    font: '"Space Grotesk"', accent: '#cf7f9f', accent2: '#769fe8', hot: '#fff0dc',
+    font: '"Georgia"', accent: '#d3a0af', accent2: '#98aac8', hot: '#f4eade', fontWeight: 400, letterSpacing: '0px',
     mode: 'trance', energy: 0.74
   },
   opera: {
     family: 'classical', parent: 'CLASSICAL', label: 'OPERA',
-    font: '"Space Grotesk"', accent: '#d85f70', accent2: '#d7ae55', hot: '#fff3df',
+    font: '"Georgia"', accent: '#cf818e', accent2: '#cdb27b', hot: '#f3e8dc', fontWeight: 700, letterSpacing: '0px',
     mode: 'trance', energy: 0.78
   },
   'modern-classical': {
@@ -626,12 +633,12 @@ const THEMES = {
   },
   classical: {
     family: 'classical', parent: 'CLASSICAL MUSIC', treeParent: 'CLASSICAL', label: 'CLASSICAL',
-    font: '"Space Grotesk"', accent: '#7aa7ff', accent2: '#d8b96a', hot: '#f4ead7',
+    font: '"Georgia"', accent: '#c3d1ce', accent2: '#bdaa80', hot: '#f4eddf', fontWeight: 400, letterSpacing: '0px',
     mode: 'trance', energy: 0.64
   },
   soundtrack: {
     family: 'trance', parent: 'STAGE & SCREEN', treeParent: 'STAGE & SCREEN', label: 'SOUNDTRACK',
-    font: '"Orbitron"', accent: '#866cff', accent2: '#e2b65a', hot: '#eaf5ff',
+    font: '"Space Grotesk"', accent: '#91b8cc', accent2: '#dac291', hot: '#f2efdf', fontWeight: 500, letterSpacing: '0px',
     mode: 'trance', energy: 0.8
   },
   latin: {

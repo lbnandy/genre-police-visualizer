@@ -30,7 +30,7 @@ test('hard families and soft families do not share the same particle material', 
   assert.equal(genreMotionProfile({ id: 'k-pop', mode: 'pop' }).kind, 'sparkle');
   assert.equal(genreMotionProfile({ id: 'city-pop', mode: 'j-pop' }).kind, 'mote');
   assert.equal(genreMotionProfile({ id: 'anime', mode: 'j-pop' }).flow, 'radial');
-  assert.equal(genreMotionProfile({ id: 'vocaloid', mode: 'j-pop' }).kind, 'bead');
+  assert.equal(genreMotionProfile({ id: 'vocaloid', mode: 'j-pop' }).kind, 'square');
   assert.ok(
     genreMotionProfile({ id: 'anime', mode: 'j-pop' }).speed
       > genreMotionProfile({ id: 'city-pop', mode: 'j-pop' }).speed

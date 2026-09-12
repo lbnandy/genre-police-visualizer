@@ -582,7 +582,7 @@ body:is([data-tanoc-face="normal"], [data-tanoc-face="hard"]) #artwork.loaded {
   --kawaii-brow-lift: 0px;
   --kawaii-line-hot: 0%;
   --kawaii-mouth-hot: 0%;
-  --kawaii-ink: color-mix(in srgb, #5b365f 75%, var(--accent));
+  --kawaii-ink: #ffe5f4;
   --kawaii-mouth: color-mix(in srgb, #e88cac 88%, var(--accent));
   --kawaii-live-ink: color-mix(in srgb, var(--kawaii-ink), var(--hot) var(--kawaii-line-hot));
   --kawaii-live-mouth: color-mix(in srgb, var(--kawaii-mouth), var(--hot) var(--kawaii-mouth-hot));
@@ -615,7 +615,7 @@ body[data-genre="kawaii-bass"] #monogram { opacity: 0; }
   width: 100%;
   height: 100%;
   overflow: visible;
-  filter: drop-shadow(0 0 1.8px color-mix(in srgb, var(--kawaii-live-ink) 62%, transparent));
+  filter: none;
   transform:
     scaleX(calc(1 + var(--kawaii-pulse) * .022))
     scaleY(calc(1 + var(--kawaii-energy) * .008 - var(--kawaii-pulse) * .014));
@@ -648,11 +648,11 @@ body[data-genre="kawaii-bass"] #monogram { opacity: 0; }
 .kawaii-fine-stroke {
   fill: none;
   stroke: var(--kawaii-live-ink);
-  stroke-width: 1.35;
+  stroke-width: 1.55;
   stroke-linecap: round;
 }
 
-.kawaii-mouth-line { stroke-width: 1.8; }
+.kawaii-mouth-line { stroke-width: 2; }
 
 .kawaii-normal-eyes,
 .kawaii-normal-brows,
@@ -895,6 +895,23 @@ body[data-layout="side"] #genre {
 }
 
 #genre-note[hidden] { display: none; }
+
+body:is([data-family="classical"], [data-genre="folk"], [data-genre="country"], [data-genre="singer-songwriter"], [data-genre="electro-swing"]) #genre {
+  --genre-depth-alpha: 12%;
+  --genre-depth-x: 1px;
+  --genre-depth-y: 1px;
+}
+
+body:is([data-family="classical"], [data-genre="folk"], [data-genre="country"], [data-genre="singer-songwriter"], [data-genre="anime"]) #genre-face {
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+body[data-genre="anime"] #genre {
+  --genre-depth-x: 2px;
+  --genre-depth-y: 3px;
+  --genre-depth-alpha: 75%;
+}
 
 #genre::before {
   color: var(--accent);
@@ -5289,12 +5306,7 @@ body[data-background-style="themed"] .themed-backdrop:is(
   [data-genre="tropical-house"],
   [data-genre="afro-house"],
   [data-genre="amapiano"],
-  [data-genre="city-pop"],
-  [data-genre="singer-songwriter"],
-  [data-genre="folk"],
-  [data-genre="country"],
   [data-genre="reggae"],
-  [data-genre="electro-swing"],
   [data-genre="nu-disco"],
   [data-genre="disco-funk"],
   [data-genre="disco-house"],
@@ -5335,6 +5347,18 @@ body[data-background-style="themed"] .themed-backdrop:is(
       color-mix(in srgb, var(--accent-2) 8%, #0a0c19),
       color-mix(in srgb, var(--accent) 9%, #140b15) 54%,
       #070810);
+}
+
+body[data-background-style="themed"] .themed-backdrop:is([data-family="classical"], [data-genre="folk"], [data-genre="country"], [data-genre="singer-songwriter"], [data-genre="electro-swing"]) {
+  background: linear-gradient(150deg, color-mix(in srgb, var(--accent-2) 8%, #141919), #171819 58%, #0b1113);
+}
+
+body[data-background-style="themed"] .themed-backdrop[data-genre="city-pop"] {
+  background: linear-gradient(174deg, #152e49, #25435a 49%, #705166 72%, #ba777e);
+}
+
+body[data-background-style="themed"] .themed-backdrop[data-genre="anime"] {
+  background: #1c3443;
 }
 
 body[data-background-style="themed"] #poster-backdrop {
@@ -5395,6 +5419,11 @@ body[data-background-style="themed"] .themed-backdrop::after {
     linear-gradient(180deg, rgba(255,255,255,.02), transparent 18% 82%, rgba(0,0,0,.25));
   box-shadow: inset 0 0 28px rgba(0,0,0,.32);
   opacity: calc(.5 + var(--poster-energy) * .12);
+}
+
+body[data-background-style="themed"] .themed-backdrop:is([data-family="classical"], [data-family="jazz"], [data-genre="folk"], [data-genre="country"], [data-genre="singer-songwriter"], [data-genre="electro-swing"], [data-genre="anime"], [data-genre="city-pop"])::after {
+  background: none;
+  box-shadow: none;
 }
 
 /* Poster families share the same stock, but each receives its own printed
@@ -5832,8 +5861,7 @@ body[data-background-style="themed"] .themed-backdrop[data-genre="synthwave"]::a
 body[data-background-style="themed"] .themed-backdrop:is([data-genre="classical"], [data-family="classical"], [data-genre="soundtrack"])::before {
   background:
     radial-gradient(ellipse 72% 46% at calc(var(--backdrop-focus-x) + var(--poster-float-x)) calc(var(--backdrop-focus-y) + var(--poster-float-y)), color-mix(in srgb, var(--accent) 10%, transparent), transparent 74%),
-    radial-gradient(ellipse 88% 25% at calc(var(--backdrop-secondary-x) - var(--poster-float-x)) calc(var(--backdrop-secondary-y) - var(--poster-float-y)), color-mix(in srgb, var(--hot) 9%, transparent), transparent 76%),
-    linear-gradient(128deg, transparent 0 38%, color-mix(in srgb, var(--accent) 8%, transparent) 38.3% 39%, transparent 39.3%);
+    radial-gradient(ellipse 88% 25% at calc(var(--backdrop-secondary-x) - var(--poster-float-x)) calc(var(--backdrop-secondary-y) - var(--poster-float-y)), color-mix(in srgb, var(--hot) 9%, transparent), transparent 76%);
   background-position: 0 0;
   background-repeat: no-repeat;
   transform: translate3d(var(--poster-drift-x), var(--poster-drift-y), 0)
@@ -5844,7 +5872,6 @@ body[data-background-style="themed"] .themed-backdrop:is([data-genre="classical"
 
 body[data-background-style="themed"] .themed-backdrop[data-genre="baroque"]::before {
   background:
-    repeating-conic-gradient(from var(--poster-phase-soft) at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 18deg, color-mix(in srgb, var(--accent) 14%, transparent) 18.4deg 19deg, transparent 19.5deg 36deg),
     radial-gradient(ellipse 68% 55% at var(--backdrop-focus-x) var(--backdrop-focus-y), color-mix(in srgb, var(--accent-2) 9%, transparent), transparent 74%),
     radial-gradient(ellipse 84% 28% at var(--backdrop-secondary-x) var(--backdrop-secondary-y), color-mix(in srgb, var(--hot) 9%, transparent), transparent 76%);
   opacity: calc(.27 + var(--poster-energy) * .2 + var(--poster-impact) * .05);
@@ -5922,61 +5949,62 @@ body[data-background-style="themed"] .themed-backdrop[data-mode="j-pop"]::before
 
 body[data-background-style="themed"] .themed-backdrop[data-mode="j-pop"][data-genre="city-pop"]::before {
   background:
-    repeating-linear-gradient(0deg,
-      transparent 0 24px,
-      color-mix(in srgb, var(--accent-2) 10%, transparent) 25px 26px,
-      transparent 27px 49px),
-    radial-gradient(ellipse 72% 18% at calc(28% + var(--poster-wave-x)) calc(64% + var(--poster-wave-y)), color-mix(in srgb, var(--hot) 19%, transparent), transparent 74%),
-    radial-gradient(ellipse 58% 25% at calc(78% - var(--poster-wave-x)) 33%, color-mix(in srgb, var(--accent) 17%, transparent), transparent 76%),
-    linear-gradient(180deg, color-mix(in srgb, var(--accent-2) 6%, transparent), transparent 45%, color-mix(in srgb, var(--accent) 8%, transparent));
-  background-position: 0 var(--poster-flow-slow), 0 0, 0 0, 0 0;
-  background-repeat: repeat, no-repeat, no-repeat, no-repeat;
-  opacity: calc(.27 + var(--poster-energy) * .18 + var(--poster-impact) * .06);
+    linear-gradient(174deg, transparent 0 61%, rgba(255,226,218,.2) 61.2% 61.5%, transparent 61.7%),
+    linear-gradient(174deg, transparent 0 71%, rgba(255,226,218,.12) 71.2% 71.4%, transparent 71.6%);
+  background-position: 0 var(--poster-wave-y);
+  background-repeat: no-repeat;
+  opacity: calc(.45 + var(--poster-energy) * .12);
 }
 
 body[data-background-style="themed"] .themed-backdrop[data-mode="j-pop"][data-genre="anime"]::before {
   background:
-    repeating-conic-gradient(from calc(-15deg + var(--poster-phase-soft)) at var(--backdrop-focus-x) var(--backdrop-focus-y),
-      transparent 0 13deg,
-      color-mix(in srgb, var(--accent-2) 16%, transparent) 13.5deg 14.5deg,
-      transparent 15deg 29deg),
-    radial-gradient(ellipse 66% 28% at calc(26% + var(--poster-wave-x)) calc(38% + var(--poster-wave-y)), color-mix(in srgb, var(--hot) 18%, transparent), transparent 72%),
-    radial-gradient(ellipse 54% 20% at 78% 68%, color-mix(in srgb, var(--accent) 17%, transparent), transparent 74%);
+    repeating-conic-gradient(from -15deg at var(--backdrop-focus-x) var(--backdrop-focus-y),
+      transparent 0 27deg, color-mix(in srgb, var(--accent-2) 12%, transparent) 28deg 30deg, transparent 31deg 60deg);
   background-position: 0 0;
   background-repeat: no-repeat;
-  opacity: calc(.29 + var(--poster-energy) * .24 + var(--poster-impact) * .11);
+  opacity: calc(.22 + var(--poster-impact) * .18);
 }
 
 body[data-background-style="themed"] .themed-backdrop[data-mode="j-pop"][data-genre="vocaloid"]::before {
   background:
-    repeating-linear-gradient(90deg,
-      transparent 0 31px,
-      color-mix(in srgb, var(--accent) 12%, transparent) 32px 33px,
-      transparent 34px 63px),
     repeating-linear-gradient(0deg,
-      transparent 0 19px,
-      color-mix(in srgb, var(--accent-2) 10%, transparent) 20px 21px,
-      transparent 22px 39px),
+      transparent 0 39px,
+      color-mix(in srgb, var(--accent) 9%, transparent) 40px 41px,
+      transparent 42px 79px),
     repeating-linear-gradient(90deg,
       transparent 0 15px,
-      color-mix(in srgb, var(--hot) 24%, transparent) 16px 24px,
-      transparent 25px 39px) 0 72% / 100% 2px no-repeat,
-    radial-gradient(ellipse 57% 25% at calc(25% + var(--poster-wave-x)) calc(34% + var(--poster-wave-y)), color-mix(in srgb, var(--accent-2) 18%, transparent), transparent 73%),
-    radial-gradient(ellipse 52% 19% at calc(77% - var(--poster-wave-x)) 69%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 75%);
-  background-position: var(--poster-flow-slow) 0, 0 var(--poster-flow-reverse), 0 72%, 0 0, 0 0;
-  background-repeat: repeat, repeat, no-repeat, no-repeat, no-repeat;
-  opacity: calc(.28 + var(--poster-energy) * .22 + var(--poster-impact) * .1);
+      color-mix(in srgb, var(--hot) 20%, transparent) 16px 24px,
+      transparent 25px 39px) 0 72% / 100% 2px no-repeat;
+  background-position: 0 var(--poster-flow-reverse), var(--poster-flow-slow) 72%;
+  background-repeat: repeat, repeat-x;
+  opacity: calc(.22 + var(--poster-energy) * .14);
+}
+
+/* Detail belongs to the live shell; these backgrounds leave it breathing room. */
+body[data-background-style="themed"] .themed-backdrop[data-mode="dubstep"]:is([data-genre="colour-bass"], [data-genre="future-riddim"])::before {
+  opacity: calc(.12 + var(--poster-energy) * .09 + var(--poster-impact) * .025);
+}
+
+body[data-background-style="themed"] .themed-backdrop:is([data-genre="midtempo-bass"], [data-genre="moombahton"])::before {
+  content: none;
+}
+
+body[data-background-style="themed"] .themed-backdrop[data-genre="midtempo-bass"] {
+  background: linear-gradient(155deg, #161c20, #101216 55%, #21141a);
+}
+
+body[data-background-style="themed"] .themed-backdrop[data-mode="kawaii-bass"]::before {
+  opacity: calc(.16 + var(--poster-energy) * .12 + var(--poster-impact) * .04);
 }
 
 body[data-background-style="themed"] .themed-backdrop[data-mode="rock"]::before {
   background:
     repeating-radial-gradient(ellipse 74% 43% at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 31px, color-mix(in srgb, var(--accent) 14%, transparent) 32px 33px, transparent 34px 55px),
-    repeating-conic-gradient(from calc(112deg + var(--poster-phase-soft)) at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 27deg, color-mix(in srgb, var(--hot) 10%, transparent) 27.4deg 28deg, transparent 28.4deg 60deg),
     radial-gradient(ellipse 82% 18% at calc(var(--backdrop-secondary-x) + var(--poster-swing-x)) var(--backdrop-secondary-y), color-mix(in srgb, var(--accent-2) 16%, transparent), transparent 74%);
   background-position: 0 0;
   background-repeat: repeat, no-repeat;
   transform: none;
-  opacity: calc(.3 + var(--poster-energy) * .22 + var(--poster-impact) * .11);
+  opacity: calc(.15 + var(--poster-energy) * .12 + var(--poster-impact) * .06);
   -webkit-mask-image: radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 98px, #000 112px 178px, rgba(0,0,0,.28) 218px);
   mask-image: radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 98px, #000 112px 178px, rgba(0,0,0,.28) 218px);
 }
@@ -5985,13 +6013,11 @@ body[data-background-style="themed"] .themed-backdrop[data-mode="metal"]::before
   background:
     repeating-radial-gradient(ellipse 74% 43% at var(--backdrop-focus-x) var(--backdrop-focus-y),
       transparent 0 39px, color-mix(in srgb, var(--accent) 17%, transparent) 40px 42px, transparent 43px 71px),
-    repeating-conic-gradient(from calc(22.5deg + var(--poster-phase-soft)) at var(--backdrop-focus-x) var(--backdrop-focus-y),
-      transparent 0 39deg, color-mix(in srgb, var(--hot) 13%, transparent) 39.5deg 42.2deg, transparent 42.7deg 45deg),
-    radial-gradient(ellipse 82% 18% at var(--backdrop-secondary-x) var(--backdrop-secondary-y),
+    radial-gradient(ellipse 82% 18% at calc(var(--backdrop-secondary-x) + var(--poster-swing-x)) var(--backdrop-secondary-y),
       color-mix(in srgb, var(--accent-2) 11%, transparent), transparent 74%);
   transform-origin: var(--backdrop-focus-x) var(--backdrop-focus-y);
   transform: none;
-  opacity: calc(.29 + var(--poster-energy) * .2 + var(--poster-impact) * .12);
+  opacity: calc(.16 + var(--poster-energy) * .12 + var(--poster-impact) * .08);
   -webkit-mask-image: radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 98px, #000 112px 188px, rgba(0,0,0,.2) 220px);
   mask-image: radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 98px, #000 112px 188px, rgba(0,0,0,.2) 220px);
 }
@@ -6038,11 +6064,10 @@ body[data-background-style="themed"] .themed-backdrop[data-genre="idm"]::before 
 
 body[data-background-style="themed"] .themed-backdrop[data-genre="glitch"]::before {
   background:
-    repeating-linear-gradient(0deg, transparent 0 13px, color-mix(in srgb, var(--accent-2) 13%, transparent) 14px 16px, transparent 17px 31px),
-    repeating-conic-gradient(from var(--poster-phase-quarter) at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 16deg, color-mix(in srgb, var(--accent) 13%, transparent) 16.5deg 18deg, transparent 18.5deg 39deg);
-  background-position: 0 var(--poster-flow-reverse), 0 0;
+    repeating-linear-gradient(0deg, transparent 0 29px, color-mix(in srgb, var(--accent-2) 9%, transparent) 30px 31px, transparent 32px 63px);
+  background-position: 0 var(--poster-flow-reverse);
   transform: none;
-  opacity: calc(.27 + var(--poster-energy) * .23 + var(--poster-impact) * .075);
+  opacity: calc(.19 + var(--poster-energy) * .12 + var(--poster-impact) * .06);
 }
 
 body[data-background-style="themed"] .themed-backdrop[data-mode="hip-hop"]::before {
@@ -6171,7 +6196,6 @@ body[data-background-style="themed"] .themed-backdrop[data-genre="funk"]::before
 
 body[data-background-style="themed"] .themed-backdrop[data-family="jazz"]::before {
   background:
-    repeating-radial-gradient(ellipse 74% 56% at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 38px, color-mix(in srgb, var(--accent) 12%, transparent) 39px 40px, transparent 41px 73px),
     radial-gradient(ellipse 82% 21% at calc(20% + var(--poster-wave-x)) calc(38% + var(--poster-wave-y)), color-mix(in srgb, var(--accent) 18%, transparent), transparent 73%),
     radial-gradient(ellipse 76% 18% at calc(80% - var(--poster-wave-x)) calc(61% - var(--poster-wave-y)), color-mix(in srgb, var(--accent-2) 17%, transparent), transparent 73%);
   background-position: 0 0;
@@ -6181,18 +6205,16 @@ body[data-background-style="themed"] .themed-backdrop[data-family="jazz"]::befor
 
 body[data-background-style="themed"] .themed-backdrop[data-genre="bebop"]::before {
   background:
-    repeating-conic-gradient(from var(--poster-phase-quarter) at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 11deg, color-mix(in srgb, var(--hot) 13%, transparent) 11.5deg 12.5deg, transparent 13deg 27deg),
-    repeating-radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), transparent 0 29px, color-mix(in srgb, var(--accent) 15%, transparent) 30px 31px, transparent 32px 57px),
+    linear-gradient(90deg, transparent 0 11%, color-mix(in srgb, var(--accent) 8%, transparent) 11% 13%, transparent 13% 86%, color-mix(in srgb, var(--accent-2) 10%, transparent) 86% 87%, transparent 87%),
     radial-gradient(ellipse 78% 20% at var(--backdrop-secondary-x) var(--backdrop-secondary-y), color-mix(in srgb, var(--accent-2) 16%, transparent), transparent 75%);
   opacity: calc(.29 + var(--poster-energy) * .24 + var(--poster-impact) * .08);
 }
 
 body[data-background-style="themed"] .themed-backdrop[data-genre="swing-jazz"]::before {
   background:
-    repeating-radial-gradient(ellipse 78% 48% at var(--backdrop-focus-x) calc(var(--backdrop-focus-y) + var(--poster-swing-y)), transparent 0 41px, color-mix(in srgb, var(--accent-2) 14%, transparent) 42px 44px, transparent 45px 78px),
-    repeating-linear-gradient(90deg, transparent 0 62px, color-mix(in srgb, var(--hot) 9%, transparent) 63px 65px, transparent 66px 126px),
+    linear-gradient(90deg, transparent 0 15%, color-mix(in srgb, var(--hot) 7%, transparent) 15% 16%, transparent 16% 84%, color-mix(in srgb, var(--accent-2) 9%, transparent) 84% 86%, transparent 86%),
     radial-gradient(ellipse 72% 20% at var(--backdrop-secondary-x) var(--backdrop-secondary-y), color-mix(in srgb, var(--accent) 17%, transparent), transparent 74%);
-  background-position: 0 0, var(--poster-flow-slow) 76%, 0 0;
+  background-position: var(--poster-swing-x) 0, 0 0;
   opacity: calc(.28 + var(--poster-energy) * .22 + var(--poster-impact) * .07);
 }
 
@@ -6211,6 +6233,18 @@ body[data-background-style="themed"] .themed-backdrop[data-genre="jazz-fusion"]:
     radial-gradient(circle at var(--backdrop-focus-x) var(--backdrop-focus-y), color-mix(in srgb, var(--hot) 9%, transparent), transparent 174px);
   background-position: 0 0;
   opacity: calc(.3 + var(--poster-energy) * .25 + var(--poster-impact) * .09);
+}
+
+body[data-background-style="themed"] .themed-backdrop[data-genre="electro-swing"]::before {
+  background:
+    linear-gradient(90deg, transparent 0 8%, color-mix(in srgb, var(--accent) 16%, transparent) 8% 8.2%, transparent 8.2% 91.8%, color-mix(in srgb, var(--accent) 16%, transparent) 91.8% 92%, transparent 92%);
+  background-position: var(--poster-swing-x) 0;
+  opacity: calc(.25 + var(--poster-energy) * .12);
+  mask-image: linear-gradient(180deg, transparent, #000 24% 76%, transparent);
+}
+
+body[data-background-style="themed"] .themed-backdrop:is([data-genre="folk"], [data-genre="country"], [data-genre="singer-songwriter"])::before {
+  background: none;
 }
 
 body[data-background-style="themed"] .themed-backdrop[data-mode="latin"]::before {
@@ -6280,6 +6314,25 @@ body[data-background-style="themed"] .themed-backdrop:is(
 )::before,
 body[data-background-style="themed"] .themed-backdrop:is([data-genre="synthwave"], [data-genre="classical"], [data-family="classical"], [data-genre="soundtrack"])::before {
   transform: none;
+}
+
+/* Fragmented waveforms supply the cuts; their backdrop stays uninterrupted. */
+body[data-background-style="themed"] .themed-backdrop[data-genre="breakcore"] {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-2) 6%, #171b1e), #101414 62%, color-mix(in srgb, var(--accent) 6%, #11151a));
+}
+
+body[data-background-style="themed"] .themed-backdrop[data-genre="breakcore"]::before,
+body[data-background-style="themed"] .themed-backdrop[data-genre="breakcore"]::after {
+  content: none;
+}
+
+body[data-background-style="themed"] .themed-backdrop[data-genre="soundtrack"] {
+  background: linear-gradient(155deg, #202a2f, #192023 52%, #242522);
+}
+
+body[data-background-style="themed"] .themed-backdrop[data-genre="soundtrack"]::before,
+body[data-background-style="themed"] .themed-backdrop[data-genre="soundtrack"]::after {
+  content: none;
 }
 
 body[data-background-style="themed"] #app::before,

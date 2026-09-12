@@ -64,6 +64,7 @@ function createAudioGenreMemories(value, { modelRevision = AUDIO_GENRE_MODEL_REV
       coverageRatio: Math.max(0, Math.min(1, finiteNumber(entry.coverageRatio))),
       fullPlaybackEvidence: entry.fullPlaybackEvidence === true,
       scores: sanitizeScores(entry.scores),
+      compatibilityScores: sanitizeScores(entry.compatibilityScores),
       modelRevision: entry.modelRevision,
       updatedAt: String(entry.updatedAt || '')
     };
@@ -255,6 +256,7 @@ function createAudioGenreMemoryCandidate({
     coverageRatio: durationMs ? Math.min(1, analyzedSeconds / (durationMs / 1000)) : 0,
     fullPlaybackEvidence: startedNearBeginning === true && nearComplete,
     scores: sanitizeScores(scores),
+    compatibilityScores: sanitizeScores(trackResult.compatibilityScores),
     modelRevision,
     updatedAt: now
   };
@@ -269,7 +271,12 @@ function setAudioGenreMemory(existing, metadata = {}, candidate, options = {}) {
     return { state, changed: false, memory: null };
   }
   const key = audioGenreMemoryStorageKey(identityHash, candidate.durationMs);
-  const next = { ...candidate, identityHash, scores: sanitizeScores(candidate.scores) };
+  const next = {
+    ...candidate,
+    identityHash,
+    scores: sanitizeScores(candidate.scores),
+    compatibilityScores: sanitizeScores(candidate.compatibilityScores)
+  };
   const previous = state.entries[key];
   const comparablePrevious = previous && durationsCompatible(previous.durationMs, next.durationMs);
 

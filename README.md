@@ -8,7 +8,7 @@
 
 Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回放音频，尝试判断正在播放的音乐属于什么曲风，再切换可视化结构、背景、字体和动态表现。它不只是为不同曲风更换配色，而是尽量让不同类型的音乐拥有不同的视觉语言。
 
-当前为 `0.3.1` 测试版，包含 140 种可选择的曲风视觉，覆盖 20 多个主要曲风体系。设计仍以电子音乐为重点，同时继续补充和细化流行、摇滚、嘻哈、R&B、爵士与古典等分支。
+当前为 `0.3.2` 测试版，包含 140 种可选择的曲风视觉，覆盖 20 多个主要曲风体系。设计仍以电子音乐为重点，同时继续补充和细化流行、摇滚、嘻哈、R&B、爵士与古典等分支。
 
 **演示视频：** [哔哩哔哩](https://www.bilibili.com/video/BV1bi426EEAg) · [YouTube](https://www.youtube.com/watch?v=sDvQqHSm7dU)
 
@@ -19,11 +19,11 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 **[前往 Releases 下载 Windows 便携版](../../releases)**
 
 - 系统要求：Windows 10 或 Windows 11，64 位（x64）。
-- 下载 `Genre-Police-Visualizer-0.3.1-portable.exe` 后直接运行，无需安装。
+- 下载 `Genre-Police-Visualizer-0.3.2-portable.exe` 后直接运行，无需安装。
 - 不需要另外安装 Node.js、Python、PyTorch 或 AI 运行环境。
 - 建议同时下载 `SHA256SUMS.txt` 并核对文件校验值。
 
-`0.3.1` 尚未进行 Authenticode 代码签名，因此 Windows SmartScreen 可能显示“无法识别的发布者”。请只从本项目的 GitHub Releases 页面下载。
+`0.3.2` 尚未进行 Authenticode 代码签名，因此 Windows SmartScreen 可能显示“无法识别的发布者”。请只从本项目的 GitHub Releases 页面下载。
 
 ## 界面预览
 

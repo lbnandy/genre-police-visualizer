@@ -8,6 +8,39 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
+test('production entry points exclude automated capture fixtures and gate developer output', () => {
+  const main = read('main.js');
+  const renderer = read('renderer/app.js');
+  assert.doesNotMatch(main, /GP_CAPTURE_|GP_DEMO_THEME|GP_UI_SCALE|GP_LAYOUT_MODE|Midnight Circuit/);
+  assert.doesNotMatch(renderer, /captureLyrics|captureArtwork|captureTanoc|captureKawaiiExcited|demoTheme\.synthetic/);
+  assert.match(main, /let demoTheme = '';/);
+  assert.match(main, /tray\.followTrack/);
+  assert.match(main, /const previewRadio/);
+  for (const line of main.split('\n').filter((line) => /GP_DEBUG_|openDevTools/.test(line))) {
+    assert.match(line, /!app\.isPackaged/);
+  }
+  assert.match(main, /if \(app\.isPackaged \|\| !process\.argv\.includes\('--dev'\)/);
+});
+
+test('manual genre previews retain idle animation without replacing real audio', () => {
+  const vm = require('node:vm');
+  const source = read('renderer/app.js');
+  const start = source.indexOf('function syntheticDemoMetrics(');
+  const end = source.indexOf('function shouldSuspendForVisibility()', start);
+  assert.ok(start >= 0 && end > start);
+  const context = vm.createContext({ demoTheme: null, lastDemoBeat: -1 });
+  vm.runInContext(source.slice(start, end), context);
+  const silence = { volume: 0, frequency: new Uint8Array(16), waveform: new Uint8Array(16) };
+  assert.equal(context.syntheticDemoMetrics(silence, 1000), silence);
+  context.demoTheme = { mode: 'house' };
+  const preview = context.syntheticDemoMetrics(silence, 1000);
+  assert.ok(preview.volume > 0 && preview.bass > 0);
+  assert.equal(preview.frequency, silence.frequency);
+  assert.equal(preview.waveform, silence.waveform);
+  const playing = { ...silence, volume: 0.4 };
+  assert.equal(context.syntheticDemoMetrics(playing, 1000), playing);
+});
+
 test('release runtime uses a supported pinned Electron line', () => {
   const pkg = JSON.parse(read('package.json'));
   assert.equal(pkg.devDependencies.electron, '43.4.1');
@@ -262,7 +295,7 @@ test('portable builds check GitHub releases quietly and expose a manual update a
   assert.match(mainSource, /releases\?per_page=10/);
   assert.match(mainSource, /isUpdateCheckDue\(config\.lastUpdateCheckAt\)/);
   assert.match(mainSource, /sameVersion\(config\.dismissedUpdateVersion, result\.latestVersion\)/);
-  assert.match(mainSource, /if \(process\.env\.GP_CAPTURE_PATH \|\| updateCheckTimer\) return;/);
+  assert.match(mainSource, /if \(updateCheckTimer\) return;/);
   assert.match(renderer, /window\.genrePolice\.onUpdateStatus\(\(result\) => showUpdateToast\(result\)\)/);
   assert.match(styles, /body\[data-layout="side"\] :is\([^}]*#update-toast\)\s*\{[^}]*box-shadow:\s*inset/s);
   assert.match(styles, /#settings \.settings-update-actions \.settings-action-button,\s*#settings #recording-start-stop\s*\{[^}]*min-width:\s*72px;[^}]*height:\s*32px;[^}]*padding:\s*2px 10px 0;/s);
@@ -272,7 +305,7 @@ test('a fresh configuration follows the Windows locale with an English fallback'
   const mainSource = read('main.js');
 
   assert.match(mainSource, /resolveInitialLocale\(storedLanguage, app\.getLocale\(\)\)/);
-  assert.match(mainSource, /const languageInitialized = process\.env\.GP_CAPTURE_LANGUAGE === undefined/);
+  assert.match(mainSource, /const languageInitialized = String\(storedLanguage \|\| ''\)\.trim\(\) !== config\.language;/);
 });
 
 test('active and idle frame limiting are playback settings backed by deadline scheduling', () => {

@@ -16,6 +16,11 @@ const {
   shouldCollectAudioGenreMemory,
   setAudioGenreMemory
 } = require('../src/audio-genre-memory');
+const {
+  aggregateGenreScores,
+  GenreDecisionTracker,
+  shouldReplaceMetadataWithAudioGenre
+} = require('../src/audio-genre-model');
 
 const metadata = {
   title: 'Fake Friends',
@@ -198,6 +203,51 @@ test('stable concrete cumulative results are remembered independently of the ear
     },
     winnerHistory: Array(12).fill('electronic')
   }), null);
+});
+
+test('compatibility evidence survives saving and replay without replacing the raw cumulative winner', () => {
+  const trackResult = aggregateGenreScores([0.4, 0.32, 0.3, 0.28], [
+    'Electronic---Techno', 'Electronic---Electro House',
+    'Electronic---Progressive House', 'Electronic---House'
+  ]);
+  const candidate = strongCandidate({
+    metadataKind: 'artist', trackResult, winnerHistory: Array(12).fill(trackResult.id)
+  });
+  assert.equal(candidate.genreId, 'techno');
+  assert.deepEqual(candidate.compatibilityScores, trackResult.compatibilityScores);
+  const saved = setAudioGenreMemory(null, metadata, candidate).state;
+  const restored = getAudioGenreMemory(JSON.parse(JSON.stringify(saved)), metadata);
+  assert.equal(restored.genreId, 'techno');
+  assert.deepEqual(restored.compatibilityScores, trackResult.compatibilityScores);
+  assert.equal(restored.scores['big-room-house'], undefined);
+  assert.equal(shouldReplaceMetadataWithAudioGenre({
+    metadataKind: 'artist', baseGenreId: 'big-room-house', decisionStage: 'memory',
+    decisionGenreId: restored.genreId, decisionConfidence: restored.confidence,
+    decisionCompatibilityScores: restored.compatibilityScores
+  }), false);
+  const tracker = new GenreDecisionTracker();
+  tracker.reset({ baselineGenreId: 'big-room-house', memoryPrior: restored });
+  assert.equal(tracker.currentId, 'big-room-house');
+});
+
+test('legacy memories remain usable for unsupported subtypes without rewriting model winners', () => {
+  const candidate = strongCandidate({
+    metadataKind: 'artist', winnerHistory: Array(12).fill('electro-house'),
+    trackResult: {
+      id: 'electro-house', confidence: 0.48, margin: 0.3,
+      scores: { 'electro-house': 0.48, techno: 0.18 }
+    }
+  });
+  const saved = setAudioGenreMemory(null, metadata, candidate).state;
+  for (const entry of Object.values(saved.entries)) delete entry.compatibilityScores;
+  const restored = getAudioGenreMemory(JSON.parse(JSON.stringify(saved)), metadata);
+  assert.equal(restored.genreId, 'electro-house');
+  assert.deepEqual(restored.compatibilityScores, {});
+  for (const dynamicEnabled of [false, true]) {
+    const tracker = new GenreDecisionTracker();
+    tracker.reset({ dynamicEnabled, baselineGenreId: 'big-room-house', memoryPrior: restored });
+    assert.equal(tracker.currentId, 'big-room-house');
+  }
 });
 
 test('saved results are restored only for compatible duration and model revision', () => {

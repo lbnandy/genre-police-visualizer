@@ -12,6 +12,7 @@ const {
   SAMPLE_RATE,
   aggregateGenreScores,
   applyAudioGenreMemoryPrior,
+  audioGenreCompatibilityId,
   audioGenreFamilyResult,
   audioGenreFamilyScores,
   audioGenreModelOutputIds,
@@ -99,10 +100,14 @@ test('unsupported visual families are represented by compatibility evidence, not
   const outputIds = audioGenreModelOutputIds(modelMetadata.classes);
   assert.equal(outputIds.has('future-bass'), false);
   assert.equal(outputIds.has('phonk'), false);
+  assert.equal(outputIds.has('big-room-house'), false);
   assert.equal(hasAudioGenreCompatibilityProfile('future-bass'), true);
   assert.equal(hasAudioGenreCompatibilityProfile('kawaii-bass'), true);
   assert.equal(hasAudioGenreCompatibilityProfile('phonk'), true);
   assert.equal(hasAudioGenreCompatibilityProfile('drift-phonk'), true);
+  assert.equal(hasAudioGenreCompatibilityProfile('big-room-house'), true);
+  assert.equal(hasAudioGenreCompatibilityProfile('house'), false);
+  assert.equal(hasAudioGenreCompatibilityProfile('deep-house'), false);
   assert.equal(hasAudioGenreCompatibilityProfile('dubstep'), false);
 
   const activations = new Float32Array(modelMetadata.classes.length);
@@ -114,6 +119,38 @@ test('unsupported visual families are represented by compatibility evidence, not
   assert.equal(result.scores.phonk, undefined);
   assert.ok(audioGenreSupportScore(result, 'future-bass') >= 0.48);
   assert.ok(audioGenreSupportScore(result, 'phonk') >= 0.4);
+});
+
+test('Big Room compatibility preserves the subtype without changing model labels or family scores', () => {
+  assert.equal(audioGenreCompatibilityId('big-room-house'), 'big-room-house');
+  assert.equal(audioGenreCompatibilityId('kawaii-bass'), 'future-bass');
+  assert.equal(audioGenreCompatibilityId('drift-phonk'), 'phonk');
+  const result = aggregateGenreScores([0.48, 0.3, 0.12, 0.2], [
+    'Electronic---Electro House', 'Electronic---Progressive House',
+    'Electronic---House', 'Electronic---Techno'
+  ]);
+  assert.equal(result.id, 'electro-house');
+  assert.equal(result.scores['big-room-house'], undefined);
+  assert.equal(result.ranked.some(({ id }) => id === 'big-room-house'), false);
+  assert.equal(audioGenreFamilyResult(result).scores.house, 0.48);
+  assert.ok(audioGenreSupportScore(result, 'big-room-house') >= 0.48);
+  const unrelatedHouse = decisionResultFromScores(
+    { house: 0.7, 'deep-house': 0.65 }, { 'big-room-house': 0.12 }
+  );
+  assert.equal(audioGenreSupportScore(unrelatedHouse, 'big-room-house'), 0.12);
+  const oldProxy = decisionResult('electro-house', 0.48, 'techno', 0.2);
+  assert.equal(audioGenreSupportScore(oldProxy, 'big-room-house'), 0.48);
+  const bigBeat = aggregateGenreScores([0.8], ['Electronic---Big Beat']);
+  assert.equal(audioGenreSupportScore(bigBeat, 'big-room-house'), 0);
+});
+
+test('metadata context keeps subtype compatibility baselines before collapsing to a family', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  assert.match(main, /const metadataAudioBaseline = audioGenreCompatibilityId\(metadata\?\.genre\?\.id\)\s*\|\| audioFamilyForGenreId\(metadata\?\.genre\?\.id\)/);
+  assert.match(main, /kind === 'artist' && hasAudioGenreCompatibilityProfile\(metadataAudioBaseline\)/);
+  assert.match(main, /\? metadataAudioBaseline\s*:\s*''/);
 });
 
 test('raw-label aggregation does not let a weak alias overwhelm a stronger visual', () => {
@@ -279,6 +316,119 @@ test('static detection keeps a full-play memory as the result until another play
   }
   assert.equal(tracker.currentId, 'dubstep');
   assert.equal(tracker.memoryBaseline, true);
+});
+
+test('both replay modes preserve unsupported metadata for compatible saved model winners', () => {
+  const cases = [
+    ['big-room-house', 'electro-house'],
+    ['big-room-house', 'progressive-house'],
+    ['big-room-house', 'house'],
+    ['future-bass', 'dubstep'],
+    ['future-bass', 'electro-house'],
+    ['kawaii-bass', 'dubstep'],
+    ['phonk', 'hip-hop']
+  ];
+  for (const [baselineGenreId, genreId] of cases) {
+    for (const dynamicEnabled of [false, true]) {
+      for (const initialize of ['reset', 'setContext']) {
+        const compatibilityId = audioGenreCompatibilityId(baselineGenreId);
+        const proxy = decisionResult(genreId, 0.48, 'techno', 0.12, { [compatibilityId]: 0.5 });
+        const memoryPrior = {
+          genreId, confidence: 0.48, margin: 0.36, scores: proxy.scores, fullPlaybackEvidence: true
+        };
+        const tracker = new GenreDecisionTracker();
+        const context = { dynamicEnabled, fullTrackLearning: true, baselineGenreId, memoryPrior };
+        tracker[initialize](context);
+        assert.equal(tracker.currentId, compatibilityId);
+        assert.equal(tracker.memoryBaseline, true);
+        for (let index = 0; index < 32; index += 1) {
+          tracker.setContext(context);
+          const event = tracker.push({ shortResult: proxy, trackResult: proxy, segmentResult: proxy });
+          assert.ok(!['first', 'refinement', 'correction', 'dynamic'].includes(event.stage));
+        }
+        assert.equal(tracker.currentId, compatibilityId);
+        assert.equal(tracker.context.memoryPrior.genreId, genreId);
+        assert.equal(memoryPrior.scores[compatibilityId], undefined);
+        assert.equal(shouldReplaceMetadataWithAudioGenre({
+          metadataKind: 'artist', baseGenreId: baselineGenreId, decisionGenreId: genreId,
+          decisionStage: 'memory', dynamicEnabled
+        }), false);
+      }
+    }
+  }
+});
+
+test('a late unsupported metadata baseline is reconciled with an already loaded memory', () => {
+  for (const dynamicEnabled of [false, true]) {
+    const memoryPrior = {
+      genreId: 'electro-house', confidence: 0.48, margin: 0.3,
+      scores: { 'electro-house': 0.48, techno: 0.18 }, fullPlaybackEvidence: true
+    };
+    const tracker = new GenreDecisionTracker();
+    tracker.reset({ dynamicEnabled, memoryPrior });
+    assert.equal(tracker.currentId, 'electro-house');
+    const proxy = decisionResult('electro-house', 0.48, 'techno', 0.18);
+    tracker.push({ shortResult: proxy, trackResult: proxy });
+    tracker.setContext({ dynamicEnabled, memoryPrior, baselineGenreId: 'big-room-house' });
+    assert.equal(tracker.currentId, 'big-room-house');
+    assert.equal(tracker.memoryBaseline, true);
+  }
+});
+
+test('saved compatibility evidence is respected without treating every House subtype as Big Room', () => {
+  for (const dynamicEnabled of [false, true]) {
+    for (const [genreId, supportScore, expectedId] of [
+      ['techno', 0.5, 'big-room-house'],
+      ['techno', 0.1, 'techno'],
+      ['deep-house', undefined, 'deep-house']
+    ]) {
+      const memoryPrior = {
+        genreId, confidence: 0.48, margin: 0.3, fullPlaybackEvidence: true,
+        compatibilityScores: supportScore === undefined ? {} : { 'big-room-house': supportScore }
+      };
+      const tracker = new GenreDecisionTracker();
+      tracker.reset({ dynamicEnabled, memoryPrior, baselineGenreId: 'big-room-house' });
+      assert.equal(tracker.currentId, expectedId);
+      assert.equal(shouldReplaceMetadataWithAudioGenre({
+        metadataKind: 'artist', baseGenreId: 'big-room-house', decisionGenreId: genreId,
+        decisionStage: 'memory', decisionConfidence: memoryPrior.confidence,
+        decisionCompatibilityScores: memoryPrior.compatibilityScores, dynamicEnabled
+      }), expectedId === genreId);
+    }
+  }
+});
+
+test('compatible replay memory keeps the static intro guard and allows real dynamic section changes', () => {
+  const memoryPrior = {
+    genreId: 'electro-house', confidence: 0.48, margin: 0.3,
+    scores: { 'electro-house': 0.48, techno: 0.18 }, fullPlaybackEvidence: true
+  };
+  const techno = decisionResult('techno', 0.58, 'electro-house', 0.12, { 'big-room-house': 0.14 });
+  const proxy = decisionResult('electro-house', 0.48, 'techno', 0.12, { 'big-room-house': 0.5 });
+  const staticTracker = new GenreDecisionTracker();
+  staticTracker.reset({ fullTrackLearning: true, memoryPrior, baselineGenreId: 'big-room-house' });
+  for (let index = 0; index < 100; index += 1) {
+    staticTracker.push({ shortResult: techno, trackResult: techno });
+  }
+  assert.equal(staticTracker.currentId, 'big-room-house');
+  assert.equal(staticTracker.memoryBaseline, true);
+
+  const dynamicTracker = new GenreDecisionTracker();
+  const context = { dynamicEnabled: true, memoryPrior, baselineGenreId: 'big-room-house' };
+  dynamicTracker.reset(context);
+  for (let index = 0; index < 12; index += 1) {
+    dynamicTracker.push({ shortResult: techno, trackResult: techno });
+  }
+  assert.equal(dynamicTracker.currentId, 'techno');
+  dynamicTracker.setContext(context);
+  assert.equal(dynamicTracker.currentId, 'techno');
+  let restored;
+  for (let index = 0; index < 20; index += 1) {
+    const event = dynamicTracker.push({ shortResult: proxy, trackResult: proxy });
+    if (event.restoredBaseline) restored = event;
+  }
+  assert.equal(restored?.genreId, 'big-room-house');
+  assert.equal(restored?.inferredFromCompatibility, true);
 });
 
 test('dynamic detection may leave a full-play memory after a sustained new section', () => {
@@ -894,6 +1044,88 @@ test('dynamic detection also protects a Phonk baseline from its Trap proxy', () 
     assert.notEqual(event.stage, 'dynamic');
   }
   assert.equal(tracker.currentId, 'phonk');
+});
+
+test('both modes keep Big Room for compatible evidence but can correct it to an unrelated House subtype', () => {
+  const classes = [
+    'Electronic---Electro House', 'Electronic---Progressive House',
+    'Electronic---House', 'Electronic---Deep House', 'Electronic---Techno'
+  ];
+  const proxy = aggregateGenreScores([0.48, 0.3, 0.12, 0.08, 0.2], classes);
+  const deepHouse = aggregateGenreScores([0.12, 0.06, 0.04, 0.56, 0.08], classes);
+  for (const dynamicEnabled of [false, true]) {
+    const tracker = new GenreDecisionTracker();
+    tracker.setContext({ dynamicEnabled, baselineGenreId: 'big-room-house' });
+    for (let index = 0; index < 20; index += 1) {
+      const event = tracker.push({ shortResult: proxy, trackResult: proxy, segmentResult: proxy });
+      assert.ok(!['first', 'refinement', 'correction', 'dynamic'].includes(event.stage));
+    }
+    assert.equal(tracker.currentId, 'big-room-house');
+    let correction;
+    for (let index = 0; index < 20; index += 1) {
+      const event = tracker.push({ shortResult: deepHouse, trackResult: deepHouse, segmentResult: deepHouse });
+      if (['correction', 'dynamic'].includes(event.stage)) correction = event;
+    }
+    assert.equal(correction?.genreId, 'deep-house');
+    assert.equal(correction.stage, dynamicEnabled ? 'dynamic' : 'correction');
+  }
+});
+
+test('Big Room compatibility also contributes when a different major family challenges it', () => {
+  const nearby = aggregateGenreScores([0.4, 0.32, 0.3, 0.28], [
+    'Electronic---Techno', 'Electronic---Electro House',
+    'Electronic---Progressive House', 'Electronic---House'
+  ]);
+  assert.equal(audioGenreFamilyResult(nearby).id, 'techno');
+  assert.ok(nearby.compatibilityScores['big-room-house'] > nearby.confidence);
+  for (const dynamicEnabled of [false, true]) {
+    const tracker = new GenreDecisionTracker();
+    tracker.reset({ dynamicEnabled, baselineGenreId: 'big-room-house' });
+    for (let index = 0; index < 24; index += 1) {
+      tracker.push({ shortResult: nearby, trackResult: nearby, segmentResult: nearby });
+    }
+    assert.equal(tracker.currentId, 'big-room-house');
+  }
+});
+
+test('dynamic detection can leave and restore a Big Room metadata baseline without fabricating raw scores', () => {
+  const classes = [
+    'Electronic---Techno', 'Electronic---Electro House',
+    'Electronic---Progressive House', 'Electronic---House'
+  ];
+  const techno = aggregateGenreScores([0.58, 0.1, 0.08, 0.04], classes);
+  const proxy = aggregateGenreScores([0.12, 0.48, 0.3, 0.14], classes);
+  const tracker = new GenreDecisionTracker();
+  tracker.reset({ dynamicEnabled: true, baselineGenreId: 'big-room-house' });
+  for (let index = 0; index < 12; index += 1) {
+    tracker.push({ shortResult: techno, trackResult: techno, segmentResult: techno });
+  }
+  assert.equal(tracker.currentId, 'techno');
+  let restored;
+  for (let index = 0; index < 20; index += 1) {
+    const event = tracker.push({ shortResult: proxy, trackResult: proxy, segmentResult: proxy });
+    if (event.restoredBaseline) restored = event;
+  }
+  assert.equal(tracker.currentId, 'big-room-house');
+  assert.equal(restored?.genreId, 'big-room-house');
+  assert.equal(restored.inferredFromCompatibility, true);
+  assert.equal(proxy.scores['big-room-house'], undefined);
+});
+
+test('audio-only detection never invents Big Room from its compatible model labels', () => {
+  const proxy = aggregateGenreScores([0.48, 0.3, 0.12, 0.15], [
+    'Electronic---Electro House', 'Electronic---Progressive House',
+    'Electronic---House', 'Electronic---Techno'
+  ]);
+  for (const dynamicEnabled of [false, true]) {
+    const tracker = new GenreDecisionTracker();
+    tracker.reset({ dynamicEnabled });
+    for (let index = 0; index < 24; index += 1) {
+      const event = tracker.push({ shortResult: proxy, trackResult: proxy, segmentResult: proxy });
+      assert.notEqual(event.genreId, 'big-room-house');
+    }
+    assert.equal(tracker.currentId, 'electro-house');
+  }
 });
 
 test('dynamic detection can leave and later restore an unsupported metadata baseline', () => {

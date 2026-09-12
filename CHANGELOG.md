@@ -4,6 +4,18 @@ All notable changes to Genre Police Visualizer are documented here.
 
 ## Unreleased
 
+## 0.3.2 - 2026-09-12
+
+- Refined genre-specific typography, colors, glow, and motion, with quieter background patterns and clearer foreground detail.
+- Revised Classical, acoustic, Jazz, Electro Swing, Soundtrack, Anime, City Pop, and Vocaloid treatments, and improved Kawaii Bass facial-line clarity.
+- Strengthened selected House, Trap, Metal, and Disco subgenre distinctions; refined Colour Bass and Future Riddim refractions, Midtempo Bass pressure, Moombahton syncopation, and Breakcore fragments.
+- Adjusted selected Trance vortex shapes and Drum & Bass tunnel depth, and reduced Synthwave horizon glow and grid interference behind track text.
+- Added Big Room House compatibility evidence without changing the model's native labels or treating nearby outputs as direct Big Room recognition.
+- Preserved compatibility evidence in AI memory so replayed results do not unnecessarily replace supported metadata substyles such as Big Room, Future Bass, and Phonk.
+- Kept legacy AI records compatible and improved delayed metadata handling and dynamic return to compatible baseline genres.
+- Preserved the 0.3.x application identity, settings, manual corrections, custom genres, and data formats.
+- Updated js-yaml and adm-zip to patched releases addressing known dependency vulnerabilities.
+
 ## 0.3.1 - 2026-09-04
 
 - Added a default-on setting that stores stable full-play local-AI results for immediate reuse on later plays of the same track, plus an action to clear only AI recognition history.

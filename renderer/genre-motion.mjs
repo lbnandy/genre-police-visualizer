@@ -36,6 +36,15 @@ export function genreMotionProfile(theme = {}) {
   const mode = String(theme.mode || 'electronic');
   const id = String(theme.id || '');
   const base = PROFILES[mode] || DEFAULT_PROFILE;
+  if (id === 'breakcore') {
+    return { ...DEFAULT_PROFILE, ...base, kind: 'shard', flow: 'lateral', count: 2, speed: 1.45, startRadius: 84, decay: 0.04, size: 0.7, gravity: 0, jitter: 0.006 };
+  }
+  if (mode === 'metal') {
+    if (id === 'industrial-metal') return { ...DEFAULT_PROFILE, ...base, kind: 'square', flow: 'radial', count: 3, speed: 1.3, decay: 0.038, gravity: 0, jitter: 0 };
+    if (id === 'black-metal') return { ...DEFAULT_PROFILE, ...base, kind: 'shard', flow: 'rise', count: 3, speed: 0.7, size: 0.58, decay: 0.025, gravity: 0, curve: 0.008 };
+    if (id === 'deathcore') return { ...DEFAULT_PROFILE, ...base, kind: 'block', flow: 'radial', count: 3, speed: 1.05, size: 1.1, decay: 0.032, drag: 0.96 };
+    if (id === 'progressive-metal') return { ...DEFAULT_PROFILE, ...base, kind: 'spark', flow: 'orbit', count: 3, speed: 0.9, size: 0.64, curve: 0.028, gravity: 0 };
+  }
   if (mode === 'ambient') {
     if (id === 'ambient') return { ...DEFAULT_PROFILE, ...base, kind: 'mote', flow: 'orbit', count: 1, speed: 0.22, startRadius: 86, size: 1.04, decay: 0.009, drag: 0.998, curve: 0.01, jitter: 0.001 };
     if (id === 'chillout') return { ...DEFAULT_PROFILE, ...base, kind: 'bubble', flow: 'rise', count: 2, speed: 0.38, startRadius: 80, size: 0.92, decay: 0.012, drag: 0.996, curve: 0.009, jitter: 0.002 };
@@ -76,7 +85,7 @@ export function genreMotionProfile(theme = {}) {
     if (id === 'vocaloid') {
       return {
         ...DEFAULT_PROFILE, ...base,
-        kind: 'bead', flow: 'orbit', count: 6, speed: 1.18,
+        kind: 'square', flow: 'orbit', count: 3, speed: 1.18,
         startRadius: 77, size: 0.72, decay: 0.022,
         drag: 0.99, curve: 0.033, jitter: 0.006
       };
@@ -238,6 +247,12 @@ export function genreMotionProfile(theme = {}) {
   if (mode === 'trap' && ['trap-edm', 'festival-trap', 'hybrid-trap', 'hard-trap'].includes(id)) {
     return { ...DEFAULT_PROFILE, ...base, kind: 'triangle', flow: 'fall', count: 4, speed: 1.08, startRadius: 70, size: 0.82, decay: 0.024, drag: 0.989, gravity: 0.052 };
   }
+  if (id === 'midtempo-bass') {
+    return { ...DEFAULT_PROFILE, ...base, kind: 'block', flow: 'radial', count: 2, speed: 0.55, startRadius: 74, size: 1.2, decay: 0.021, drag: 0.986, gravity: 0, jitter: 0.002 };
+  }
+  if (id === 'moombahton') {
+    return { ...DEFAULT_PROFILE, ...base, kind: 'bead', flow: 'lateral', count: 3, speed: 1.05, startRadius: 73, size: 0.9, decay: 0.022, drag: 0.99, gravity: 0, curve: 0.032 };
+  }
   if (id === 'complextro') {
     return { ...DEFAULT_PROFILE, ...base, kind: 'shard', flow: 'lateral', count: 5, speed: 1.5, size: 0.75, decay: 0.026, drag: 0.982, jitter: 0.022 };
   }
@@ -272,7 +287,10 @@ export function genreMotionProfile(theme = {}) {
     return { ...DEFAULT_PROFILE, ...base, kind: 'streak', flow: 'orbit', count: 3, speed: 1.02, size: 0.75, decay: 0.022, drag: 0.989, curve: 0.034, jitter: 0.006 };
   }
   if (id === 'disco-house') {
-    return { ...DEFAULT_PROFILE, ...base, kind: 'sparkle', flow: 'orbit', count: 5, speed: 0.94, size: 0.88, decay: 0.021, drag: 0.991, curve: 0.038, jitter: 0.006 };
+    return { ...DEFAULT_PROFILE, ...base, kind: 'sparkle', flow: 'orbit', count: 3, speed: 0.94, size: 0.78, decay: 0.021, drag: 0.991, curve: 0.038, jitter: 0.006 };
+  }
+  if (id === 'nu-disco' || id === 'disco-funk') {
+    return { ...DEFAULT_PROFILE, ...base, kind: 'sparkle', flow: 'orbit', count: 2, speed: id === 'nu-disco' ? 0.68 : 0.86, size: 0.8, decay: 0.024, drag: 0.991, curve: 0.026 };
   }
   if (id === 'hard-house') {
     return { ...DEFAULT_PROFILE, ...base, kind: 'chevron', flow: 'radial', count: 4, speed: 1.78, size: 0.82, decay: 0.027, drag: 0.982, jitter: 0.014 };

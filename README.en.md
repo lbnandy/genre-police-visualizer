@@ -8,7 +8,7 @@
 
 Genre Police Visualizer reads the current Windows media session and analyzes system playback audio. It then attempts to identify the genre and adapts the visualization structure, background, typography, and motion. The goal is not simply to recolor one visualizer, but to give different kinds of music their own visual language.
 
-The current release is the `0.3.1` beta, with 140 selectable genre visuals across more than 20 major genre families. Electronic music remains the main design focus, while the Pop, Rock, Hip-Hop, R&B, Jazz, and Classical branches continue to expand and receive more detailed tuning.
+The current release is the `0.3.2` beta, with 140 selectable genre visuals across more than 20 major genre families. Electronic music remains the main design focus, while the Pop, Rock, Hip-Hop, R&B, Jazz, and Classical branches continue to expand and receive more detailed tuning.
 
 **Demo videos:** [YouTube](https://www.youtube.com/watch?v=sDvQqHSm7dU) · [Bilibili](https://www.bilibili.com/video/BV1bi426EEAg)
 
@@ -19,11 +19,11 @@ The current release is the `0.3.1` beta, with 140 selectable genre visuals acros
 **[Open Releases to download the Windows portable build](../../releases)**
 
 - Requires 64-bit Windows 10 or Windows 11 (x64).
-- Download and run `Genre-Police-Visualizer-0.3.1-portable.exe`; no installation is required.
+- Download and run `Genre-Police-Visualizer-0.3.2-portable.exe`; no installation is required.
 - Node.js, Python, PyTorch, and a separate AI runtime are not required.
 - Download `SHA256SUMS.txt` as well if you want to verify the executable.
 
-Version `0.3.1` is not Authenticode-signed. Windows SmartScreen may therefore show an “Unknown publisher” warning. Only download the executable from this project's GitHub Releases page.
+Version `0.3.2` is not Authenticode-signed. Windows SmartScreen may therefore show an “Unknown publisher” warning. Only download the executable from this project's GitHub Releases page.
 
 ## Preview
 

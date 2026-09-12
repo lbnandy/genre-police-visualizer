@@ -502,11 +502,16 @@ const DISCOGS_EXACT_STYLE_MAP = new Map(Object.entries({
   'Hip Hop---Trip Hop': 'downtempo'
 }));
 
-// The bundled Discogs model has no direct Future Bass or Phonk class. Keep a
-// separate evidence profile for those display families instead of relabeling
+// The bundled Discogs model lacks some displayed styles. Keep a
+// separate evidence profile for those styles instead of relabeling
 // any real model output. This lets metadata remain authoritative while nearby
 // model activations still count as support for the current genre.
 const AUDIO_GENRE_COMPATIBILITY_LABELS = Object.freeze({
+  'big-room-house': Object.freeze([
+    'Electronic---Electro House',
+    'Electronic---Progressive House',
+    'Electronic---House'
+  ]),
   'future-bass': Object.freeze([
     'Electronic---Dubstep',
     'Hip Hop---Trap',
@@ -526,6 +531,8 @@ const AUDIO_GENRE_COMPATIBILITY_LABELS = Object.freeze({
 });
 
 function audioGenreCompatibilityId(value) {
+  const exactId = String(value || '').trim();
+  if (Object.hasOwn(AUDIO_GENRE_COMPATIBILITY_LABELS, exactId)) return exactId;
   const id = normalizeAudioGenreTreeId(value);
   return Object.hasOwn(AUDIO_GENRE_COMPATIBILITY_LABELS, id) ? id : '';
 }
@@ -585,6 +592,8 @@ function shouldReplaceMetadataWithAudioGenre({
   baseGenreId = 'unknown',
   decisionGenreId = 'unknown',
   decisionStage = '',
+  decisionConfidence = 0,
+  decisionCompatibilityScores,
   dynamicEnabled = false
 } = {}) {
   if (metadataKind === 'authoritative') return false;
@@ -592,6 +601,11 @@ function shouldReplaceMetadataWithAudioGenre({
   if (broadAudioResult) {
     return decisionStage !== 'dynamic' && String(baseGenreId || 'unknown') === 'unknown';
   }
+  if (decisionStage === 'memory' && compatibleAudioGenreBaseline({
+    id: decisionGenreId,
+    confidence: decisionConfidence,
+    compatibilityScores: decisionCompatibilityScores
+  }, baseGenreId)) return false;
   if (decisionStage === 'dynamic') return dynamicEnabled;
   return ['broad', 'artist'].includes(metadataKind);
 }
@@ -679,10 +693,10 @@ function audioGenreCompatibilityScores(classScores, classes) {
 }
 
 function audioGenreSupportScore(result, value) {
-  const id = normalizeAudioGenreTreeId(value);
+  const compatibilityId = audioGenreCompatibilityId(value);
+  const id = compatibilityId || normalizeAudioGenreTreeId(value);
   const directScore = Number(result?.scores?.[id]);
   if (Number.isFinite(directScore)) return clamp(directScore);
-  const compatibilityId = audioGenreCompatibilityId(id);
   const compatibilityScore = Number(result?.compatibilityScores?.[compatibilityId]);
   if (Number.isFinite(compatibilityScore)) return clamp(compatibilityScore);
 
@@ -694,6 +708,31 @@ function audioGenreSupportScore(result, value) {
     if (compatibleOutputs.includes(result.id)) return clamp(Number(result.confidence) || 0);
   }
   return 0;
+}
+
+function compatibleAudioGenreBaseline(result, baselineGenreId) {
+  const compatibilityId = audioGenreCompatibilityId(baselineGenreId);
+  if (!compatibilityId || !result?.id) return '';
+  const supportScore = Number(result.compatibilityScores?.[compatibilityId]);
+  if (Number.isFinite(supportScore)) {
+    return supportScore > 0
+      && Number(result.confidence) - supportScore < COMPATIBILITY_CORRECTION_MIN_ADVANTAGE
+      ? compatibilityId : '';
+  }
+  // Legacy memories only stored model winners. A compatible winner supports
+  // the known subtype; it is not evidence that the subtype was wrong.
+  return AUDIO_GENRE_COMPATIBILITY_LABELS[compatibilityId]
+    .some((label) => discogsClassToMajor(label) === result.id)
+    ? compatibilityId : '';
+}
+
+function audioGenreMemoryBaselineId(memory, baselineGenreId) {
+  if (memory?.fullPlaybackEvidence !== true || !memory.genreId || isBroadAudioGenre(memory.genreId)) return '';
+  return compatibleAudioGenreBaseline({
+    id: memory.genreId,
+    confidence: memory.confidence,
+    compatibilityScores: memory.compatibilityScores
+  }, baselineGenreId) || memory.genreId;
 }
 
 function resultFromScores(scores, extra = {}) {
@@ -941,11 +980,8 @@ class GenreDecisionTracker {
     const memoryPrior = context.memoryPrior && typeof context.memoryPrior === 'object'
       ? context.memoryPrior
       : null;
-    const memoryBaselineGenreId = memoryPrior?.fullPlaybackEvidence === true
-      ? String(memoryPrior.genreId || '')
-      : '';
-    const useMemoryBaseline = Boolean(memoryBaselineGenreId)
-      && !isBroadAudioGenre(memoryBaselineGenreId);
+    const memoryBaselineGenreId = audioGenreMemoryBaselineId(memoryPrior, baselineGenreId);
+    const useMemoryBaseline = Boolean(memoryBaselineGenreId);
     const useExternalBaseline = !useMemoryBaseline
       && !isBroadAudioGenre(baselineGenreId)
       && (context.dynamicEnabled === true || hasAudioGenreCompatibilityProfile(baselineGenreId));
@@ -967,7 +1003,8 @@ class GenreDecisionTracker {
       ? baselineGenreId
       : useMemoryBaseline ? memoryBaselineGenreId : '';
     this.externalBaseline = useExternalBaseline;
-    this.externalBaselineGenreId = useExternalBaseline ? baselineGenreId : '';
+    this.externalBaselineGenreId = useExternalBaseline
+      ? baselineGenreId : useMemoryBaseline ? audioGenreCompatibilityId(baselineGenreId) : '';
     this.memoryBaseline = useMemoryBaseline;
     this.memoryBaselineGenreId = useMemoryBaseline ? memoryBaselineGenreId : '';
     this.broadBaselineId = '';
@@ -989,18 +1026,20 @@ class GenreDecisionTracker {
       ? context.memoryPrior
       : null;
     this.context.baselineGenreId = String(context.baselineGenreId || '');
-    const memoryBaselineGenreId = this.context.memoryPrior?.fullPlaybackEvidence === true
-      ? String(this.context.memoryPrior.genreId || '')
-      : '';
+    const memoryBaselineGenreId = audioGenreMemoryBaselineId(
+      this.context.memoryPrior,
+      this.context.baselineGenreId
+    );
     const canAdoptMemoryBaseline = Boolean(memoryBaselineGenreId)
-      && !isBroadAudioGenre(memoryBaselineGenreId)
       && this.dynamicSwitchCount === 0
       && (this.acceptedWindows === 0 || this.externalBaseline || this.memoryBaseline);
+    if (canAdoptMemoryBaseline) {
+      this.externalBaselineGenreId = audioGenreCompatibilityId(this.context.baselineGenreId);
+    }
     if (canAdoptMemoryBaseline
       && !(this.memoryBaseline && this.currentId === memoryBaselineGenreId)) {
       this.currentId = memoryBaselineGenreId;
       this.externalBaseline = false;
-      this.externalBaselineGenreId = '';
       this.memoryBaseline = true;
       this.memoryBaselineGenreId = memoryBaselineGenreId;
       this.broadBaselineId = '';
@@ -1245,6 +1284,9 @@ class GenreDecisionTracker {
     }
 
     const currentFamilyId = normalizeAudioGenreTreeId(this.currentId);
+    // A subtype compatibility profile must survive family-level challenges;
+    // the generic House score alone does not represent support for Big Room.
+    const currentFamilySupportId = audioGenreCompatibilityId(this.currentId) || currentFamilyId;
     const trackCurrentFamilyResult = audioGenreResultForFamily(trackResult, currentFamilyId);
     const segmentCurrentFamilyResult = audioGenreResultForFamily(segmentResult, currentFamilyId);
     const hierarchicalResult = this.context.dynamicEnabled
@@ -1320,7 +1362,7 @@ class GenreDecisionTracker {
       && cumulativeCorrectionResult.margin >= STATIC_CORRECTION_MIN_MARGIN;
     const cumulativeCurrentScore = audioGenreSupportScore(
       cumulativeCorrectionResult,
-      cumulativeCrossesFamily ? currentFamilyId : this.currentId
+      cumulativeCrossesFamily ? currentFamilySupportId : this.currentId
     );
     const cumulativeAdvantage = cumulativeCorrectionResult.confidence - cumulativeCurrentScore;
     const correctingCompatibilityBaseline = this.externalBaseline
@@ -1368,7 +1410,7 @@ class GenreDecisionTracker {
     const dynamicCandidate = dynamicResult.id;
     const currentSegmentScore = audioGenreSupportScore(
       dynamicResult,
-      dynamicCrossesFamily ? currentFamilyId : this.currentId
+      dynamicCrossesFamily ? currentFamilySupportId : this.currentId
     );
     const dynamicAdvantage = dynamicResult.confidence - currentSegmentScore;
     const dynamicPersistent = agreementRatio(
@@ -1532,6 +1574,7 @@ module.exports = {
   PATCH_HOP,
   SAMPLE_RATE,
   STATIC_ANALYSIS_WINDOW_LIMIT,
+  audioGenreCompatibilityId,
   audioGenreCompatibilityScores,
   audioGenreFamilyResult,
   audioGenreFamilyScores,
