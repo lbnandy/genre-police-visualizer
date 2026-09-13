@@ -4,6 +4,9 @@ All notable changes to Genre Police Visualizer are documented here.
 
 ## Unreleased
 
+- Cached fixed Discogs model-label mappings with a bounded cache to avoid repeating text classification for each prediction horizon; scores and decision rules remain unchanged.
+- Reused BeatNet spectrum, feature and recurrent-state buffers, and retained immutable preprocessing resources across resets. In-flight inference inputs stay isolated from a reset.
+
 ## 0.3.2 - 2026-09-12
 
 - Refined genre-specific typography, colors, glow, and motion, with quieter background patterns and clearer foreground detail.

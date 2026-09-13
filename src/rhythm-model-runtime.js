@@ -112,7 +112,7 @@ class BluesteinRealFft {
     fftRadix2(this.kernelReal, this.kernelImaginary);
   }
 
-  magnitude(input, outputBins = Math.floor(this.size / 2)) {
+  magnitude(input, outputBins = Math.floor(this.size / 2), magnitude = new Float32Array(outputBins)) {
     this.workReal.fill(0);
     this.workImaginary.fill(0);
     for (let index = 0; index < this.size; index += 1) {
@@ -129,7 +129,7 @@ class BluesteinRealFft {
       this.workImaginary[index] = imaginary;
     }
     fftRadix2(this.workReal, this.workImaginary, true);
-    const magnitude = new Float32Array(outputBins);
+    if (magnitude.length !== outputBins) throw new Error('Unexpected FFT output size');
     for (let index = 0; index < outputBins; index += 1) {
       const cosine = this.chirpReal[index];
       const negativeSine = this.chirpImaginary[index];
@@ -218,19 +218,24 @@ class CausalFeatures {
     this.buffer = new Float32Array(FRAME_SIZE);
     this.windowed = new Float32Array(FRAME_SIZE);
     this.previousLog = new Float32Array(MODEL_BANDS);
+    this.spectrum = new Float32Array(Math.floor(FRAME_SIZE / 2));
     this.frames = 0;
   }
 
-  update(rawHop) {
+  reset() {
+    this.buffer.fill(0); this.previousLog.fill(0); this.frames = 0;
+  }
+
+  update(rawHop, frame = new Float32Array(MODEL_INPUTS)) {
     const hop = rawHop instanceof Float32Array ? rawHop : Float32Array.from(rawHop || []);
     if (hop.length !== HOP_SIZE) throw new Error(`Expected ${HOP_SIZE} rhythm samples, received ${hop.length}`);
+    if (frame.length !== MODEL_INPUTS) throw new Error('Unexpected rhythm feature size');
     this.buffer.copyWithin(0, HOP_SIZE);
     this.buffer.set(hop, FRAME_SIZE - HOP_SIZE);
     for (let index = 0; index < FRAME_SIZE; index += 1) {
       this.windowed[index] = this.buffer[index] * this.window[index];
     }
-    const magnitude = this.fft.magnitude(this.windowed, Math.floor(FRAME_SIZE / 2));
-    const frame = new Float32Array(MODEL_INPUTS);
+    const magnitude = this.fft.magnitude(this.windowed, this.spectrum.length, this.spectrum);
     for (let band = 0; band < this.filterbank.length; band += 1) {
       const { start, weights } = this.filterbank[band];
       let energy = 0;
@@ -332,6 +337,9 @@ class LocalRhythmModel {
     this.now = now;
     this.session = null;
     this.features = new CausalFeatures();
+    // drain() owns this scratch until session.run resolves. Reset never clears
+    // it, so an in-flight native tensor cannot observe a changed input buffer.
+    this.featureFrame = new Float32Array(MODEL_INPUTS);
     this.summary = new RhythmSummary();
     this.hidden = new Float32Array(HIDDEN_VALUES);
     this.cell = new Float32Array(HIDDEN_VALUES);
@@ -374,7 +382,7 @@ class LocalRhythmModel {
   }
 
   reset() {
-    this.features = new CausalFeatures();
+    this.features.reset();
     this.summary = new RhythmSummary();
     this.hidden = new Float32Array(HIDDEN_VALUES);
     this.cell = new Float32Array(HIDDEN_VALUES);
@@ -408,7 +416,7 @@ class LocalRhythmModel {
         const hop = this.queue.shift();
         const generation = this.generation;
         const featureStart = this.now();
-        const frame = this.features.update(hop);
+        const frame = this.features.update(hop, this.featureFrame);
         const featureMs = this.now() - featureStart;
         if (this.features.frames < 5) continue;
         const inferenceStart = this.now();
@@ -419,8 +427,8 @@ class LocalRhythmModel {
         });
         const inferenceMs = this.now() - inferenceStart;
         if (generation !== this.generation) continue;
-        this.hidden = Float32Array.from(outputs.next_hidden.data);
-        this.cell = Float32Array.from(outputs.next_cell.data);
+        this.hidden.set(outputs.next_hidden.data);
+        this.cell.set(outputs.next_cell.data);
         const probabilities = softmax3(outputs.logits.data);
         const beat = probabilities[0];
         const downbeat = probabilities[1];

@@ -625,7 +625,19 @@ function hasSignificantPlaybackSeek(previous = {}, current = {}, thresholdMs = 5
   return Math.abs(currentPosition - expectedPosition) >= thresholdMs;
 }
 
+// Model label meanings are static. Three aggregation horizons revisit the
+// same 400 labels; avoid repeating text classification for every prediction.
+const discogsClassCache = new Map();
 function discogsClassToMajor(label) {
+  const key = String(label);
+  if (discogsClassCache.has(key)) return discogsClassCache.get(key);
+  const result = classifyDiscogsClass(key);
+  if (discogsClassCache.size >= 1024) discogsClassCache.delete(discogsClassCache.keys().next().value);
+  discogsClassCache.set(key, result);
+  return result;
+}
+
+function classifyDiscogsClass(label) {
   const exact = DISCOGS_EXACT_STYLE_MAP.get(String(label));
   if (exact) return exact;
   const [category = '', style = ''] = String(label).split('---');
