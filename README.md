@@ -14,6 +14,8 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 
 ⭐ 如果你喜欢这个项目，欢迎点个 Star 支持一下。
 
+也欢迎通过[爱发电](https://afdian.com/a/lbnandy)支持项目的持续开发与维护，谢谢！
+
 ## 下载
 
 **[前往 Releases 下载 Windows 便携版](../../releases)**
