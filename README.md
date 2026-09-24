@@ -14,7 +14,7 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 
 ⭐ 如果你喜欢这个项目，欢迎点个 Star 支持一下。
 
-☕ 也欢迎通过[爱发电或微信、支付宝](#支持项目)支持项目的持续开发与维护，谢谢！
+☕ 也欢迎通过[微信、支付宝或爱发电](#支持项目)支持项目的持续开发与维护，谢谢！
 
 ## 下载
 
@@ -145,8 +145,13 @@ npm run dist
 
 ## 支持项目
 
-如果你喜欢这个项目，也可以通过[爱发电](https://afdian.com/a/lbnandy)，或使用下方的微信、支付宝支持一下，谢谢！
+<p align="center">感谢你对项目的支持！</p>
 
-| 微信赞赏 | 支付宝 |
-| :---: | :---: |
-| <a href="docs/support/wechat.png"><img src="docs/support/wechat.png" alt="微信赞赏码" width="180" /></a> | <a href="docs/support/alipay.png"><img src="docs/support/alipay.png" alt="支付宝收款码" width="180" /></a> |
+<p align="center">
+  <a href="docs/support/wechat.png"><img src="docs/support/wechat-labeled.png" alt="微信赞赏码" title="微信赞赏" width="180" /></a>&emsp;&emsp;
+  <a href="docs/support/alipay.png"><img src="docs/support/alipay-labeled.png" alt="支付宝收款码" title="支付宝" width="180" /></a>
+</p>
+
+<p align="center">
+  也可以通过<a href="https://afdian.com/a/lbnandy">爱发电</a>支持
+</p>
