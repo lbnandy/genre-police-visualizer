@@ -14,7 +14,7 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 
 ⭐ 如果你喜欢这个项目，欢迎点个 Star 支持一下。
 
-☕ 也欢迎通过[爱发电](https://afdian.com/a/lbnandy)支持项目的持续开发与维护，谢谢！
+☕ 也欢迎通过[爱发电或微信、支付宝](#支持项目)支持项目的持续开发与维护，谢谢！
 
 ## 下载
 
@@ -142,3 +142,11 @@ npm run dist
 如果遇到问题或有改进建议，可以在 [Issues](../../issues) 中提交。问题报告可附带软件导出的脱敏诊断文件，但请不要公开 Last.fm Key、Discogs Token 或其他凭据。
 
 项目代码采用 [MIT License](LICENSE)。第三方字体、运行库、本地节拍模型和本地曲风模型适用各自的许可证，详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 支持项目
+
+如果你喜欢这个项目，也可以通过[爱发电](https://afdian.com/a/lbnandy)，或使用下方的微信、支付宝支持一下，谢谢！
+
+| 微信赞赏 | 支付宝 |
+| :---: | :---: |
+| <a href="docs/support/wechat.png"><img src="docs/support/wechat.png" alt="微信赞赏码" width="180" /></a> | <a href="docs/support/alipay.png"><img src="docs/support/alipay.png" alt="支付宝收款码" width="180" /></a> |
