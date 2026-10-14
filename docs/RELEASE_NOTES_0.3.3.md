@@ -20,6 +20,7 @@
 - 本地节拍识别更新为 BeatNet+，配合节拍跟踪、静音抑制和音频中断后的状态重置。
 - 整理设置分类与顺序，将音乐响应、冲击和动态效果集中分组；增大标签与说明文字，提高对比度，并同步调整中英日韩文案。
 - 减少曲风识别和节拍分析中的重复计算与内存分配。
+- 更新 Electron 及部分依赖，修复已知安全问题。
 
 > 节拍识别仍可能漏拍或多拍，效果会随音乐内容与音频输入变化。
 
@@ -45,6 +46,7 @@ This build supports 64-bit Windows 10 and Windows 11. Run the EXE directly; Node
 - Updated local beat detection to BeatNet+, with beat tracking, silence gating, and state resets after audio interruptions.
 - Reorganized settings, grouping music response, impacts, and motion together. Increased label and help-text sizes and contrast, with matching wording updates in Chinese, English, Japanese, and Korean.
 - Reduced repeated computation and memory allocation in genre recognition and beat analysis.
+- Updated Electron and selected dependencies to address known security vulnerabilities.
 
 > Beat detection can still miss beats or produce extra detections. Results depend on the music and audio input.
 
@@ -70,6 +72,7 @@ Windows 10/11 x64 に対応しています。EXE を直接実行でき、Node.js
 - ローカルのビート検出を BeatNet+ に更新し、拍の追跡、無音時の抑制、音声中断後の状態リセットに対応しました。
 - 設定の分類と順序を見直し、音楽への反応、インパクト、モーションを同じグループにまとめました。項目名と説明文の文字サイズ・コントラストを改善し、中英日韓の表現も合わせて調整しました。
 - ジャンル認識とビート解析の重複計算やメモリー割り当てを削減しました。
+- Electron と一部の依存ライブラリを更新し、既知のセキュリティ上の問題に対応しました。
 
 > 拍の見逃しや余分な検出が発生する場合があります。検出結果は音楽の内容や音声入力によって変わります。
 

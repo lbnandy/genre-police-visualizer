@@ -43,7 +43,7 @@ test('manual genre previews retain idle animation without replacing real audio',
 
 test('release runtime uses a supported pinned Electron line', () => {
   const pkg = JSON.parse(read('package.json'));
-  assert.equal(pkg.devDependencies.electron, '43.4.1');
+  assert.equal(pkg.devDependencies.electron, '43.7.11');
 });
 
 test('App settings display the current package version', () => {

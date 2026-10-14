@@ -4,6 +4,8 @@ All notable changes to Genre Police Visualizer are documented here.
 
 ## 0.3.3 - 2026-10-14
 
+- Updated Electron to 43.7.11 and patched affected dependencies.
+
 - Added music-responsive and beat-driven impact modes, with music-dependent or fixed beat strength and localized settings.
 - Unified development and portable builds on bundled BeatNet+ with beat-stage tracking, silence gating and discontinuity resets. Packaging verifies the selected model hash.
 - Reorganized settings around related tasks, grouped music response and motion controls, and improved label and help-text readability in all four interface languages.
