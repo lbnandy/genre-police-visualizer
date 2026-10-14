@@ -1,3 +1,7 @@
+import { ImpactMode } from './impact-mode.mjs';
+const impactController = new ImpactMode();
+let impactMode = 'music', beatStrength = 'dynamic';
+let trackedBeatState = { available: false };
 import { AudioEngine } from './audio-engine.js';
 import { VisualEngine } from './visual-engine.js';
 import { VisualizationRecorder } from './recording-controller.mjs';
@@ -1353,6 +1357,24 @@ async function chooseCaptureAudioSource(sourceId) {
     captureAudioSourceButton.focus();
     updateDiagnosticsUi();
   }
+}
+
+function setImpactSettings(mode, strength, { persist = false } = {}) {
+  impactMode = mode === 'beat' ? 'beat' : 'music';
+  beatStrength = strength === 'fixed' ? 'fixed' : 'dynamic';
+  for (const [group, value] of [['impact-mode', impactMode], ['beat-strength', beatStrength]]) {
+    document.querySelectorAll(`[data-${group}]`).forEach(button => {
+      const selected = button.getAttribute(`data-${group}`) === value;
+      button.setAttribute('aria-checked', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+  }
+  document.querySelector('#beat-strength-row').hidden = impactMode !== 'beat';
+  rhythmModelToggle.disabled = impactMode === 'beat';
+  rhythmModelToggle.closest('.settings-toggle-row').hidden = impactMode === 'beat';
+  if (impactMode === 'beat') setRhythmModelEnabled(true);
+  requestAnimationFrame(updateSettingsScrollbar);
+  if (persist) window.genrePolice.setConfig({ impactMode, beatStrength }).catch(() => {});
 }
 
 function setVisualResponseMode(value, { persist = false } = {}) {
@@ -4287,6 +4309,7 @@ function animate(time) {
   if (foregroundStyleDue) lastForegroundStyleAt = time;
   if (lyricStyleDue) lastLyricStyleAt = time;
   let metrics = audio.update(time);
+  metrics = impactController.update(metrics, trackedBeatState, time, impactMode, beatStrength);
   metrics = syntheticDemoMetrics(metrics, time);
   metrics = applyVisualResponse(metrics, visualResponseMode);
   metrics = softenMotionMetrics(metrics, motionMode);
@@ -4803,6 +4826,12 @@ window.genrePolice.onDemoTheme((theme) => {
 window.genrePolice.onRestartAudio(() => audio.start());
 window.genrePolice.onRhythmModel((payload) => {
   if (payload?.type !== 'rhythm') latestRhythmModelState = payload || latestRhythmModelState;
+  if (payload?.type === 'rhythm') {
+    const at = performance.now();
+    trackedBeatState = { available: true, receivedAt: at,
+      peakSerial: payload.trackedBeat ? payload.trackedSerial : trackedBeatState.peakSerial || 0,
+      peakAt: payload.trackedBeat ? at : trackedBeatState.peakAt || 0 };
+  } else trackedBeatState = { available: false };
   audio.setModelAssist(payload);
   updateDiagnosticsUi();
 });
@@ -5076,6 +5105,16 @@ layoutModeGroup.addEventListener('keydown', (event) => {
 motionModeGroup.addEventListener('keydown', (event) => {
   handleRadioSegmentKey(event, motionModeOptions, (next) => setMotionMode(next.dataset.motionMode, { persist: true }));
 });
+for (const group of ['impact-mode', 'beat-strength']) {
+  const options = [...document.querySelectorAll(`[data-${group}]`)];
+  const activate = option => setImpactSettings(
+    group === 'impact-mode' ? option.dataset.impactMode : impactMode,
+    group === 'beat-strength' ? option.dataset.beatStrength : beatStrength,
+    { persist: true }
+  );
+  options.forEach(option => option.addEventListener('click', () => activate(option)));
+  document.querySelector(`#${group}-group`).addEventListener('keydown', event => handleRadioSegmentKey(event, options, activate));
+}
 visualResponseGroup.addEventListener('keydown', (event) => {
   handleRadioSegmentKey(event, visualResponseOptions, (next) => {
     setVisualResponseMode(next.dataset.visualResponse, { persist: true });
@@ -5794,7 +5833,7 @@ window.genrePolice.getConfig().then((config) => {
   latestAudioGenreModelState = config.audioGenreModelState || latestAudioGenreModelState;
   lastFmInput.value = config.lastFmApiKey || '';
   discogsTokenInput.value = config.discogsToken || '';
-  appVersionLabel.textContent = config.appVersion || '0.3.2';
+  appVersionLabel.textContent = config.appVersion || '0.3.3';
   genreOptions = Array.isArray(config.genreOptions) ? config.genreOptions : [];
   applyLanguage(config.language);
   setLyricsEnabled(config.lyricsEnabled !== false);
@@ -5834,6 +5873,7 @@ window.genrePolice.getConfig().then((config) => {
   setIdleFrameLimitEnabled(config.idleFrameLimitEnabled !== false);
   setShowFps(config.showFps === true);
   setRhythmModelEnabled(config.rhythmModelEnabled !== false);
+  setImpactSettings(config.impactMode, config.beatStrength);
   renderMediaSourceSettings();
   resetCustomGenreEditor();
   renderGenreArtistRules();

@@ -75,4 +75,6 @@ The packaged application includes the Windows x64 ONNX Runtime and the two produ
 
 ## Verification
 
+Development and portable builds use the same bundled BeatNet+ generic ONNX weights in `assets/models/beatnet-plus`. `src/rhythm-config.js` defines the shared model selection, and the packaging hook verifies its SHA-256. Missing weights produce an unavailable state rather than falling back to another model. The runtime uses 1764-sample/144-band streaming features, one-hop alignment delay and four recurrent layers with reusable buffers. Its bounded beat-stage particle filter uses a one-frame phase-boundary tolerance and evidence-backed EDM timing; 100 ms of effectively silent input masks recurrent beat activations.
+
 The Node test suite covers classification, localization, lyrics matching, timing, window behavior, privacy-oriented configuration cleanup, audio feature logic, rhythm fusion, visual-family invariants, packaging rules, and public-documentation links. The GitHub Actions workflow reproduces dependency installation, tests, dependency audit, and the Windows portable build.

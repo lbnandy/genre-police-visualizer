@@ -2991,16 +2991,16 @@ body[data-layout="side"] #settings {
 #settings label,
 #settings .settings-label {
   display: block;
-  color: rgba(255,255,255,.7);
-  font-size: 11px;
+  color: rgba(255,255,255,.86);
+  font-size: 12px;
   font-weight: 500;
   line-height: 1.35;
 }
 
 #settings small {
   display: block;
-  color: rgba(255,255,255,.52);
-  font-size: 10px;
+  color: rgba(255,255,255,.66);
+  font-size: 11px;
   font-weight: 500;
   line-height: 1.45;
 }
@@ -3353,6 +3353,7 @@ body[data-stage-output="true"] #appearance-fullscreen-section {
 #settings .layout-mode-option,
 #settings .motion-mode-option,
 #settings .visual-response-option,
+#settings .impact-option,
 #settings .idle-behavior-option {
   display: inline-flex;
   min-width: 47px;
@@ -3373,6 +3374,7 @@ body[data-stage-output="true"] #appearance-fullscreen-section {
 #settings .layout-mode-option:hover,
 #settings .motion-mode-option:hover,
 #settings .visual-response-option:hover,
+#settings .impact-option:hover,
 #settings .idle-behavior-option:hover {
   color: rgba(255,255,255,.86);
   background: rgba(255,255,255,.05);
@@ -3381,6 +3383,7 @@ body[data-stage-output="true"] #appearance-fullscreen-section {
 #settings .layout-mode-option[aria-checked="true"],
 #settings .motion-mode-option[aria-checked="true"],
 #settings .visual-response-option[aria-checked="true"],
+#settings .impact-option[aria-checked="true"],
 #settings .idle-behavior-option[aria-checked="true"] {
   color: color-mix(in srgb, var(--hot) 84%, white);
   background:
@@ -7201,3 +7204,7 @@ body.snapshot-capture :is(#fullscreen-controls, #fullscreen-transport) {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
   #case-id[data-state="analyzing"] { animation: none; }
 }
+
+#settings #beat-strength-row[hidden] { display: none; }
+#impact-mode-group, #beat-strength-group { width: max-content; max-width: 260px; }
+#settings .impact-option { height: auto; min-height: 25px; flex: 1 0 auto; white-space: nowrap; }

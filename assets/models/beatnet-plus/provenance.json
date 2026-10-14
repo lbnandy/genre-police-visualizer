@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/mjhydri/BeatNet-Plus",
+  "revision": "bb90eb0a9065b101a4b4c4cb2b2061950266cb4b",
+  "selected": "generic_weights.onnx",
+  "decoder": "Beat-stage particle filter with bounded population, phase-boundary tolerance and evidence-backed EDM timing",
+  "sha256": {
+    "model.py": "8e675773974c304faeebc355169f99ba0c5dc5ee208586b37dd39c4524851956",
+    "log_spect.py": "0c140a8004752aec61eb7dd9a811c4a6d140def7cad5a95975f6e19563eef88d",
+    "inference.py": "7cfe0e1ad0c9e24a1a1dc3a8bf747875fdf98f5e7a25ea3fbfd14e0d0c048c96",
+    "particle_filtering_cascade.py": "1483c53fe972341ffebe4bdc305ce85c913d4ec357fc4aaece2424a9049b9c97",
+    "generic_weights.pt": "ed52f90e27ff9b5ef3c63f59c6d4b37366f60a21a48ea1d46d7c3e18d6f1977e",
+    "generic_main_weights.pt": "5bbae630b4112f3c1193654e3dbc946b850caa06a2a82e10e8de9e48bb673519",
+    "generic_weights.onnx": "3660e083dbea50b4ca8ac43e7cf75bd97ffb6522474e1f1d3a337cfa63265a06",
+    "generic_main_weights.onnx": "1988005b6f1614674d9c1af32c6bdec3693b602e60baf95736eccb09971b9447"
+  }
+}

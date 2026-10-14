@@ -1,6 +1,6 @@
 {
   "name": "genre-police-visualizer",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Transparent, genre-aware now-playing visualizer for Windows media players.",
   "main": "main.js",
   "author": "LBN",
@@ -86,7 +86,8 @@
       "!node_modules/onnxruntime-common/dist/esm/**/*",
       "!node_modules/onnxruntime-common/dist/**/*.map",
       "!node_modules/onnxruntime-common/dist/**/*.d.ts",
-      "package.json"
+      "package.json",
+      "!assets/models/beatnet-model-1.onnx"
     ],
     "win": {
       "target": "portable",
@@ -95,6 +96,7 @@
     },
     "portable": {
       "artifactName": "Genre-Police-Visualizer-${version}-portable.${ext}"
-    }
+    },
+    "beforePack": "./scripts/verify-rhythm-bundle.cjs"
   }
 }

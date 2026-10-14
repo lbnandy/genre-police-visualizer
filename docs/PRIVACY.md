@@ -7,12 +7,12 @@ Genre Police Visualizer 以本地桌面可视化为目标，不包含遥测、�
 ## Data processed locally / 本机处理的数据
 
 - Windows SMTC now-playing metadata: title, artist, album, artwork, playback state, duration, and position.
-- Windows loopback audio for FFT, rhythm, kick, BPM, energy analysis, the bundled local BeatNet ONNX model, and optional local Discogs-EffNet genre assistance. It is not written to disk unless the user explicitly starts a video recording and chooses a destination. Audio and video are never uploaded; AI inference does not call a cloud service.
+- Windows loopback audio for FFT, rhythm, kick, BPM, energy analysis, the bundled local BeatNet+ ONNX model, and optional local Discogs-EffNet genre assistance. It is not written to disk unless the user explicitly starts a video recording and chooses a destination. Audio and video are never uploaded; AI inference does not call a cloud service.
 - Interface preferences, preferred/ignored media-source identifiers, optional API credentials, user genre corrections, and high-confidence local-AI genre memories in Electron's per-user application-data directory.
 - A low-resolution sample of pixels immediately behind the overlay for contrast adaptation. The sample is reduced to color statistics, is not saved, and is not sent to the renderer or a network service.
 
 - Windows SMTC 当前播放信息：曲名、艺术家、专辑、封面、播放状态、时长和进度。
-- Windows 系统回放音频，仅用于 FFT、节奏、Kick、BPM、能量分析、内置 BeatNet ONNX 模型和可选的本地 Discogs-EffNet 曲风辅助识别；只有用户主动开始视频录制并选择保存位置时才会写入该视频。音频和视频都不会上传，AI 推理不调用云端服务。
+- Windows 系统回放音频，仅用于 FFT、节奏、Kick、BPM、能量分析、内置 BeatNet+ ONNX 模型和可选的本地 Discogs-EffNet 曲风辅助识别；只有用户主动开始视频录制并选择保存位置时才会写入该视频。音频和视频都不会上传，AI 推理不调用云端服务。
 - 界面偏好、首选/忽略的媒体来源标识、可选 API 凭据、用户曲风修正和高置信度的本地 AI 曲风记录，保存在 Electron 的当前用户应用数据目录。
 - 为自适应对比度读取覆盖层后方的低分辨率屏幕采样；只保留颜色统计，不保存图片，也不发送给渲染器或联网服务。
 

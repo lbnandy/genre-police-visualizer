@@ -363,19 +363,7 @@
           </button>
         </div>
         </div>
-        <div id="appearance-motion-section" class="settings-section">
-        <div class="settings-section-title" role="heading" aria-level="3" data-i18n="settings.sectionMotion">动态</div>
-        <div class="settings-layout-row">
-          <div class="settings-toggle-copy">
-            <span id="motion-mode-label" class="settings-label" data-i18n="settings.motionMode">动态效果</span>
-            <small data-i18n="settings.motionModeHelp">柔和会减弱闪光、故障和冲击；标准保留完整效果。</small>
-          </div>
-          <div id="motion-mode-group" class="layout-segment settings-two-segment" role="radiogroup" aria-labelledby="motion-mode-label">
-            <button class="motion-mode-option" type="button" role="radio" aria-checked="false" data-motion-mode="gentle" data-i18n="settings.motionGentle">柔和</button>
-            <button class="motion-mode-option" type="button" role="radio" aria-checked="true" data-motion-mode="standard" data-i18n="settings.motionStandard">标准</button>
-          </div>
-        </div>
-        </div>
+
         <div id="appearance-controls-section" class="settings-section">
         <div class="settings-section-title" role="heading" aria-level="3" data-i18n="settings.sectionQuickControls">快捷按钮</div>
         <div id="snapshot-quick-button-setting" class="settings-toggle-row">
@@ -489,6 +477,9 @@
           </div>
           <small id="audio-source-help" data-i18n="settings.audioSourceHelp">默认使用 Windows 系统声音；需要从音频输入或麦克风取声时再切换。</small>
         </div>
+        </div>
+        <div id="playback-response-section" class="settings-section">
+        <div class="settings-section-title" role="heading" aria-level="3" data-i18n="settings.sectionResponse">音乐与动态响应</div>
         <div class="settings-layout-row settings-response-row">
           <div class="settings-toggle-copy">
             <span id="visual-response-label" class="settings-label" data-i18n="settings.visualResponse">画面响应</span>
@@ -500,6 +491,26 @@
             <button class="visual-response-option" type="button" role="radio" aria-checked="false" data-visual-response="strong" data-i18n="settings.responseStrong">强烈</button>
           </div>
         </div>
+        <div class="settings-layout-row settings-response-row" id="impact-mode-row">
+          <div class="settings-toggle-copy">
+            <span id="impact-mode-label" class="settings-label" data-i18n="settings.impactMode"></span>
+            <small data-i18n="settings.impactModeHelp"></small>
+          </div>
+          <div id="impact-mode-group" class="layout-segment" role="radiogroup" aria-labelledby="impact-mode-label">
+            <button class="impact-option" type="button" role="radio" aria-checked="true" data-impact-mode="music" data-i18n="settings.impactMusic">音乐响应</button>
+            <button class="impact-option" type="button" role="radio" aria-checked="false" data-impact-mode="beat" data-i18n="settings.impactBeat">节拍驱动</button>
+          </div>
+        </div>
+        <div class="settings-layout-row settings-response-row" id="beat-strength-row">
+          <div class="settings-toggle-copy">
+            <span id="beat-strength-label" class="settings-label" data-i18n="settings.beatStrength"></span>
+            <small data-i18n="settings.beatStrengthHelp"></small>
+          </div>
+          <div id="beat-strength-group" class="layout-segment" role="radiogroup" aria-labelledby="beat-strength-label">
+            <button class="impact-option" type="button" role="radio" aria-checked="true" data-beat-strength="dynamic" data-i18n="settings.beatDynamic">随音乐变化</button>
+            <button class="impact-option" type="button" role="radio" aria-checked="false" data-beat-strength="fixed" data-i18n="settings.beatFixed">固定强度</button>
+          </div>
+        </div>
         <div class="settings-toggle-row">
           <div class="settings-toggle-copy">
             <span id="rhythm-model-label" class="settings-label" data-i18n="settings.rhythmModel">增强节拍识别</span>
@@ -508,6 +519,16 @@
           <button id="rhythm-model-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="rhythm-model-label">
             <span class="settings-switch-knob" aria-hidden="true"></span>
           </button>
+        </div>
+        <div class="settings-layout-row">
+          <div class="settings-toggle-copy">
+            <span id="motion-mode-label" class="settings-label" data-i18n="settings.motionMode">动态效果</span>
+            <small data-i18n="settings.motionModeHelp">柔和会减弱闪光、故障和冲击；标准保留完整效果。</small>
+          </div>
+          <div id="motion-mode-group" class="layout-segment settings-two-segment" role="radiogroup" aria-labelledby="motion-mode-label">
+            <button class="motion-mode-option" type="button" role="radio" aria-checked="false" data-motion-mode="gentle" data-i18n="settings.motionGentle">柔和</button>
+            <button class="motion-mode-option" type="button" role="radio" aria-checked="true" data-motion-mode="standard" data-i18n="settings.motionStandard">标准</button>
+          </div>
         </div>
         </div>
         <div class="settings-section">
@@ -629,21 +650,22 @@
           <span id="audio-genre-memory-state" role="status"></span>
           <button id="audio-genre-memory-clear" class="settings-action-button" type="button">清除 AI 识别记录</button>
         </div>
-        <div class="settings-toggle-row">
-          <div class="settings-toggle-copy">
-            <span id="artist-genre-reference-label" class="settings-label" data-i18n="settings.artistGenreReference">使用艺术家曲风参考</span>
-            <small data-i18n="settings.artistGenreReferenceHelp">其他信息不足时，使用艺术家映射辅助判断曲风。</small>
-          </div>
-          <button id="artist-genre-reference-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="artist-genre-reference-label">
-            <span class="settings-switch-knob" aria-hidden="true"></span>
-          </button>
-        </div>
+
         <div id="dynamic-genre-detection-setting" class="settings-toggle-row settings-dependent-row" hidden>
           <div class="settings-toggle-copy">
             <span id="dynamic-genre-detection-label" class="settings-label" data-i18n="settings.dynamicGenreDetection">检测播放中的曲风变化</span>
             <small data-i18n="settings.dynamicGenreDetectionHelp">持续分析音频，仅在检测到明确且持续的曲风变化时切换视觉。</small>
           </div>
           <button id="dynamic-genre-detection-toggle" class="settings-switch" type="button" role="switch" aria-checked="false" aria-labelledby="dynamic-genre-detection-label">
+            <span class="settings-switch-knob" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="settings-toggle-row">
+          <div class="settings-toggle-copy">
+            <span id="artist-genre-reference-label" class="settings-label" data-i18n="settings.artistGenreReference">使用艺术家曲风参考</span>
+            <small data-i18n="settings.artistGenreReferenceHelp">其他信息不足时，使用艺术家映射辅助判断曲风。</small>
+          </div>
+          <button id="artist-genre-reference-toggle" class="settings-switch" type="button" role="switch" aria-checked="true" aria-labelledby="artist-genre-reference-label">
             <span class="settings-switch-knob" aria-hidden="true"></span>
           </button>
         </div>
@@ -915,7 +937,7 @@
         <div class="settings-update-row">
           <div class="settings-update-copy">
             <span class="settings-label" data-i18n="settings.softwareUpdate">软件更新</span>
-            <small><span data-i18n="settings.currentVersion">当前版本</span> <strong id="app-version">0.3.2</strong></small>
+            <small><span data-i18n="settings.currentVersion">当前版本</span> <strong id="app-version">0.3.3</strong></small>
             <small id="update-check-state" role="status" aria-live="polite"></small>
           </div>
           <div class="settings-update-actions">

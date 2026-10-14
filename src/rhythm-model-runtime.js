@@ -1,5 +1,7 @@
 'use strict';
 
+const { BeatParticleFilter } = require('./beat-particle-filter');
+const { BeatParticleFilter: PlusBeatParticleFilter } = require('./beatnet-plus-filter');
 const { loadOnnxRuntime } = require('./onnx-runtime-loader');
 
 const { performance } = require('node:perf_hooks');
@@ -10,7 +12,10 @@ const FRAME_SIZE = 1411;
 const MODEL_BANDS = 136;
 const MODEL_INPUTS = MODEL_BANDS * 2;
 const HIDDEN_SIZE = 150;
-const HIDDEN_VALUES = 2 * HIDDEN_SIZE;
+const RHYTHM_PROFILES = Object.freeze({
+  beatnet: Object.freeze({ frameSize: 1411, bands: 136, layers: 2, warmupFrames: 5, delayHop: false, label: 'BeatNet-1 causal ONNX' }),
+  'beatnet-plus': Object.freeze({ frameSize: 1764, bands: 144, layers: 4, warmupFrames: 3, delayHop: true, label: 'BeatNet+ generic streaming ONNX' })
+});
 
 function clamp(value, minimum = 0, maximum = 1) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -171,11 +176,11 @@ function nearestFrequencyBins(frequencies, binFrequencies) {
   return bins;
 }
 
-function buildFilterbank() {
-  const fftBins = Math.floor(FRAME_SIZE / 2);
+function buildFilterbank(frameSize = FRAME_SIZE, modelBands = MODEL_BANDS) {
+  const fftBins = Math.floor(frameSize / 2);
   const binFrequencies = Array.from(
     { length: fftBins },
-    (_value, index) => index * SAMPLE_RATE / FRAME_SIZE
+    (_value, index) => index * SAMPLE_RATE / frameSize
   );
   const centers = logarithmicFrequencies(24, 30, 17000);
   const bins = nearestFrequencyBins(centers, binFrequencies);
@@ -201,38 +206,41 @@ function buildFilterbank() {
     }
     filters.push({ start, weights });
   }
-  if (filters.length !== MODEL_BANDS) {
+  if (filters.length !== modelBands) {
     throw new Error(`Unexpected BeatNet filterbank shape: ${fftBins}x${filters.length}`);
   }
   return filters;
 }
 
 class CausalFeatures {
-  constructor() {
+  constructor({ frameSize = FRAME_SIZE, bands = MODEL_BANDS, delayHop = false } = {}) {
+    this.frameSize = frameSize; this.bands = bands; this.delayHop = delayHop;
+    this.pendingHop = new Float32Array(HOP_SIZE);
     this.window = Float32Array.from(
-      { length: FRAME_SIZE },
-      (_value, index) => 0.5 - 0.5 * Math.cos(2 * Math.PI * index / (FRAME_SIZE - 1))
+      { length: this.frameSize },
+      (_value, index) => 0.5 - 0.5 * Math.cos(2 * Math.PI * index / (this.frameSize - 1))
     );
-    this.filterbank = buildFilterbank();
-    this.fft = new BluesteinRealFft(FRAME_SIZE);
-    this.buffer = new Float32Array(FRAME_SIZE);
-    this.windowed = new Float32Array(FRAME_SIZE);
-    this.previousLog = new Float32Array(MODEL_BANDS);
-    this.spectrum = new Float32Array(Math.floor(FRAME_SIZE / 2));
+    this.filterbank = buildFilterbank(this.frameSize, this.bands);
+    this.fft = new BluesteinRealFft(this.frameSize);
+    this.buffer = new Float32Array(this.frameSize);
+    this.windowed = new Float32Array(this.frameSize);
+    this.previousLog = new Float32Array(this.bands);
+    this.spectrum = new Float32Array(Math.floor(this.frameSize / 2));
     this.frames = 0;
   }
 
   reset() {
-    this.buffer.fill(0); this.previousLog.fill(0); this.frames = 0;
+    this.pendingHop.fill(0); this.buffer.fill(0); this.previousLog.fill(0); this.frames = 0;
   }
 
-  update(rawHop, frame = new Float32Array(MODEL_INPUTS)) {
+  update(rawHop, frame = new Float32Array(this.bands * 2)) {
     const hop = rawHop instanceof Float32Array ? rawHop : Float32Array.from(rawHop || []);
     if (hop.length !== HOP_SIZE) throw new Error(`Expected ${HOP_SIZE} rhythm samples, received ${hop.length}`);
-    if (frame.length !== MODEL_INPUTS) throw new Error('Unexpected rhythm feature size');
+    if (frame.length !== this.bands * 2) throw new Error('Unexpected rhythm feature size');
     this.buffer.copyWithin(0, HOP_SIZE);
-    this.buffer.set(hop, FRAME_SIZE - HOP_SIZE);
-    for (let index = 0; index < FRAME_SIZE; index += 1) {
+    this.buffer.set(this.delayHop ? this.pendingHop : hop, this.frameSize - HOP_SIZE);
+    if (this.delayHop) this.pendingHop.set(hop);
+    for (let index = 0; index < this.frameSize; index += 1) {
       this.windowed[index] = this.buffer[index] * this.window[index];
     }
     const magnitude = this.fft.magnitude(this.windowed, this.spectrum.length, this.spectrum);
@@ -244,7 +252,7 @@ class CausalFeatures {
       }
       const logSpectrum = Math.log10(1 + energy);
       frame[band] = logSpectrum;
-      frame[MODEL_BANDS + band] = Math.max(0, logSpectrum - this.previousLog[band]);
+      frame[this.bands + band] = Math.max(0, logSpectrum - this.previousLog[band]);
       this.previousLog[band] = logSpectrum;
     }
     this.frames += 1;
@@ -330,22 +338,29 @@ class RhythmSummary {
 }
 
 class LocalRhythmModel {
-  constructor({ modelPath, onEvent = () => {}, ort = null, now = () => performance.now() } = {}) {
+  constructor({ modelPath, modelKind = 'beatnet', onEvent = () => {}, ort = null, now = () => performance.now() } = {}) {
     this.modelPath = modelPath;
+    this.profile = RHYTHM_PROFILES[modelKind];
+    if (!this.profile) throw new Error(`Unknown rhythm model: ${modelKind}`);
+    this.createTracker = modelKind === 'beatnet-plus'
+      ? () => new PlusBeatParticleFilter({ edmTiming: 'boundary' }) : () => new BeatParticleFilter();
     this.onEvent = onEvent;
     this.ort = ort;
     this.now = now;
     this.session = null;
-    this.features = new CausalFeatures();
+    this.features = new CausalFeatures(this.profile);
     // drain() owns this scratch until session.run resolves. Reset never clears
     // it, so an in-flight native tensor cannot observe a changed input buffer.
-    this.featureFrame = new Float32Array(MODEL_INPUTS);
+    this.featureFrame = new Float32Array(this.profile.bands * 2);
     this.summary = new RhythmSummary();
-    this.hidden = new Float32Array(HIDDEN_VALUES);
-    this.cell = new Float32Array(HIDDEN_VALUES);
+    this.beatTracker = this.createTracker();
+    this.hidden = new Float32Array(this.profile.layers * HIDDEN_SIZE);
+    this.cell = new Float32Array(this.profile.layers * HIDDEN_SIZE);
     this.queue = [];
     this.processing = false;
     this.frameIndex = 0;
+    this.silentFrames = 0;
+    this.lastIngestAt = null;
     this.closed = false;
     this.failed = false;
     this.generation = 0;
@@ -367,7 +382,7 @@ class LocalRhythmModel {
       }
       this.session = session;
       this.failed = false;
-      this.onEvent({ type: 'ready', model: 'BeatNet-1 causal ONNX', hopMs: 20 });
+      this.onEvent({ type: 'ready', model: this.profile.label, hopMs: 20 });
       return true;
     } catch (error) {
       this.onEvent({
@@ -384,12 +399,15 @@ class LocalRhythmModel {
   reset() {
     this.features.reset();
     this.summary = new RhythmSummary();
-    this.hidden = new Float32Array(HIDDEN_VALUES);
-    this.cell = new Float32Array(HIDDEN_VALUES);
+    this.beatTracker = this.createTracker();
+    this.hidden = new Float32Array(this.profile.layers * HIDDEN_SIZE);
+    this.cell = new Float32Array(this.profile.layers * HIDDEN_SIZE);
     this.queue.length = 0;
     this.frameIndex = 0;
+    this.silentFrames = 0;
+    this.lastIngestAt = null;
     this.generation += 1;
-    if (this.session) this.onEvent({ type: 'ready', model: 'BeatNet-1 causal ONNX', hopMs: 20 });
+    if (this.session) this.onEvent({ type: 'ready', model: this.profile.label, hopMs: 20 });
   }
 
   ingest(rawHop) {
@@ -400,11 +418,19 @@ class LocalRhythmModel {
         ? new Float32Array(rawHop.buffer, rawHop.byteOffset, rawHop.byteLength / Float32Array.BYTES_PER_ELEMENT)
         : Float32Array.from(rawHop || []);
     if (source.length !== HOP_SIZE) return;
+    const at = this.now();
+    if (this.lastIngestAt !== null && at - this.lastIngestAt > 250) this.reset();
+    this.lastIngestAt = at;
     this.queue.push(Float32Array.from(source));
     // At 50 fps inference should stay ahead of capture. If a machine stalls,
     // keep the newest contiguous window instead of accumulating seconds of
     // latency; DSP remains active throughout the stall.
-    if (this.queue.length > 8) this.queue.splice(0, this.queue.length - 8);
+    if (this.queue.length > 8) {
+      // Dropped samples invalidate recurrent state and the particle phase clock.
+      const newest = this.queue.slice(-8);
+      this.reset();
+      this.queue.push(...newest);
+    }
     if (!this.processing) void this.drain();
   }
 
@@ -415,31 +441,35 @@ class LocalRhythmModel {
       while (this.queue.length && !this.closed) {
         const hop = this.queue.shift();
         const generation = this.generation;
+        const energy = hop.reduce((sum, value) => sum + value * value, 0) / hop.length;
+        this.silentFrames = energy < 1e-10 ? this.silentFrames + 1 : 0;
         const featureStart = this.now();
         const frame = this.features.update(hop, this.featureFrame);
         const featureMs = this.now() - featureStart;
-        if (this.features.frames < 5) continue;
+        if (this.features.frames < this.profile.warmupFrames) continue;
         const inferenceStart = this.now();
         const outputs = await this.session.run({
-          features: new this.ort.Tensor('float32', frame, [1, 1, MODEL_INPUTS]),
-          hidden: new this.ort.Tensor('float32', this.hidden, [2, 1, HIDDEN_SIZE]),
-          cell: new this.ort.Tensor('float32', this.cell, [2, 1, HIDDEN_SIZE])
+          features: new this.ort.Tensor('float32', frame, [1, 1, this.profile.bands * 2]),
+          hidden: new this.ort.Tensor('float32', this.hidden, [this.profile.layers, 1, HIDDEN_SIZE]),
+          cell: new this.ort.Tensor('float32', this.cell, [this.profile.layers, 1, HIDDEN_SIZE])
         });
         const inferenceMs = this.now() - inferenceStart;
         if (generation !== this.generation) continue;
         this.hidden.set(outputs.next_hidden.data);
         this.cell.set(outputs.next_cell.data);
         const probabilities = softmax3(outputs.logits.data);
-        const beat = probabilities[0];
-        const downbeat = probabilities[1];
+        const beat = this.silentFrames >= 5 ? 0 : probabilities[0];
+        const downbeat = this.silentFrames >= 5 ? 0 : probabilities[1];
         const state = this.summary.update(Math.max(beat, downbeat), this.now());
+        const tracked = this.beatTracker.update(beat, downbeat);
         this.frameIndex += 1;
-        if (state.peak || this.frameIndex % 5 === 0) {
+        if (tracked.trackedBeat || state.peak || this.frameIndex % 5 === 0) {
           this.onEvent({
             type: 'rhythm',
             beat: Number(beat.toFixed(5)),
             downbeat: Number(downbeat.toFixed(5)),
             ...state,
+            ...tracked,
             featureMs: Number(featureMs.toFixed(3)),
             inferenceMs: Number(inferenceMs.toFixed(3))
           });
@@ -473,6 +503,7 @@ module.exports = {
   HIDDEN_SIZE,
   HOP_SIZE,
   LocalRhythmModel,
+  RHYTHM_PROFILES,
   MODEL_BANDS,
   MODEL_INPUTS,
   RhythmSummary,

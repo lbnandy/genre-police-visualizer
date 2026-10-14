@@ -114,7 +114,8 @@ test('portable runtime no longer depends on a user-installed Python model host',
   const audio = fs.readFileSync(path.join(root, 'renderer', 'audio-engine.js'), 'utf8');
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.doesNotMatch(main, /GP_RHYTHM_MODEL_PYTHON|rhythm-model\.py|beatnet-model-1\.pt/);
-  assert.match(main, /beatnet-model-1\.onnx/);
+  assert.match(main, /rhythmConfig\(assetPath\)/);
+  assert.doesNotMatch(main, /GP_BEATNET_PLUS_MODEL|const localPlus|const usePlus/);
   assert.match(preload, /submitRhythmAudio/);
   assert.match(audio, /AudioWorkletNode[\s\S]*submitRhythmAudio/);
   assert.equal(packageJson.dependencies['onnxruntime-node'], '^1.29.0');

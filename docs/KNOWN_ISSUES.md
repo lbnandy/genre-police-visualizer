@@ -8,4 +8,5 @@
 - The first lookup for an uncached track can take a few seconds when several catalog services are slow. The visualizer keeps a local result or broad genre while optional sources finish or time out.
 - System output-device changes are detected and trigger loopback recapture, but a driver that does not publish the change cleanly may require **Recapture system audio** from the tray.
 - Transparent always-on-top Electron windows can render differently across GPU drivers, HDR modes, remote-desktop sessions, and screen-recording software. If animation freezes, restart the visualizer and update the GPU driver.
-- The bundled local BeatNet ONNX model normally needs no external runtime. If ONNX Runtime cannot initialize or Chromium cannot create the AudioWorklet feed on a particular machine, the app automatically falls back to the built-in DSP rhythm detector.
+- The bundled local BeatNet+ ONNX model normally needs no external runtime. If ONNX Runtime cannot initialize or Chromium cannot create the AudioWorklet feed on a particular machine, the app automatically falls back to the built-in DSP rhythm detector.
+- 节拍识别可能漏拍或多拍，节拍驱动模式不保证每个实际拍点都能触发。/ Beat detection can miss beats or produce extra detections; beat-driven mode does not guarantee an impact on every actual beat.

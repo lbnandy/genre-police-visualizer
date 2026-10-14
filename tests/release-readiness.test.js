@@ -376,8 +376,8 @@ test('settings use stable top-level tabs and task-focused groups', () => {
   const appPane = html.slice(html.indexOf('id="settings-pane-app"'), html.indexOf('id="settings-scrollbar"'));
 
   assert.match(tabs, /settings-tab-appearance[\s\S]*settings-tab-playback[\s\S]*settings-tab-lyrics[\s\S]*settings-tab-genre[\s\S]*settings-tab-app/);
-  assert.match(appearancePane, /settings\.sectionGeneral[\s\S]*settings\.sectionLayout[\s\S]*settings\.sectionMotion[\s\S]*settings\.sectionQuickControls[\s\S]*settings\.sectionFullscreen/);
-  assert.match(playbackPane, /settings\.sectionAudio[\s\S]*settings\.sectionTrackInfo[\s\S]*settings\.sectionIdle[\s\S]*settings\.sectionPerformance/);
+  assert.match(appearancePane, /settings\.sectionGeneral[\s\S]*settings\.sectionLayout[\s\S]*settings\.sectionQuickControls[\s\S]*settings\.sectionFullscreen/);
+  assert.match(playbackPane, /settings\.sectionAudio[\s\S]*settings\.sectionResponse[\s\S]*motion-mode-group[\s\S]*settings\.sectionTrackInfo[\s\S]*settings\.sectionIdle[\s\S]*settings\.sectionPerformance/);
   assert.doesNotMatch(playbackPane, /BeatNet/);
   assert.match(genrePane, /settings\.sectionRecognition[\s\S]*settings\.sectionCorrections[\s\S]*settings\.sectionData/);
   assert.ok(
@@ -592,7 +592,7 @@ test('local rhythm enhancement is an opt-out Playback setting with a DSP fallbac
   assert.match(playbackPane, /id="rhythm-model-toggle"[\s\S]*role="switch"[\s\S]*aria-checked="true"/);
   assert.match(appSource, /let rhythmModelEnabled = true;/);
   assert.match(audioSource, /setRhythmModelEnabled\(enabled\)[\s\S]*this\.stopRhythmFeed\(\)/);
-  assert.match(mainSource, /config\.rhythmModelEnabled = config\.rhythmModelEnabled !== false;/);
+  assert.match(mainSource, /config\.rhythmModelEnabled = config\.impactMode === 'beat' \|\| config\.rhythmModelEnabled !== false;/);
   assert.match(mainSource, /if \(typeof patch\?\.rhythmModelEnabled === 'boolean'\) safe\.rhythmModelEnabled = patch\.rhythmModelEnabled;/);
   assert.match(mainSource, /function startRhythmModel\(\) \{[\s\S]*config\.rhythmModelEnabled === false[\s\S]*type: 'disabled'/);
 });
@@ -659,8 +659,8 @@ test('local AI genre recognition groups its memory and change-detection controls
   const correctionIndex = genrePane.indexOf('class="genre-correction-settings"');
   assert.ok(onlineIndex >= 0 && localModelIndex > onlineIndex);
   assert.ok(memoryIndex > localModelIndex && memoryClearIndex > memoryIndex);
-  assert.ok(artistReferenceIndex > memoryClearIndex);
-  assert.ok(dynamicIndex > artistReferenceIndex && correctionIndex > dynamicIndex);
+  assert.ok(dynamicIndex > memoryClearIndex);
+  assert.ok(artistReferenceIndex > dynamicIndex && correctionIndex > artistReferenceIndex);
   assert.match(genrePane, /id="audio-genre-memory-setting"[^>]+settings-dependent-row[^>]+hidden/);
   assert.match(genrePane, /id="audio-genre-memory-toggle"[^>]+aria-checked="true"/);
   assert.match(genrePane, /id="dynamic-genre-detection-setting"[^>]+settings-dependent-row[^>]+hidden/);

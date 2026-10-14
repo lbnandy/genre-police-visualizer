@@ -596,12 +596,14 @@ function loadConfig() {
   config.launchAtLogin = config.launchAtLogin === true;
   config.motionMode = normalizeMotionMode(config.motionMode);
   config.visualResponseMode = normalizeVisualResponseMode(config.visualResponseMode);
+  config.impactMode = config.impactMode === 'beat' ? 'beat' : 'music';
+  config.beatStrength = config.beatStrength === 'fixed' ? 'fixed' : 'dynamic';
   config.audioSourceId = normalizeAudioSourceId(config.audioSourceId);
   config.idleBehavior = normalizeIdleBehavior(config.idleBehavior);
   config.frameRateLimit = normalizeFrameRateLimit(config.frameRateLimit);
   config.idleFrameLimitEnabled = config.idleFrameLimitEnabled !== false;
   config.showFps = config.showFps === true;
-  config.rhythmModelEnabled = config.rhythmModelEnabled !== false;
+  config.rhythmModelEnabled = config.impactMode === 'beat' || config.rhythmModelEnabled !== false;
   config.localGenreModelEnabled = config.localGenreModelEnabled !== false;
   config.audioGenreMemoryEnabled = config.audioGenreMemoryEnabled !== false;
   config.dynamicGenreDetectionEnabled = config.localGenreModelEnabled
@@ -746,12 +748,13 @@ function startRhythmModel() {
     return null;
   }
   if (rhythmModel || rhythmModelStartTask || app.isQuitting) return rhythmModelStartTask;
-  const modelPath = assetPath(path.join('models', 'beatnet-model-1.onnx'));
+  const rhythm = require('./src/rhythm-config').rhythmConfig(assetPath);
+  const modelPath = rhythm.modelPath;
   if (!fs.existsSync(modelPath)) {
     sendRhythmModel({ type: 'unavailable', reason: 'bundled ONNX rhythm model is missing' });
     return null;
   }
-  const model = new LocalRhythmModel({ modelPath, onEvent: sendRhythmModel });
+  const model = new LocalRhythmModel({ ...rhythm, onEvent: sendRhythmModel });
   rhythmModel = model;
   rhythmModelStartTask = model.initialize().finally(() => {
     if (rhythmModel === model) rhythmModelStartTask = null;
@@ -2840,6 +2843,8 @@ ipcMain.handle('config:get', () => ({
   launchAtLoginSupported: launchAtLoginSupported(),
   motionMode: normalizeMotionMode(config.motionMode),
   visualResponseMode: normalizeVisualResponseMode(config.visualResponseMode),
+  impactMode: config.impactMode,
+  beatStrength: config.beatStrength,
   audioSourceId: normalizeAudioSourceId(config.audioSourceId),
   idleBehavior: normalizeIdleBehavior(config.idleBehavior),
   frameRateLimit: normalizeFrameRateLimit(config.frameRateLimit),
@@ -2917,7 +2922,10 @@ ipcMain.handle('config:set', async (_event, patch) => {
   }
   if (typeof patch?.idleFrameLimitEnabled === 'boolean') safe.idleFrameLimitEnabled = patch.idleFrameLimitEnabled;
   if (typeof patch?.showFps === 'boolean') safe.showFps = patch.showFps;
+  if (['music', 'beat'].includes(patch?.impactMode)) safe.impactMode = patch.impactMode;
+  if (['fixed', 'dynamic'].includes(patch?.beatStrength)) safe.beatStrength = patch.beatStrength;
   if (typeof patch?.rhythmModelEnabled === 'boolean') safe.rhythmModelEnabled = patch.rhythmModelEnabled;
+  if ((safe.impactMode || config.impactMode) === 'beat') safe.rhythmModelEnabled = true;
   if (typeof patch?.localGenreModelEnabled === 'boolean') safe.localGenreModelEnabled = patch.localGenreModelEnabled;
   if (typeof patch?.audioGenreMemoryEnabled === 'boolean') {
     safe.audioGenreMemoryEnabled = patch.audioGenreMemoryEnabled;

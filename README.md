@@ -8,22 +8,24 @@
 
 Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回放音频，尝试判断正在播放的音乐属于什么曲风，再切换可视化结构、背景、字体和动态表现。它不只是为不同曲风更换配色，而是尽量让不同类型的音乐拥有不同的视觉语言。
 
-当前为 `0.3.2` 测试版，包含 140 种可选择的曲风视觉，覆盖 20 多个主要曲风体系。设计仍以电子音乐为重点，同时继续补充和细化流行、摇滚、嘻哈、R&B、爵士与古典等分支。
+当前为 `0.3.3` 测试版，包含 140 种可选择的曲风视觉，覆盖 20 多个主要曲风体系。设计仍以电子音乐为重点，同时继续补充和细化流行、摇滚、嘻哈、R&B、爵士与古典等分支。
 
 **演示视频：** [哔哩哔哩](https://www.bilibili.com/video/BV1bi426EEAg) · [YouTube](https://www.youtube.com/watch?v=sDvQqHSm7dU)
 
 ⭐ 如果你喜欢这个项目，欢迎点个 Star 支持一下。
+
+☕ 也欢迎通过[微信、支付宝或爱发电](#支持项目)支持项目的持续开发与维护，谢谢！
 
 ## 下载
 
 **[前往 Releases 下载 Windows 便携版](../../releases)**
 
 - 系统要求：Windows 10 或 Windows 11，64 位（x64）。
-- 下载 `Genre-Police-Visualizer-0.3.2-portable.exe` 后直接运行，无需安装。
+- 下载 `Genre-Police-Visualizer-0.3.3-portable.exe` 后直接运行，无需安装。
 - 不需要另外安装 Node.js、Python、PyTorch 或 AI 运行环境。
 - 建议同时下载 `SHA256SUMS.txt` 并核对文件校验值。
 
-`0.3.2` 尚未进行 Authenticode 代码签名，因此 Windows SmartScreen 可能显示“无法识别的发布者”。请只从本项目的 GitHub Releases 页面下载。
+`0.3.3` 尚未进行 Authenticode 代码签名，因此 Windows SmartScreen 可能显示“无法识别的发布者”。请只从本项目的 GitHub Releases 页面下载。
 
 ## 界面预览
 
@@ -56,7 +58,7 @@ Genre Police Visualizer 会读取 Windows 当前播放信息并分析系统回�
 - **曲风视觉**：根据识别结果切换可视化结构、背景设计、字体、粒子和动态表现，而不只更换颜色。
 - **本地 AI 曲风辅助识别**：内置 Discogs-EffNet 模型可在曲风未知、过于宽泛或仅有艺术家映射时补充判断；完整播放的稳定结果可用于下次识别，也可在设置中关闭或清除。还可选择检测播放过程中明确且持续的曲风变化。艺术家曲风参考可单独关闭，音频不会上传。
 - **三种呈现方式**：支持胶囊型、海报型与全屏模式；全屏可在上下和左右结构间切换，并可直接控制文字、播放、截图、录制和设置。
-- **实时音频响应**：频谱、节奏、BPM、能量和冲击反馈由系统回放音频驱动；内置本地 BeatNet ONNX 模型辅助节拍判断。
+- **实时音频响应**：频谱、节奏、BPM、能量和冲击反馈由系统回放音频驱动；内置本地 BeatNet+ 模型辅助节拍判断。支持音乐响应与节拍驱动两种冲击模式，节拍驱动可选择随音乐变化或固定强度。
 - **视频录制**：将当前可视化和系统播放声音实时保存为 MP4；系统不支持 MP4 编码时自动使用 WebM。
 - **画面保存与快速纠错**：可将当前可视化保存为透明 PNG；点击曲风标题可查看候选、临时锁定视觉或记住当前曲目的修正。
 - **当前播放信息**：读取曲名、艺术家、专辑、封面、播放状态和进度，并提供上一首、播放/暂停、下一首控制。
@@ -140,3 +142,16 @@ npm run dist
 如果遇到问题或有改进建议，可以在 [Issues](../../issues) 中提交。问题报告可附带软件导出的脱敏诊断文件，但请不要公开 Last.fm Key、Discogs Token 或其他凭据。
 
 项目代码采用 [MIT License](LICENSE)。第三方字体、运行库、本地节拍模型和本地曲风模型适用各自的许可证，详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 支持项目
+
+<p align="center">感谢你对项目的支持！</p>
+
+<p align="center">
+  <a href="docs/support/wechat.png"><img src="docs/support/wechat-labeled.png" alt="微信赞赏码" title="微信赞赏" width="180" /></a>&emsp;&emsp;
+  <a href="docs/support/alipay.png"><img src="docs/support/alipay-labeled.png" alt="支付宝收款码" title="支付宝" width="180" /></a>
+</p>
+
+<p align="center">
+  也可以通过<a href="https://afdian.com/a/lbnandy">爱发电</a>支持
+</p>
